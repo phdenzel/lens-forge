@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
+// SPDX-FileNotice: Part of lens_forge
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! lens_forge entry point
 use lens_forge::viz;
 
 
@@ -17,15 +21,14 @@ fn test_gradient_by_name(name: &str) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box <dyn std::error::Error>> {
-    println!("Hello, world!");
     test_gradient_by_name("magma");
-    test_gradient_by_name("turbo");
-    test_gradient_by_name("viridis");
-    test_gradient_by_name("inferno");
-    test_gradient_by_name("plasma");
-    test_gradient_by_name("cividis");
-    test_gradient_by_name("hertzsprung");
-    test_gradient_by_name("obscura");
-    test_gradient_by_name("gaseous");
+    // test_gradient_by_name("turbo");
+    // test_gradient_by_name("viridis");
+    // test_gradient_by_name("inferno");
+    // test_gradient_by_name("plasma");
+    // test_gradient_by_name("cividis");
+    // test_gradient_by_name("hertzsprung");
+    // test_gradient_by_name("obscura");
+    // test_gradient_by_name("gaseous");
     Ok(())
 }
