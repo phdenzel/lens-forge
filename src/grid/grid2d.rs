@@ -3,10 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Basic 2D grid type
 
-use ndarray::{Array1, Array2, Axis, Zip, parallel::prelude::*};
 use crate::grid::Point2D;
 use crate::{LensForgeError, Result};
-
+use ndarray::{Array1, Array2, Axis, Zip, parallel::prelude::*};
 
 /// A 2D grid for discretizing planes
 ///
@@ -65,12 +64,12 @@ impl Grid2D {
     /// * `n` - Number of pixels in each direction
     /// * `radius` - Half the physical extent (grid spans from -radius to +radius)
     pub fn square(n: usize, radius: f64) -> Result<Self> {
-	if radius <= 0.0 {
-	    return Err(LensForgeError::InvalidGridDimensions(
-		"Radius must be positive".into()
-	    ));
-	}
-	Self::new(n, n, (-radius, radius), (-radius, radius))
+        if radius <= 0.0 {
+            return Err(LensForgeError::InvalidGridDimensions(
+                "Radius must be positive".into(),
+            ));
+        }
+        Self::new(n, n, (-radius, radius), (-radius, radius))
     }
 
     /// Create a rectangular grid centered at the origin
@@ -81,12 +80,12 @@ impl Grid2D {
     /// * `rx` - Half the physical extent in x (grid spans from -rx to +rx)
     /// * `ry` - Half the physical extent in y (grid spans from -ry to +ry)
     pub fn rectangular(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
-	if rx <= 0.0  || ry <= 0.0 {
-	    return Err(LensForgeError::InvalidGridDimensions(
-		"Extents must be positive".into()
-	    ));
-	}
-	Self::new(nx, ny, (-rx, rx), (-ry, ry))
+        if rx <= 0.0 || ry <= 0.0 {
+            return Err(LensForgeError::InvalidGridDimensions(
+                "Extents must be positive".into(),
+            ));
+        }
+        Self::new(nx, ny, (-rx, rx), (-ry, ry))
     }
 
     /// Create a grid with given physical extent and resolution
@@ -95,20 +94,24 @@ impl Grid2D {
     /// * `extent_x` - Physical extent in x as (x_min, x_max)
     /// * `extent_y` - Physical extent in y as (y_min, y_max)
     /// * `resolution` - Grid resolution in x and y
-    pub fn with_resolution(extent_x: (f64, f64), extent_y: (f64, f64), resolution: f64) -> Result<Self> {
-	if resolution <= 0.0 {
-	    return Err(LensForgeError::InvalidGridDimensions(
-		"Resolution must be positive".into()
-	    ));
-	}
-	let nx = ((extent_x.1 - extent_x.0) * resolution).ceil() as usize;
+    pub fn with_resolution(
+        extent_x: (f64, f64),
+        extent_y: (f64, f64),
+        resolution: f64,
+    ) -> Result<Self> {
+        if resolution <= 0.0 {
+            return Err(LensForgeError::InvalidGridDimensions(
+                "Resolution must be positive".into(),
+            ));
+        }
+        let nx = ((extent_x.1 - extent_x.0) * resolution).ceil() as usize;
         let ny = ((extent_y.1 - extent_y.0) * resolution).ceil() as usize;
-	if nx < 1 {
-	    eprintln!("Warning: calculated non-positive grid size in x, setting to 1.");
-	}
-	if ny < 1 {
-	    eprintln!("Warning: calculated non-positive grid size in y, setting to 1.");
-	}
+        if nx < 1 {
+            eprintln!("Warning: calculated non-positive grid size in x, setting to 1.");
+        }
+        if ny < 1 {
+            eprintln!("Warning: calculated non-positive grid size in y, setting to 1.");
+        }
         Self::new(nx.max(1), ny.max(1), extent_x, extent_y)
     }
 
@@ -134,22 +137,19 @@ impl Grid2D {
     /// Grid height
     #[inline]
     pub fn height(&self) -> f64 {
-	self.ny as f64 * self.dy
+        self.ny as f64 * self.dy
     }
 
     /// Grid center
     #[inline]
     pub fn center(&self) -> Point2D {
-        Point2D::new(
-            self.x0 + self.width() * 0.5,
-            self.y0 + self.height() * 0.5,
-        )
+        Point2D::new(self.x0 + self.width() * 0.5, self.y0 + self.height() * 0.5)
     }
 
     /// Aspect ratio (width / height)
     #[inline]
     pub fn aspect_ratio(&self) -> f64 {
-        self.width() / self. height()
+        self.width() / self.height()
     }
 
     /// Total number of pixels
@@ -170,16 +170,16 @@ impl Grid2D {
         self.width() * self.height()
     }
 
-    /// Shape as (ny, nx) for ndarray compatibility
+    /// Shape as (ny, nx) tuple
     #[inline(always)]
     pub fn shape(&self) -> (usize, usize) {
         (self.ny, self.nx)
     }
 
-    /// Shape as array [ny, nx]
+    /// Shape as [ny, nx] array
     #[inline(always)]
     pub fn shape_as_array(&self) -> [usize; 2] {
-        [self.ny, self. nx]
+        [self.ny, self.nx]
     }
 
     /* ============ Coordinates ============================================ */
@@ -201,7 +201,7 @@ impl Grid2D {
         self.y0 + (j as f64 + 0.5) * self.dy
     }
 
-     /// Get pixel center coordinates
+    /// Get pixel center coordinates
     ///
     /// # Arguments
     /// * `i` - index along x axis
@@ -247,7 +247,7 @@ impl Grid2D {
     pub fn point_to_pixel(&self, p: &Point2D) -> Option<(usize, usize)> {
         let fi = (p.x - self.x0) / self.dx;
         let fj = (p.y - self.y0) / self.dy;
-        
+
         if fi >= 0.0 && fi < self.nx as f64 && fj >= 0.0 && fj < self.ny as f64 {
             Some((fi as usize, fj as usize))
         } else {
@@ -273,10 +273,7 @@ impl Grid2D {
     /// * `p` - point to be mapped
     #[inline(always)]
     pub fn relative_to_corner(&self, p: &Point2D) -> (f64, f64) {
-        (
-            (p.x - self.x0) / self.dx,
-            (p.y - self.y0) / self.dy,
-        )
+        ((p.x - self.x0) / self.dx, (p.y - self.y0) / self.dy)
     }
 
     /// Check if point is inside grid
@@ -315,31 +312,31 @@ impl Grid2D {
     /// * `idx` - index to be unflattened
     #[inline(always)]
     pub fn unflatten_index(&self, idx: usize) -> (usize, usize) {
-        (idx % self.nx, idx / self. nx)
+        (idx % self.nx, idx / self.nx)
     }
 
     /// Create 1D array of x coordinates for pixel centers
     #[inline]
     pub fn x_coords(&self) -> Array1<f64> {
-	Array1::from_shape_fn(self.nx, |i| self.x_at(i))
+        Array1::from_shape_fn(self.nx, |i| self.x_at(i))
     }
 
     /// Create 1D array of y coordinates for pixel centers
     #[inline]
     pub fn y_coords(&self) -> Array1<f64> {
-	Array1::from_shape_fn(self.ny, |j| self.y_at(j))
+        Array1::from_shape_fn(self.ny, |j| self.y_at(j))
     }
 
     /// Create 1D array of x coordinates for pixel edges
     #[inline]
     pub fn x_edges(&self) -> Array1<f64> {
-	Array1::from_shape_fn(self.nx + 1, |i| self.x_corner_at(i))
+        Array1::from_shape_fn(self.nx + 1, |i| self.x_corner_at(i))
     }
 
     /// Create 1D array of y coordinates for pixel edges
     #[inline]
     pub fn y_edges(&self) -> Array1<f64> {
-	Array1::from_shape_fn(self.ny + 1, |j| self.y_corner_at(j))
+        Array1::from_shape_fn(self.ny + 1, |j| self.y_corner_at(j))
     }
 
     /* ============ Meshgrids ============================================== */
@@ -347,8 +344,8 @@ impl Grid2D {
     #[inline]
     pub fn prealloc_meshgrid_x(&self) -> Array2<f64> {
         let x_coords = self.x_coords();
-	// pre-allocate array
-	let mut result = Array2::zeros((self.ny, self.nx));
+        // pre-allocate array
+        let mut result = Array2::zeros((self.ny, self.nx));
         // row-by-row assignment
         for mut row in result.rows_mut() {
             row.assign(&x_coords);
@@ -360,8 +357,8 @@ impl Grid2D {
     #[inline]
     pub fn meshgrid_x(&self) -> Array2<f64> {
         let x = self.x_coords();
-	// reshape to (1, nx) and broadcast to (ny, nx)
-	let x_row = x.into_shape_with_order((1, self.nx)).unwrap();
+        // reshape to (1, nx) and broadcast to (ny, nx)
+        let x_row = x.into_shape_with_order((1, self.nx)).unwrap();
         x_row.broadcast((self.ny, self.nx)).unwrap().to_owned()
     }
 
@@ -369,8 +366,8 @@ impl Grid2D {
     #[inline]
     pub fn prealloc_meshgrid_y(&self) -> Array2<f64> {
         let y_coords = self.y_coords();
-	// pre-allocate array
-	let mut transposed = Array2::zeros((self.ny, self.nx));
+        // pre-allocate array
+        let mut transposed = Array2::zeros((self.ny, self.nx));
         // row-by-row assignment
         for mut row in transposed.rows_mut() {
             row.assign(&y_coords);
@@ -382,8 +379,8 @@ impl Grid2D {
     #[inline]
     pub fn meshgrid_y(&self) -> Array2<f64> {
         let y = self.y_coords();
-	// reshape to (ny, 1) and broadcast to (ny, nx)
-	let y_col = y.into_shape_with_order((self.ny, 1)).unwrap();
+        // reshape to (ny, 1) and broadcast to (ny, nx)
+        let y_col = y.into_shape_with_order((self.ny, 1)).unwrap();
         y_col.broadcast((self.ny, self.nx)).unwrap().to_owned()
     }
 
@@ -403,7 +400,7 @@ impl Grid2D {
     /// * `center` - Optional reference point (default: grid center)
     pub fn meshgrid_r2(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
-	let cx = c.x;
+        let cx = c.x;
         let cy = c.y;
         // Precompute (x - cx)^2 for each column
         let dx2: Array1<f64> = Array1::from_shape_fn(self.nx, |i| {
@@ -419,11 +416,9 @@ impl Grid2D {
         let mut result = Array2::zeros((self.ny, self.nx));
         for (j, mut row) in result.rows_mut().into_iter().enumerate() {
             let dy2_j = dy2[j];
-            Zip::from(&mut row)
-                .and(&dx2)
-                .for_each(|r, &dx2_i| {
-                    *r = dx2_i + dy2_j;
-                });
+            Zip::from(&mut row).and(&dx2).for_each(|r, &dx2_i| {
+                *r = dx2_i + dy2_j;
+            });
         }
         result
     }
@@ -444,7 +439,7 @@ impl Grid2D {
         let c = center.unwrap_or_else(|| self.center());
         let cx = c.x;
         let cy = c.y;
-        
+
         Array2::from_shape_fn((self.ny, self.nx), |(j, i)| {
             let x = self.x_at(i) - cx;
             let y = self.y_at(j) - cy;
@@ -481,7 +476,7 @@ impl Grid2D {
                 .and(&dx_vec)
                 .and(&dx2_vec)
                 .for_each(|r, theta, &dx_i, &dx2_i| {
-                    *r = (dx2_i + dy2_j). sqrt();
+                    *r = (dx2_i + dy2_j).sqrt();
                     *theta = dy_j.atan2(dx_i);
                 });
         }
@@ -494,7 +489,8 @@ impl Grid2D {
         let x_coords = self.x_coords();
 
         let mut result = Array2::zeros((self.ny, self.nx));
-	result.axis_iter_mut(Axis(0))
+        result
+            .axis_iter_mut(Axis(0))
             .into_par_iter()
             .for_each(|mut row| {
                 row.assign(&x_coords);
@@ -507,7 +503,8 @@ impl Grid2D {
         let y_coords = self.y_coords();
 
         let mut result = Array2::zeros((self.ny, self.nx));
-        result.axis_iter_mut(Axis(0))
+        result
+            .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
             .for_each(|(j, mut row)| {
@@ -519,10 +516,7 @@ impl Grid2D {
     /// Create meshgrid of x and y coordinates in parallel (using rayon backend)
     pub fn pmeshgrid(&self) -> (Array2<f64>, Array2<f64>) {
         // Run both in parallel using rayon's join
-        rayon::join(
-            || self.pmeshgrid_x(),
-            || self.pmeshgrid_y(),
-        )
+        rayon::join(|| self.pmeshgrid_x(), || self.pmeshgrid_y())
     }
 
     /// Compute squared radial distance meshgrid in parallel (using rayon backend)
@@ -536,18 +530,17 @@ impl Grid2D {
             d * d
         });
 
-	let mut result = Array2::zeros((self.ny, self.nx));
-        result.axis_iter_mut(Axis(0))
+        let mut result = Array2::zeros((self.ny, self.nx));
+        result
+            .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
             .for_each(|(j, mut row)| {
-		let dy = self.y_at(j) - c.y;
+                let dy = self.y_at(j) - c.y;
                 let dy2 = dy * dy;
-                Zip::from(&mut row)
-                    .and(&dx2)
-                    .for_each(|r, &dx2_i| {
-                        *r = dx2_i + dy2;
-                    });
+                Zip::from(&mut row).and(&dx2).for_each(|r, &dx2_i| {
+                    *r = dx2_i + dy2;
+                });
             });
         result
     }
@@ -557,7 +550,7 @@ impl Grid2D {
     /// # Arguments
     /// * `center` - Optional reference point (default: grid center)
     pub fn pmeshgrid_r(&self, center: Option<Point2D>) -> Array2<f64> {
-	self.pmeshgrid_r2(center).mapv(f64::sqrt)
+        self.pmeshgrid_r2(center).mapv(f64::sqrt)
     }
 
     /// Apply a function to each pixel center coordinate
@@ -568,8 +561,8 @@ impl Grid2D {
     pub fn map_centers<F, T>(&self, f: F) -> Array2<T>
     where
         F: Fn(f64, f64) -> T,
-    {   
-        Array2::from_shape_fn((self.ny, self. nx), |(j, i)| {
+    {
+        Array2::from_shape_fn((self.ny, self.nx), |(j, i)| {
             let x = self.x_at(i);
             let y = self.y_at(j);
             f(x, y)
@@ -597,18 +590,16 @@ impl Grid2D {
         F: Fn(f64, f64) -> T + Sync + Send,
         T: Send,
     {
-	let x_coords = self.x_coords();
-	let y_coords = self.y_coords();
+        let x_coords = self.x_coords();
+        let y_coords = self.y_coords();
 
-	let rows: Vec<Vec<T>> = y_coords
-	    .par_iter()
-	    .map(|&y| {
-		x_coords.iter().map(|&x| f(x, y)).collect()
-	    })
-	    .collect();
+        let rows: Vec<Vec<T>> = y_coords
+            .par_iter()
+            .map(|&y| x_coords.iter().map(|&x| f(x, y)).collect())
+            .collect();
 
-	let data: Vec<T> = rows.into_iter().flatten().collect();
-	Array2::from_shape_vec((self.ny, self.nx), data).unwrap()
+        let data: Vec<T> = rows.into_iter().flatten().collect();
+        Array2::from_shape_vec((self.ny, self.nx), data).unwrap()
     }
 
     /* ============ Iterators ============================================== */
@@ -627,9 +618,9 @@ impl Grid2D {
     /// Iterate with coordinates
     #[inline]
     pub fn iter_coords(&self) -> impl Iterator<Item = (usize, usize, f64, f64)> + '_ {
-        (0.. self.ny).flat_map(move |j| {
+        (0..self.ny).flat_map(move |j| {
             let y = self.y_at(j);
-            (0..self. nx).map(move |i| (i, j, self.x_at(i), y))
+            (0..self.nx).map(move |i| (i, j, self.x_at(i), y))
         })
     }
 
@@ -642,12 +633,20 @@ impl Grid2D {
     pub fn neighbors_4(&self, i: usize, j: usize) -> impl Iterator<Item = (usize, usize)> {
         [
             if i > 0 { Some((i - 1, j)) } else { None },
-            if i < self.nx - 1 { Some((i + 1, j)) } else { None },
+            if i < self.nx - 1 {
+                Some((i + 1, j))
+            } else {
+                None
+            },
             if j > 0 { Some((i, j - 1)) } else { None },
-            if j < self.ny - 1 { Some((i, j + 1)) } else { None },
+            if j < self.ny - 1 {
+                Some((i, j + 1))
+            } else {
+                None
+            },
         ]
-            .into_iter()
-            .flatten()
+        .into_iter()
+        .flatten()
     }
 
     /// Iterate over neighbor indices (SW, S, SE, W, E, NW, N, NE) from given position
@@ -658,20 +657,25 @@ impl Grid2D {
     #[inline]
     pub fn neighbors_8(&self, i: usize, j: usize) -> impl Iterator<Item = (usize, usize)> {
         [
-	    (-1, -1), (0, -1), (1, -1),
-            (-1,  0),          (1,  0),
-            (-1,  1), (0,  1), (1,  1)
-	]
-            .into_iter()
-            .filter_map(move |(di, dj)| {
-                let ni = i as i64 + di;
-                let nj = j as i64 + dj;
-                if ni >= 0 && ni < self.nx as i64 && nj >= 0 && nj < self.ny as i64 {
-                    Some((ni as usize, nj as usize))
-                } else {
-                    None
-                }
-            })
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        ]
+        .into_iter()
+        .filter_map(move |(di, dj)| {
+            let ni = i as i64 + di;
+            let nj = j as i64 + dj;
+            if ni >= 0 && ni < self.nx as i64 && nj >= 0 && nj < self.ny as i64 {
+                Some((ni as usize, nj as usize))
+            } else {
+                None
+            }
+        })
     }
 
     /* ============ Grid Transformations =================================== */
@@ -683,7 +687,7 @@ impl Grid2D {
     pub fn refine(&self, factor: usize) -> Result<Self> {
         if factor == 0 {
             return Err(LensForgeError::InvalidGridDimensions(
-                "Refinement factor must be positive".into()
+                "Refinement factor must be positive".into(),
             ));
         }
         Ok(Self {
@@ -704,13 +708,14 @@ impl Grid2D {
     pub fn coarsen(&self, factor: usize) -> Result<Self> {
         if factor == 0 {
             return Err(LensForgeError::InvalidGridDimensions(
-                "Coarsening factor must be positive". into()
+                "Coarsening factor must be positive".into(),
             ));
         }
         if self.nx % factor != 0 || self.ny % factor != 0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                format!("Dimensions ({}, {}) not divisible by {}", self.nx, self.ny, factor)
-            ));
+            return Err(LensForgeError::InvalidGridDimensions(format!(
+                "Dimensions ({}, {}) not divisible by {}",
+                self.nx, self.ny, factor
+            )));
         }
         Ok(Self {
             nx: self.nx / factor,
@@ -784,9 +789,12 @@ impl std::fmt::Display for Grid2D {
         write!(
             f,
             "Grid2D({}x{}, [{:.3}, {:.3}]x[{:.3}, {:.3}])",
-            self.nx, self.ny,
-            self.x0, self.x0 + self.width(),
-            self.y0, self.y0 + self.height()
+            self.nx,
+            self.ny,
+            self.x0,
+            self.x0 + self.width(),
+            self.y0,
+            self.y0 + self.height()
         )
     }
 }
@@ -824,8 +832,7 @@ impl std::fmt::Display for BilinearKernel {
         write!(
             f,
             "BilinearKernel(({}, {})-({}, {}), k:[{:.3}, {:.3}, {:.3}, {:.3}])",
-            self.i0, self.j0, self.i1, self.j1,
-            self.w00, self.w01, self.w10, self.w11,
+            self.i0, self.j0, self.i1, self.j1, self.w00, self.w01, self.w10, self.w11,
         )
     }
 }
@@ -835,24 +842,27 @@ impl Grid2D {
     #[inline]
     pub fn bilinear_interp(&self, p: &Point2D) -> Option<BilinearKernel> {
         let (fx, fy) = self.relative_to(p);
-        
+
         let i0 = fx.floor() as i64;
         let j0 = fy.floor() as i64;
-        
+
         if i0 < -1 || i0 >= self.nx as i64 || j0 < -1 || j0 >= self.ny as i64 {
             return None;
         }
-        
+
         let tx = fx - i0 as f64;
         let ty = fy - j0 as f64;
-        
+
         let i0 = i0.max(0) as usize;
         let j0 = j0.max(0) as usize;
         let i1 = (i0 + 1).min(self.nx - 1);
         let j1 = (j0 + 1).min(self.ny - 1);
-        
+
         Some(BilinearKernel {
-            i0, j0, i1, j1,
+            i0,
+            j0,
+            i1,
+            j1,
             w00: (1.0 - tx) * (1.0 - ty),
             w10: tx * (1.0 - ty),
             w01: (1.0 - tx) * ty,
@@ -860,7 +870,6 @@ impl Grid2D {
         })
     }
 }
-
 
 /* ================ Unit tests ============================================= */
 #[cfg(test)]
@@ -877,9 +886,9 @@ mod tests {
     fn test_meshgrid_x_values() {
         let grid = Grid2D::new(4, 3, (0.0, 4.0), (0.0, 3.0)).unwrap();
         let mgx = grid.meshgrid_x();
-        
-        assert_eq!(mgx. shape(), &[3, 4]);
-        
+
+        assert_eq!(mgx.shape(), &[3, 4]);
+
         // Check values
         for i in 0..4 {
             let expected = 0.5 + i as f64;
@@ -893,10 +902,10 @@ mod tests {
     fn test_meshgrid_y_values() {
         let grid = Grid2D::new(4, 3, (0.0, 4.0), (0.0, 3.0)).unwrap();
         let mgy = grid.meshgrid_y();
-        
+
         for j in 0..3 {
             let expected = 0.5 + j as f64;
-            for i in 0.. 4 {
+            for i in 0..4 {
                 assert!(approx_eq(mgy[[j, i]], expected));
             }
         }
@@ -905,20 +914,20 @@ mod tests {
     #[test]
     fn test_meshgrid_implementations_equal() {
         let grid = Grid2D::square(10, 2.0).unwrap();
-        
+
         let x1 = grid.meshgrid_x();
         let x2 = grid.prealloc_meshgrid_x();
         let x3 = grid.pmeshgrid_x();
-	let y1 = grid.meshgrid_y();
-	let y2 = grid.prealloc_meshgrid_y();
+        let y1 = grid.meshgrid_y();
+        let y2 = grid.prealloc_meshgrid_y();
         let y3 = grid.pmeshgrid_y();
 
         for j in 0..grid.ny {
             for i in 0..grid.nx {
                 assert!(approx_eq(x1[[j, i]], x2[[j, i]]));
                 assert!(approx_eq(x1[[j, i]], x3[[j, i]]));
-		assert!(approx_eq(y1[[j, i]], y2[[j, i]]));
-		assert!(approx_eq(y1[[j, i]], y3[[j, i]]));
+                assert!(approx_eq(y1[[j, i]], y2[[j, i]]));
+                assert!(approx_eq(y1[[j, i]], y3[[j, i]]));
             }
         }
     }
@@ -926,13 +935,13 @@ mod tests {
     #[test]
     fn test_meshgrid() {
         let grid = Grid2D::square(5, 1.0).unwrap();
-        
+
         let (x1, y1) = grid.meshgrid();
-	let (x2, y2) = grid.prealloc_meshgrid();
+        let (x2, y2) = grid.prealloc_meshgrid();
         let (x3, y3) = grid.pmeshgrid();
-        
+
         assert_eq!(x1, x2);
-	assert_eq!(x1, x3);
+        assert_eq!(x1, x3);
         assert_eq!(y1, y2);
         assert_eq!(y1, y3);
     }
@@ -940,10 +949,10 @@ mod tests {
     #[test]
     fn test_meshgrid_r2() {
         let grid = Grid2D::square(5, 2.0).unwrap();
-        
+
         let r2_1 = grid.meshgrid_r2(None);
-	let r2_2 = grid.pmeshgrid_r2(None);
-        
+        let r2_2 = grid.pmeshgrid_r2(None);
+
         for j in 0..grid.ny {
             for i in 0..grid.nx {
                 assert!(approx_eq(r2_1[[j, i]], r2_2[[j, i]]));
@@ -955,11 +964,11 @@ mod tests {
     fn test_meshgrid_r2_manual() {
         let grid = Grid2D::square(5, 2.0).unwrap();
         let center = Point2D::origin();
-        
+
         let r2 = grid.meshgrid_r2(Some(center));
         let (x, y) = grid.meshgrid();
         let r2_manual = &x * &x + &y * &y;
-        
+
         for j in 0..grid.ny {
             for i in 0..grid.nx {
                 assert!(approx_eq(r2[[j, i]], r2_manual[[j, i]]));
@@ -970,49 +979,49 @@ mod tests {
     #[test]
     fn test_map_centers() {
         let grid = Grid2D::square(4, 1.0).unwrap();
-        
+
         let r2_map = grid.map_centers(|x, y| x * x + y * y);
         let r2_meshgrid = grid.meshgrid_r2(Some(Point2D::origin()));
-        
+
         assert_eq!(r2_map, r2_meshgrid);
     }
 
     #[test]
     fn test_bilinear_interp_at_center() {
         let grid = Grid2D::new(4, 4, (0.0, 4.0), (0.0, 4.0)).unwrap();
-        
+
         // Point at pixel center
         let w = grid.bilinear_interp(&Point2D::new(0.5, 0.5)).unwrap();
         assert!(approx_eq(w.w00, 1.0));
         assert!(approx_eq(w.w10 + w.w01 + w.w11, 0.0));
-	println!("{}", w);
+        println!("{}", w);
     }
 
     #[test]
     fn test_bilinear_interp_between() {
         let grid = Grid2D::new(4, 4, (-2.0, 2.0), (-2.0, 2.0)).unwrap();
-        
+
         // Point between four pixels
         let w = grid.bilinear_interp(&Point2D::new(1.0, 1.0)).unwrap();
         assert!(approx_eq(w.w00, 0.25));
         assert!(approx_eq(w.w10, 0.25));
         assert!(approx_eq(w.w01, 0.25));
         assert!(approx_eq(w.w11, 0.25));
-	println!("{}", w);
+        println!("{}", w);
     }
 
     #[test]
     fn test_bilinear_interpolate() {
         let grid = Grid2D::new(4, 4, (0.0, 4.0), (0.0, 4.0)).unwrap();
         let data = grid.map_centers(|x, _| x); // f(x,y) = x
-        
+
         let p = Point2D::new(2.0, 2.0);
         let w = grid.bilinear_interp(&p).unwrap();
-	println!("{}", w);
+        println!("{}", w);
         let interp = w.apply(&data);
-        
+
         // Should be close to 2.0
-	println!("{}", interp);
+        println!("{}", interp);
         assert!((interp - 2.0).abs() < 0.5);
     }
 }

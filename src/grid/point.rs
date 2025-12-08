@@ -3,15 +3,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Basic 2D point type
 
-use std::ops::{Add, Sub, Mul, Div, Neg, AddAssign, SubAssign, MulAssign, DivAssign};
-
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point2D {
     pub x: f64,
     pub y: f64,
 }
-
 
 impl Point2D {
     /// Create a new point
@@ -21,25 +19,25 @@ impl Point2D {
     /// * `y` - y coordinate
     #[inline]
     pub const fn new(x: f64, y: f64) -> Self {
-	Self { x, y }
+        Self { x, y }
     }
 
     /// Create the origin (0, 0)
     #[inline]
     pub const fn origin() -> Self {
-	Self { x: 0.0, y: 0.0 }
+        Self { x: 0.0, y: 0.0 }
     }
 
     /// Create a unit vector along x-axis
     #[inline]
     pub const fn unit_x() -> Self {
-	Self { x: 1.0, y: 0.0 }
+        Self { x: 1.0, y: 0.0 }
     }
 
     ///  Create a unit vector along y-axis
     #[inline]
     pub const fn unit_y() -> Self {
-	Self { x: 0.0, y: 1.0 }
+        Self { x: 0.0, y: 1.0 }
     }
 
     /// Create a point with both components equal
@@ -48,7 +46,7 @@ impl Point2D {
     /// * `v` - value for both x and y coordinates
     #[inline]
     pub const fn splat(v: f64) -> Self {
-	Self { x: v, y: v }
+        Self { x: v, y: v }
     }
 
     /// Create a point from polar coordinates (r, theta)
@@ -67,25 +65,25 @@ impl Point2D {
     /// Compute the Euclidean norm
     #[inline]
     pub fn norm(&self) -> f64 {
-	self.norm_squared().sqrt()
+        self.norm_squared().sqrt()
     }
 
     /// Compute squared norm (no sqrt)
     #[inline]
     pub fn norm_squared(&self) -> f64 {
-	self.x * self.x + self.y * self.y
+        self.x * self.x + self.y * self.y
     }
 
     /// Compute L1 norm (Manhattan)
     #[inline]
     pub fn norm_l1(&self) -> f64 {
-	self.x.abs() + self.y.abs()
+        self.x.abs() + self.y.abs()
     }
 
     /// Compute L-inf norm (Chebyshev)
     #[inline]
     pub fn norm_linf(&self) -> f64 {
-	self.x.abs().max(self.y.abs())
+        self.x.abs().max(self.y.abs())
     }
 
     /// Compute Euclidean distance to another point
@@ -94,7 +92,7 @@ impl Point2D {
     /// * `other` - reference point
     #[inline]
     pub fn distance(&self, other: &Self) -> f64 {
-	(*self - *other).norm()
+        (*self - *other).norm()
     }
 
     /// Compute squared distance to another point
@@ -103,7 +101,7 @@ impl Point2D {
     /// * `other` - reference point
     #[inline]
     pub fn distance_squared(&self, other: &Self) -> f64 {
-	(*self - *other).norm_squared()
+        (*self - *other).norm_squared()
     }
 
     /// Compute L1 distance to another point
@@ -112,7 +110,7 @@ impl Point2D {
     /// * `other` - reference point
     #[inline]
     pub fn distance_l1(&self, other: &Self) -> f64 {
-	(self.x - other.x).abs() + (self.y - other.y).abs()
+        (self.x - other.x).abs() + (self.y - other.y).abs()
     }
 
     /// Compute L-inf distance to another point
@@ -121,18 +119,14 @@ impl Point2D {
     /// * `other` - reference point
     #[inline]
     pub fn distance_linf(&self, other: &Self) -> f64 {
-	(self.x - other.x).abs().max((self.y - other.y).abs())
+        (self.x - other.x).abs().max((self.y - other.y).abs())
     }
 
     /// Normalize to unit length (if shorter None is returned)
     #[inline]
     pub fn normalize(&self) -> Option<Self> {
         let n = self.norm();
-        if n > 1e-15 {
-            Some(*self / n)
-        } else {
-            None
-        }
+        if n > 1e-15 { Some(*self / n) } else { None }
     }
 
     /// Normalize to unit length (if shorter zero is returned)
@@ -171,7 +165,7 @@ impl Point2D {
     pub fn slerp(&self, other: &Self, t: f64) -> Option<Self> {
         let dot = self.dot(other).clamp(-1.0, 1.0);
         let theta = dot.acos();
-        
+
         if theta.abs() < 1e-10 {
             return Some(self.lerp(other, t));
         }
@@ -216,13 +210,19 @@ impl Point2D {
     /// Perpendicular vector (rotated 90 degrees counter-clockwise)
     #[inline]
     pub fn perp(&self) -> Self {
-        Self { x: -self.y, y: self.x }
+        Self {
+            x: -self.y,
+            y: self.x,
+        }
     }
 
     /// Perpendicular vector (rotated 90 degrees clockwise)
     #[inline]
     pub fn anti_perp(&self) -> Self {
-        Self { x: self.y, y: -self.x }
+        Self {
+            x: self.y,
+            y: -self.x,
+        }
     }
 
     /// Rotate by an angle (in radians) counter-clockwise
@@ -426,7 +426,10 @@ impl Point2D {
     /// * `arr` - input array
     #[inline]
     pub fn from_array(arr: [f64; 2]) -> Self {
-        Self { x: arr[0], y: arr[1] }
+        Self {
+            x: arr[0],
+            y: arr[1],
+        }
     }
 
     /// Convert to tuple (x, y)
@@ -530,7 +533,7 @@ impl Point2D {
         let d21 = v0p.dot(&v0v2);
 
         let denom = d00 * d11 - d01 * d01;
-        if denom. abs() < 1e-30 {
+        if denom.abs() < 1e-30 {
             return (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0);
         }
 
@@ -548,7 +551,10 @@ impl Add<Point2D> for Point2D {
     type Output = Self;
     #[inline]
     fn add(self, other: Self) -> Self {
-        Self { x: self.x + other.x, y: self.y + other.y }
+        Self {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
     }
 }
 
@@ -557,7 +563,10 @@ impl Add<f64> for Point2D {
     type Output = Self;
     #[inline]
     fn add(self, scalar: f64) -> Self {
-        Self { x: self.x + scalar, y: self.y + scalar }
+        Self {
+            x: self.x + scalar,
+            y: self.y + scalar,
+        }
     }
 }
 
@@ -566,7 +575,10 @@ impl Add<Point2D> for f64 {
     type Output = Point2D;
     #[inline]
     fn add(self, point: Point2D) -> Point2D {
-        Point2D { x: self + point.x, y: self + point.y }
+        Point2D {
+            x: self + point.x,
+            y: self + point.y,
+        }
     }
 }
 
@@ -593,7 +605,10 @@ impl Sub<Point2D> for Point2D {
     type Output = Self;
     #[inline]
     fn sub(self, other: Self) -> Self {
-        Self { x: self.x - other.x, y: self.y - other.y }
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
     }
 }
 
@@ -602,7 +617,10 @@ impl Sub<f64> for Point2D {
     type Output = Self;
     #[inline]
     fn sub(self, scalar: f64) -> Self {
-        Self { x: self.x - scalar, y: self.y - scalar }
+        Self {
+            x: self.x - scalar,
+            y: self.y - scalar,
+        }
     }
 }
 
@@ -611,7 +629,10 @@ impl Sub<Point2D> for f64 {
     type Output = Point2D;
     #[inline]
     fn sub(self, point: Point2D) -> Point2D {
-        Point2D { x: self - point.x, y: self - point.y }
+        Point2D {
+            x: self - point.x,
+            y: self - point.y,
+        }
     }
 }
 
@@ -638,7 +659,10 @@ impl Mul<Point2D> for Point2D {
     type Output = Self;
     #[inline]
     fn mul(self, other: Self) -> Self {
-        Self { x: self.x * other.x, y: self.y * other.y }
+        Self {
+            x: self.x * other.x,
+            y: self.y * other.y,
+        }
     }
 }
 
@@ -647,7 +671,10 @@ impl Mul<f64> for Point2D {
     type Output = Self;
     #[inline]
     fn mul(self, scalar: f64) -> Self {
-        Self { x: self.x * scalar, y: self.y * scalar }
+        Self {
+            x: self.x * scalar,
+            y: self.y * scalar,
+        }
     }
 }
 
@@ -656,7 +683,10 @@ impl Mul<Point2D> for f64 {
     type Output = Point2D;
     #[inline]
     fn mul(self, point: Point2D) -> Point2D {
-        Point2D { x: self * point.x, y: self * point.y }
+        Point2D {
+            x: self * point.x,
+            y: self * point.y,
+        }
     }
 }
 
@@ -683,7 +713,10 @@ impl Div<Point2D> for Point2D {
     type Output = Self;
     #[inline]
     fn div(self, other: Self) -> Self {
-        Self { x: self.x / other.x, y: self.y / other.y }
+        Self {
+            x: self.x / other.x,
+            y: self.y / other.y,
+        }
     }
 }
 
@@ -692,7 +725,10 @@ impl Div<f64> for Point2D {
     type Output = Self;
     #[inline]
     fn div(self, scalar: f64) -> Self {
-        Self { x: self.x / scalar, y: self.y / scalar }
+        Self {
+            x: self.x / scalar,
+            y: self.y / scalar,
+        }
     }
 }
 
@@ -701,7 +737,10 @@ impl Div<Point2D> for f64 {
     type Output = Point2D;
     #[inline]
     fn div(self, point: Point2D) -> Point2D {
-        Point2D { x: self / point.x, y: self / point.y }
+        Point2D {
+            x: self / point.x,
+            y: self / point.y,
+        }
     }
 }
 
@@ -728,7 +767,10 @@ impl Neg for Point2D {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
-        Self { x: -self.x, y: -self.y }
+        Self {
+            x: -self.x,
+            y: -self.y,
+        }
     }
 }
 
@@ -771,17 +813,16 @@ impl From<Point2D> for (f64, f64) {
     }
 }
 
-
 /* ================ Unit tests ============================================= */
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::{PI, FRAC_PI_2, FRAC_PI_4, SQRT_2};
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI, SQRT_2};
 
     const EPSILON: f64 = 1e-10;
 
     fn approx_eq(a: f64, b: f64) -> bool {
-	(a - b).abs() < EPSILON
+        (a - b).abs() < EPSILON
     }
 
     /* ============ Test constructors  ===================================== */
@@ -806,7 +847,7 @@ mod tests {
 
         assert_eq!(ux, Point2D::new(1.0, 0.0));
         assert_eq!(uy, Point2D::new(0.0, 1.0));
-        assert!(approx_eq(ux. norm(), 1.0));
+        assert!(approx_eq(ux.norm(), 1.0));
         assert!(approx_eq(uy.norm(), 1.0));
     }
 
@@ -838,7 +879,7 @@ mod tests {
 
     #[test]
     fn test_to_polar() {
-	// (1, 1) -> r=sqrt2, theta=pi/4
+        // (1, 1) -> r=sqrt2, theta=pi/4
         let p = Point2D::new(1.0, 1.0);
         let (r, theta) = p.to_polar();
         assert!(approx_eq(r, SQRT_2));
@@ -847,7 +888,7 @@ mod tests {
 
     #[test]
     fn test_polar_roundtrip() {
-	// (3, 4) -> (x, x) -> (3, 4)
+        // (3, 4) -> (x, x) -> (3, 4)
         let original = Point2D::new(3.0, 4.0);
         let (r, theta) = original.to_polar();
         let reconstructed = Point2D::from_polar(r, theta);
@@ -889,8 +930,8 @@ mod tests {
     fn test_distance_l1() {
         let p1 = Point2D::new(1.0, 2.0);
         let p2 = Point2D::new(4.0, 6.0);
-	let res = p1.distance_l1(&p2);
-	println!("{}", res);
+        let res = p1.distance_l1(&p2);
+        println!("{}", res);
         assert!(approx_eq(res, 7.0));
     }
 
@@ -905,7 +946,7 @@ mod tests {
     fn test_distance_symmetry() {
         let p1 = Point2D::new(1.0, 2.0);
         let p2 = Point2D::new(5.0, 7.0);
-        
+
         assert!(approx_eq(p1.distance(&p2), p2.distance(&p1)));
         assert!(approx_eq(p1.distance_l1(&p2), p2.distance_l1(&p1)));
         assert!(approx_eq(p1.distance_linf(&p2), p2.distance_linf(&p1)));
@@ -915,7 +956,7 @@ mod tests {
     fn test_normalize() {
         let p = Point2D::new(3.0, 4.0);
         let n = p.normalize().unwrap();
-        
+
         assert!(approx_eq(n.norm(), 1.0));
         assert!(approx_eq(n.x, 0.6));
         assert!(approx_eq(n.y, 0.8));
@@ -930,19 +971,19 @@ mod tests {
     #[test]
     fn test_normalize_or_zero() {
         let p = Point2D::origin();
-        let n = p. normalize_or_zero();
+        let n = p.normalize_or_zero();
         assert_eq!(n, Point2D::origin());
 
         let p2 = Point2D::new(3.0, 4.0);
         let n2 = p2.normalize_or_zero();
-        assert!(approx_eq(n2. norm(), 1.0));
+        assert!(approx_eq(n2.norm(), 1.0));
     }
 
     #[test]
     fn test_with_norm() {
         let p = Point2D::new(3.0, 4.0);
         let scaled = p.norm_scaled(10.0).unwrap();
-        
+
         assert!(approx_eq(scaled.norm(), 10.0));
         // Direction should be preserved
         assert!(approx_eq(scaled.x / scaled.y, p.x / p.y));
@@ -962,7 +1003,7 @@ mod tests {
     fn test_angle_to() {
         let p1 = Point2D::new(1.0, 0.0);
         let p2 = Point2D::new(0.0, 1.0);
-        
+
         assert!(approx_eq(p1.angle_to(&p2), FRAC_PI_2));
         assert!(approx_eq(p2.angle_to(&p1), -FRAC_PI_2));
     }
@@ -972,7 +1013,7 @@ mod tests {
     fn test_dot() {
         let p1 = Point2D::new(2.0, 3.0);
         let p2 = Point2D::new(4.0, 5.0);
-        
+
         // 2*4 + 3*5 = 8 + 15 = 23
         assert!(approx_eq(p1.dot(&p2), 23.0));
     }
@@ -981,7 +1022,7 @@ mod tests {
     fn test_dot_perpendicular() {
         let p1 = Point2D::new(1.0, 0.0);
         let p2 = Point2D::new(0.0, 1.0);
-        
+
         // Perpendicular vectors have zero dot product
         assert!(approx_eq(p1.dot(&p2), 0.0));
     }
@@ -990,7 +1031,7 @@ mod tests {
     fn test_dot_commutative() {
         let p1 = Point2D::new(2.0, 3.0);
         let p2 = Point2D::new(4.0, 5.0);
-        
+
         assert!(approx_eq(p1.dot(&p2), p2.dot(&p1)));
     }
 
@@ -998,7 +1039,7 @@ mod tests {
     fn test_cross() {
         let p1 = Point2D::new(2.0, 3.0);
         let p2 = Point2D::new(4.0, 5.0);
-        
+
         // 2*5 - 3*4 = 10 - 12 = -2
         assert!(approx_eq(p1.cross(&p2), -2.0));
     }
@@ -1007,7 +1048,7 @@ mod tests {
     fn test_cross_anticommutative() {
         let p1 = Point2D::new(2.0, 3.0);
         let p2 = Point2D::new(4.0, 5.0);
-        
+
         assert!(approx_eq(p1.cross(&p2), -p2.cross(&p1)));
     }
 
@@ -1015,7 +1056,7 @@ mod tests {
     fn test_cross_parallel() {
         let p1 = Point2D::new(2.0, 3.0);
         let p2 = Point2D::new(4.0, 6.0); // p1 * 2
-        
+
         // Parallel vectors have zero cross product
         assert!(approx_eq(p1.cross(&p2), 0.0));
     }
@@ -1024,7 +1065,7 @@ mod tests {
     fn test_perp() {
         let p = Point2D::new(3.0, 4.0);
         let perp = p.perp();
-        
+
         // Should be perpendicular
         assert!(approx_eq(p.dot(&perp), 0.0));
         // Should have same length
@@ -1037,7 +1078,7 @@ mod tests {
     fn test_anti_perp() {
         let p = Point2D::new(3.0, 4.0);
         let perp = p.anti_perp();
-        
+
         // Should be perpendicular
         assert!(approx_eq(p.dot(&perp), 0.0));
         // CW rotation: (3, 4) -> (4, -3)
@@ -1048,15 +1089,15 @@ mod tests {
     fn test_rotate_90() {
         let p = Point2D::new(1.0, 0.0);
         let rotated = p.rotate(FRAC_PI_2);
-        
+
         assert!(rotated.approx_eq(&Point2D::new(0.0, 1.0), EPSILON));
     }
 
     #[test]
     fn test_rotate_180() {
         let p = Point2D::new(3.0, 4.0);
-        let rotated = p. rotate(PI);
-        
+        let rotated = p.rotate(PI);
+
         assert!(rotated.approx_eq(&Point2D::new(-3.0, -4.0), EPSILON));
     }
 
@@ -1064,15 +1105,15 @@ mod tests {
     fn test_rotate_360() {
         let p = Point2D::new(3.0, 4.0);
         let rotated = p.rotate(2.0 * PI);
-        
-        assert!(rotated. approx_eq(&p, EPSILON));
+
+        assert!(rotated.approx_eq(&p, EPSILON));
     }
 
     #[test]
     fn test_rotate_preserves_norm() {
         let p = Point2D::new(3.0, 4.0);
         let rotated = p.rotate(1.234); // arbitrary angle
-        
+
         assert!(approx_eq(p.norm(), rotated.norm()));
     }
 
@@ -1080,7 +1121,7 @@ mod tests {
     fn test_rotate_around() {
         let p = Point2D::new(2.0, 0.0);
         let center = Point2D::new(1.0, 0.0);
-        
+
         let rotated = p.rotate_around(&center, FRAC_PI_2);
         assert!(rotated.approx_eq(&Point2D::new(1.0, 1.0), EPSILON));
     }
@@ -1091,10 +1132,16 @@ mod tests {
         let p1 = Point2D::new(0.0, 0.0);
         let p2 = Point2D::new(10.0, 20.0);
 
-        assert!(p1.lerp(&p2, 0.0). approx_eq(&p1, EPSILON));
+        assert!(p1.lerp(&p2, 0.0).approx_eq(&p1, EPSILON));
         assert!(p1.lerp(&p2, 1.0).approx_eq(&p2, EPSILON));
-        assert!(p1.lerp(&p2, 0.5).approx_eq(&Point2D::new(5.0, 10.0), EPSILON));
-        assert!(p1.lerp(&p2, 0.25).approx_eq(&Point2D::new(2.5, 5.0), EPSILON));
+        assert!(
+            p1.lerp(&p2, 0.5)
+                .approx_eq(&Point2D::new(5.0, 10.0), EPSILON)
+        );
+        assert!(
+            p1.lerp(&p2, 0.25)
+                .approx_eq(&Point2D::new(2.5, 5.0), EPSILON)
+        );
     }
 
     #[test]
@@ -1103,18 +1150,24 @@ mod tests {
         let p2 = Point2D::new(10.0, 0.0);
 
         // t > 1 extrapolates beyond p2
-        assert!(p1.lerp(&p2, 2.0).approx_eq(&Point2D::new(20.0, 0.0), EPSILON));
+        assert!(
+            p1.lerp(&p2, 2.0)
+                .approx_eq(&Point2D::new(20.0, 0.0), EPSILON)
+        );
         // t < 0 extrapolates beyond p1
-        assert!(p1.lerp(&p2, -1.0).approx_eq(&Point2D::new(-10.0, 0.0), EPSILON));
+        assert!(
+            p1.lerp(&p2, -1.0)
+                .approx_eq(&Point2D::new(-10.0, 0.0), EPSILON)
+        );
     }
 
     #[test]
     fn test_midpoint() {
         let p1 = Point2D::new(0.0, 0.0);
         let p2 = Point2D::new(10.0, 20.0);
-        
+
         let mid = p1.midpoint(&p2);
-        assert!(mid. approx_eq(&Point2D::new(5.0, 10.0), EPSILON));
+        assert!(mid.approx_eq(&Point2D::new(5.0, 10.0), EPSILON));
     }
 
     #[test]
@@ -1122,8 +1175,8 @@ mod tests {
         let p1 = Point2D::new(1.0, 0.0);
         let p2 = Point2D::new(0.0, 1.0);
 
-        let mid = p1.slerp(&p2, 0.5). unwrap();
-        
+        let mid = p1.slerp(&p2, 0.5).unwrap();
+
         // Should be on unit circle
         assert!(approx_eq(mid.norm(), 1.0));
         // Should be at 45 degrees
@@ -1135,7 +1188,7 @@ mod tests {
     fn test_project_onto() {
         let v = Point2D::new(3.0, 4.0);
         let onto = Point2D::new(1.0, 0.0);
-        
+
         let proj = v.project_onto(&onto);
         assert!(proj.approx_eq(&Point2D::new(3.0, 0.0), EPSILON));
     }
@@ -1144,7 +1197,7 @@ mod tests {
     fn test_reject_from() {
         let v = Point2D::new(3.0, 4.0);
         let from = Point2D::new(1.0, 0.0);
-        
+
         let rej = v.reject_from(&from);
         assert!(rej.approx_eq(&Point2D::new(0.0, 4.0), EPSILON));
     }
@@ -1153,19 +1206,19 @@ mod tests {
     fn test_project_reject_sum() {
         let v = Point2D::new(3.0, 4.0);
         let onto = Point2D::new(2.0, 1.0);
-        
+
         let proj = v.project_onto(&onto);
         let rej = v.reject_from(&onto);
-        
+
         // proj + rej should equal original
-        assert! ((proj + rej).approx_eq(&v, EPSILON));
+        assert!((proj + rej).approx_eq(&v, EPSILON));
     }
 
     #[test]
     fn test_reflect() {
         let v = Point2D::new(1.0, -1.0);
         let normal = Point2D::new(0.0, 1.0);
-        
+
         let reflected = v.reflect(&normal);
         assert!(reflected.approx_eq(&Point2D::new(1.0, 1.0), EPSILON));
     }
@@ -1174,7 +1227,7 @@ mod tests {
     #[test]
     fn test_add() {
         let p1 = Point2D::new(1.0, 2.0);
-        let p2 = Point2D::new(3.0, 4.0);   
+        let p2 = Point2D::new(3.0, 4.0);
         assert_eq!(p1 + p2, Point2D::new(4.0, 6.0));
     }
 
@@ -1209,7 +1262,7 @@ mod tests {
     #[test]
     fn test_componentwise_mul() {
         let p1 = Point2D::new(2.0, 3.0);
-        let p2 = Point2D::new(4.0, 5.0);   
+        let p2 = Point2D::new(4.0, 5.0);
         assert_eq!(p1 * p2, Point2D::new(8.0, 15.0));
     }
 
@@ -1249,7 +1302,7 @@ mod tests {
     #[test]
     fn test_min_max() {
         let p1 = Point2D::new(1.0, 5.0);
-        let p2 = Point2D::new(3.0, 2.0);   
+        let p2 = Point2D::new(3.0, 2.0);
         assert_eq!(p1.min(&p2), Point2D::new(1.0, 2.0));
         assert_eq!(p1.max(&p2), Point2D::new(3.0, 5.0));
     }
@@ -1258,7 +1311,7 @@ mod tests {
     fn test_clamp() {
         let p = Point2D::new(-1.0, 10.0);
         let min = Point2D::new(0.0, 0.0);
-        let max = Point2D::new(5.0, 5.0);   
+        let max = Point2D::new(5.0, 5.0);
         assert_eq!(p.clamp(&min, &max), Point2D::new(0.0, 5.0));
     }
 
@@ -1291,14 +1344,14 @@ mod tests {
             Point2D::new(0.0, 0.0),
             Point2D::new(3.0, 0.0),
             Point2D::new(0.0, 3.0),
-        ];   
-        let centroid = Point2D::centroid(&points). unwrap();
+        ];
+        let centroid = Point2D::centroid(&points).unwrap();
         assert!(centroid.approx_eq(&Point2D::new(1.0, 1.0), EPSILON));
     }
 
     #[test]
     fn test_centroid_empty() {
-        let points: Vec<Point2D> = vec! [];
+        let points: Vec<Point2D> = vec![];
         assert!(Point2D::centroid(&points).is_none());
     }
 
@@ -1309,8 +1362,8 @@ mod tests {
             Point2D::new(-3.0, 5.0),
             Point2D::new(4.0, -1.0),
         ];
-        
-        let (min, max) = Point2D::bounding_box(&points). unwrap();
+
+        let (min, max) = Point2D::bounding_box(&points).unwrap();
         assert_eq!(min, Point2D::new(-3.0, -1.0));
         assert_eq!(max, Point2D::new(4.0, 5.0));
     }
@@ -1330,11 +1383,11 @@ mod tests {
         // Inside
         assert!(Point2D::new(0.5, 0.5).in_triangle(&v0, &v1, &v2));
         assert!(Point2D::new(1.0, 1.0).in_triangle(&v0, &v1, &v2));
-        
+
         // Outside
-        assert!(! Point2D::new(2.0, 2.0).in_triangle(&v0, &v1, &v2));
+        assert!(!Point2D::new(2.0, 2.0).in_triangle(&v0, &v1, &v2));
         assert!(!Point2D::new(-1.0, 0.0).in_triangle(&v0, &v1, &v2));
-        
+
         // On edge (should return true)
         assert!(Point2D::new(1.5, 0.0).in_triangle(&v0, &v1, &v2));
     }
@@ -1354,13 +1407,13 @@ mod tests {
         assert!(approx_eq(u, 0.0) && approx_eq(v, 1.0) && approx_eq(w, 0.0));
 
         // At v2
-        let (u, v, w) = v2. barycentric(&v0, &v1, &v2);
+        let (u, v, w) = v2.barycentric(&v0, &v1, &v2);
         assert!(approx_eq(u, 0.0) && approx_eq(v, 0.0) && approx_eq(w, 1.0));
 
         // Centroid
-        let centroid = Point2D::new(1.0/3.0, 1.0/3.0);
+        let centroid = Point2D::new(1.0 / 3.0, 1.0 / 3.0);
         let (u, v, w) = centroid.barycentric(&v0, &v1, &v2);
-        assert!(approx_eq(u, 1.0/3.0) && approx_eq(v, 1.0/3.0) && approx_eq(w, 1.0/3.0));
+        assert!(approx_eq(u, 1.0 / 3.0) && approx_eq(v, 1.0 / 3.0) && approx_eq(w, 1.0 / 3.0));
     }
 
     #[test]
@@ -1371,14 +1424,14 @@ mod tests {
 
         let p = Point2D::new(1.0, 0.5);
         let (u, v, w) = p.barycentric(&v0, &v1, &v2);
-        
+
         assert!(approx_eq(u + v + w, 1.0));
     }
 
     /* ============ Test validation checks ================================= */
     #[test]
     fn test_is_nan() {
-        assert! (!Point2D::new(1.0, 2.0). is_nan());
+        assert!(!Point2D::new(1.0, 2.0).is_nan());
         assert!(Point2D::new(f64::NAN, 2.0).is_nan());
         assert!(Point2D::new(1.0, f64::NAN).is_nan());
     }
@@ -1401,7 +1454,7 @@ mod tests {
     fn test_approx_eq() {
         let p1 = Point2D::new(1.0, 2.0);
         let p2 = Point2D::new(1.0 + 1e-12, 2.0 - 1e-12);
-        
+
         assert!(p1.approx_eq(&p2, 1e-10));
         assert!(!p1.approx_eq(&Point2D::new(1.1, 2.0), 1e-10));
     }
@@ -1416,7 +1469,7 @@ mod tests {
     #[test]
     fn test_to_from_array() {
         let p = Point2D::new(3.0, 4.0);
-        let arr = p.to_array();   
+        let arr = p.to_array();
         assert_eq!(arr, [3.0, 4.0]);
         assert_eq!(Point2D::from_array(arr), p);
     }
@@ -1450,7 +1503,7 @@ mod tests {
     #[test]
     fn test_display() {
         let p = Point2D::new(1.5, -2.5);
-        let s = format!("{}", p);   
+        let s = format!("{}", p);
         assert!(s.contains("1.5"));
         assert!(s.contains("-2.5"));
     }
@@ -1459,7 +1512,7 @@ mod tests {
     fn test_debug() {
         let p = Point2D::new(1.0, 2.0);
         let s = format!("{:?}", p);
-        
+
         assert!(s.contains("Point2D"));
         assert!(s.contains("1.0"));
         assert!(s.contains("2.0"));
@@ -1475,7 +1528,7 @@ mod tests {
     #[test]
     fn test_clone() {
         let p1 = Point2D::new(3.0, 4.0);
-        let p2 = p1.clone();   
+        let p2 = p1.clone();
         assert_eq!(p1, p2);
     }
 
@@ -1498,12 +1551,12 @@ mod tests {
     fn test_very_large_numbers() {
         let p = Point2D::new(1e152, 1e152);
         assert!(p.is_finite());
-        assert!(p.norm(). is_finite());
+        assert!(p.norm().is_finite());
     }
 
     #[test]
     fn test_mixed_signs() {
-        let p = Point2D::new(-3.0, 4.0);   
+        let p = Point2D::new(-3.0, 4.0);
         assert!(approx_eq(p.norm(), 5.0));
         assert!(approx_eq(p.norm_l1(), 7.0));
     }
