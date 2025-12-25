@@ -485,7 +485,7 @@ impl Grid2D {
     }
 
     /// Create meshgrid of x coordinates in parallel (using rayon backend)
-    pub fn p_meshgrid_x(&self) -> Array2<f64> {
+    pub fn par_meshgrid_x(&self) -> Array2<f64> {
         let x_coords = self.x_coords();
 
         let mut result = Array2::zeros((self.ny, self.nx));
@@ -499,7 +499,7 @@ impl Grid2D {
     }
 
     /// Create meshgrid of y coordinates in parallel (using rayon backend)
-    pub fn p_meshgrid_y(&self) -> Array2<f64> {
+    pub fn par_meshgrid_y(&self) -> Array2<f64> {
         let y_coords = self.y_coords();
 
         let mut result = Array2::zeros((self.ny, self.nx));
@@ -514,16 +514,16 @@ impl Grid2D {
     }
 
     /// Create meshgrid of x and y coordinates in parallel (using rayon backend)
-    pub fn p_meshgrid(&self) -> (Array2<f64>, Array2<f64>) {
+    pub fn par_meshgrid(&self) -> (Array2<f64>, Array2<f64>) {
         // Run both in parallel using rayon's join
-        rayon::join(|| self.meshgrid_x_p(), || self.meshgrid_y_p())
+        rayon::join(|| self.par_meshgrid_x(), || self.par_meshgrid_y())
     }
 
     /// Compute squared radial distance meshgrid in parallel (using rayon backend)
     ///
     /// # Arguments
     /// * `center` - Optional reference point (default: grid center)
-    pub fn p_meshgrid_r2(&self, center: Option<Point2D>) -> Array2<f64> {
+    pub fn par_meshgrid_r2(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
         let dx2: Array1<f64> = Array1::from_shape_fn(self.nx, |i| {
             let d = self.x_at(i) - c.x;
@@ -549,8 +549,8 @@ impl Grid2D {
     ///
     /// # Arguments
     /// * `center` - Optional reference point (default: grid center)
-    pub fn p_meshgrid_r(&self, center: Option<Point2D>) -> Array2<f64> {
-        self.p_meshgrid_r2(center).mapv(f64::sqrt)
+    pub fn par_meshgrid_r(&self, center: Option<Point2D>) -> Array2<f64> {
+        self.par_meshgrid_r2(center).mapv(f64::sqrt)
     }
 
     /// Apply a function to each pixel center coordinate
@@ -585,7 +585,7 @@ impl Grid2D {
     ///
     /// # Arguments
     /// * `f` - function to be applied to each grid coordinate
-    pub fn p_map_centers<F, T>(&self, f: F) -> Array2<T>
+    pub fn par_map_centers<F, T>(&self, f: F) -> Array2<T>
     where
         F: Fn(f64, f64) -> T + Sync + Send,
         T: Send,
@@ -917,10 +917,10 @@ mod tests {
 
         let x1 = grid.meshgrid_x();
         let x2 = grid.prealloc_meshgrid_x();
-        let x3 = grid.p_meshgrid_x();
+        let x3 = grid.par_meshgrid_x();
         let y1 = grid.meshgrid_y();
         let y2 = grid.prealloc_meshgrid_y();
-        let y3 = grid.p_meshgrid_y();
+        let y3 = grid.par_meshgrid_y();
 
         for j in 0..grid.ny {
             for i in 0..grid.nx {
@@ -938,7 +938,7 @@ mod tests {
 
         let (x1, y1) = grid.meshgrid();
         let (x2, y2) = grid.prealloc_meshgrid();
-        let (x3, y3) = grid.p_meshgrid();
+        let (x3, y3) = grid.par_meshgrid();
 
         assert_eq!(x1, x2);
         assert_eq!(x1, x3);
@@ -951,7 +951,7 @@ mod tests {
         let grid = Grid2D::square(5, 2.0).unwrap();
 
         let r2_1 = grid.meshgrid_r2(None);
-        let r2_2 = grid.p_meshgrid_r2(None);
+        let r2_2 = grid.par_meshgrid_r2(None);
 
         for j in 0..grid.ny {
             for i in 0..grid.nx {
