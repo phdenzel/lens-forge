@@ -21,8 +21,12 @@ pub type Result<T> = std::result::Result<T, LensForgeError>;
 pub enum LensForgeError {
     /// Invalid grid dimensions
     InvalidGridDimensions(String),
+    /// Mismatch between dimensions of grid and values
+    DimensionMismatch { expected: String, got: String},
     /// Invalid parameter provided
     InvalidParameter(String),
+    /// Computation error occurred
+    NumericalError(String),
     /// Computation error occurred
     ComputationError(String),
     /// Solver failed to converge
@@ -36,8 +40,14 @@ impl fmt::Display for LensForgeError {
 	    LensForgeError::InvalidGridDimensions(msg) => {
 		write!(f, "Invalid grid dimensions: {}", msg)
 	    }
+	    LensForgeError::DimensionMismatch { expected, got } => {
+		write!(f, "Dimension mismatch: expected {}, but got {}", expected, got)
+	    }
 	    LensForgeError::InvalidParameter(msg) => {
 		write!(f, "Invalid parameter: {}", msg)
+	    }
+	    LensForgeError::NumericalError(msg) => {
+		write!(f, "Numerical error: {}", msg)
 	    }
 	    LensForgeError::ComputationError(msg) => {
 		write!(f, "Computation error: {}", msg)
@@ -53,9 +63,24 @@ impl Error for LensForgeError {}
 
 // Convenience constructors for creating errors
 impl LensForgeError {
+    /// Create a new InvalidGridDimension error
+    pub fn invalid_grid_dimension(msg: impl Into<String>) -> Self {
+	LensForgeError::InvalidGridDimensions(msg.into())
+    }
+
+    /// Create a new DimensionMismatch error
+    pub fn dimension_mismatch(expected: String, got: String) -> Self {
+	LensForgeError::DimensionMismatch { expected, got }
+    }
+
     /// Create a new InvalidParameter error
     pub fn invalid_parameter(msg: impl Into<String>) -> Self {
         LensForgeError::InvalidParameter(msg.into())
+    }
+
+    /// Create a new NumericalError
+    pub fn numerical_error(msg: impl Into<String>) -> Self {
+        LensForgeError::NumericalError(msg.into())
     }
 
     /// Create a new ComputationError
