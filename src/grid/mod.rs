@@ -12,6 +12,6 @@ mod mesh;
 pub use point::Point2D;
 pub use grid2d::Grid2D;
 pub use grid2d::BilinearKernel;
-// pub use uniform::PixelGrid;
+pub use uniform::PixelGrid;
 // pub use adaptive::AdaGrid;
 
