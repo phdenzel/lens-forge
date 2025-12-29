@@ -170,6 +170,32 @@ impl Grid2D {
         self.width() * self.height()
     }
 
+    /// Wavenumber of the grid
+    #[inline(always)]
+    pub fn wavenumbers(&self) -> (Array1<f64>, Array1<f64>) {
+        let nx = self.nx;
+        let ny = self.ny;
+        let dkx = 2.0 * std::f64::consts::PI / self.width();
+        let dky = 2.0 * std::f64::consts::PI / self.height();
+
+        let kx = Array1::from_shape_fn(nx, |i| {
+            if i <= nx / 2 {
+                i as f64 * dkx
+            } else {
+                (i as i64 - nx as i64) as f64 * dkx
+            }
+        });
+        let ky = Array1::from_shape_fn(ny, |j| {
+            if j <= ny / 2 {
+                j as f64 * dky
+            } else {
+                (j as i64 - ny as i64) as f64 * dky
+            }
+        });
+
+        (kx, ky)
+    }
+
     /// Shape as (ny, nx) tuple
     #[inline(always)]
     pub fn shape(&self) -> (usize, usize) {
@@ -827,6 +853,7 @@ impl BilinearKernel {
     }
 }
 
+/* ================ Display ================================================ */
 impl std::fmt::Display for BilinearKernel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
