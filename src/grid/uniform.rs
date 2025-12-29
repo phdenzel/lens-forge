@@ -480,6 +480,43 @@ impl PixelGrid {
                     (self.values[[j, 1]] - self.values[[j, 0]]) / self.grid.dx
                 }
             }
+            DerivativeStencil::Central4 => {
+                if i >= 2 && i < nx - 2 {
+                    (-self.values[[j, i + 2]] + 8.0 * self.values[[j, i + 1]]
+                        - 8.0 * self.values[[j, i - 1]]
+                        + self.values[[j, i - 2]])
+                        / (12.0 * self.grid.dx)
+                } else if i >= 1 && i < nx - 1 {
+                    // Fall back to 2nd-order central
+                    (self.values[[j, i + 1]] - self.values[[j, i - 1]]) / (2.0 * self.grid.dx)
+                } else if i == 0 {
+                    (self.values[[j, 1]] - self.values[[j, 0]]) / self.grid.dx
+                } else {
+                    (self.values[[j, i]] - self.values[[j, i - 1]]) / self.grid.dx
+                }
+            }
+            DerivativeStencil::Central6 => {
+                if i >= 3 && i < nx - 3 {
+                    (self.values[[j, i + 3]] - 9.0 * self.values[[j, i + 2]]
+                        + 45.0 * self.values[[j, i + 1]]
+                        - 45.0 * self.values[[j, i - 1]]
+                        + 9.0 * self.values[[j, i - 2]]
+                        - self.values[[j, i - 3]])
+                        / (60.0 * self.grid.dx)
+                } else if i >= 2 && i < nx - 2 {
+                    // Fall back to 4th-order
+                    (-self.values[[j, i + 2]] + 8.0 * self.values[[j, i + 1]]
+                        - 8.0 * self.values[[j, i - 1]]
+                        + self.values[[j, i - 2]])
+                        / (12.0 * self.grid.dx)
+                } else if i >= 1 && i < nx - 1 {
+                    (self.values[[j, i + 1]] - self.values[[j, i - 1]]) / (2.0 * self.grid.dx)
+                } else if i == 0 {
+                    (self.values[[j, 1]] - self.values[[j, 0]]) / self.grid.dx
+                } else {
+                    (self.values[[j, i]] - self.values[[j, i - 1]]) / self.grid.dx
+                }
+            }
         };
 
         let dvdy = match stencil {
@@ -506,6 +543,41 @@ impl PixelGrid {
                     (self.values[[1, i]] - self.values[[0, i]]) / self.grid.dy
                 }
             }
+            DerivativeStencil::Central4 => {
+                if j >= 2 && j < ny - 2 {
+                    (-self.values[[j + 2, i]] + 8.0 * self.values[[j + 1, i]]
+                        - 8.0 * self.values[[j - 1, i]]
+                        + self.values[[j - 2, i]])
+                        / (12.0 * self.grid.dy)
+                } else if j >= 1 && j < ny - 1 {
+                    (self.values[[j + 1, i]] - self.values[[j - 1, i]]) / (2.0 * self.grid.dy)
+                } else if j == 0 {
+                    (self.values[[1, i]] - self.values[[0, i]]) / self.grid.dy
+                } else {
+                    (self.values[[j, i]] - self.values[[j - 1, i]]) / self.grid.dy
+                }
+            }
+            DerivativeStencil::Central6 => {
+                if j >= 3 && j < ny - 3 {
+                    (self.values[[j + 3, i]] - 9.0 * self.values[[j + 2, i]]
+                        + 45.0 * self.values[[j + 1, i]]
+                        - 45.0 * self.values[[j - 1, i]]
+                        + 9.0 * self.values[[j - 2, i]]
+                        - self.values[[j - 3, i]])
+                        / (60.0 * self.grid.dy)
+                } else if j >= 2 && j < ny - 2 {
+                    (-self.values[[j + 2, i]] + 8.0 * self.values[[j + 1, i]]
+                        - 8.0 * self.values[[j - 1, i]]
+                        + self.values[[j - 2, i]])
+                        / (12.0 * self.grid.dy)
+                } else if j >= 1 && j < ny - 1 {
+                    (self.values[[j + 1, i]] - self.values[[j - 1, i]]) / (2.0 * self.grid.dy)
+                } else if j == 0 {
+                    (self.values[[1, i]] - self.values[[0, i]]) / self.grid.dy
+                } else {
+                    (self.values[[j, i]] - self.values[[j - 1, i]]) / self.grid.dy
+                }
+            }
         };
 
         Point2D::new(dvdx, dvdy)
@@ -526,185 +598,66 @@ impl PixelGrid {
         let dy = self.grid.dy;
 
         let dvdx = match stencil {
+            DerivativeStencil::Central => {
+                (self.interpolate(&Point2D::new(p.x + dx, p.y))
+                    - self.interpolate(&Point2D::new(p.x - dx, p.y)))
+                    / (2.0 * dx)
+            }
             DerivativeStencil::Forward => {
                 (self.interpolate(&Point2D::new(p.x + dx, p.y)) - self.interpolate(p)) / dx
             }
             DerivativeStencil::Backward => {
                 (self.interpolate(p) - self.interpolate(&Point2D::new(p.x - dx, p.y))) / dx
             }
-            DerivativeStencil::Central => {
-                (self.interpolate(&Point2D::new(p.x + dx, p.y))
-                    - self.interpolate(&Point2D::new(p.x - dx, p.y)))
-                    / (2.0 * dx)
+            DerivativeStencil::Central4 => {
+                let f_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
+                let f_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                let f_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let f_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                (-f_p2 + 8.0 * f_p1 - 8.0 * f_m1 + f_m2) / (12.0 * dx)
+            }
+            DerivativeStencil::Central6 => {
+                let f_p3 = self.interpolate(&Point2D::new(p.x + 3.0 * dx, p.y));
+                let f_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
+                let f_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                let f_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let f_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                let f_m3 = self.interpolate(&Point2D::new(p.x - 3.0 * dx, p.y));
+                (f_p3 - 9.0 * f_p2 + 45.0 * f_p1 - 45.0 * f_m1 + 9.0 * f_m2 - f_m3) / (60.0 * dx)
             }
         };
 
         let dvdy = match stencil {
+            DerivativeStencil::Central => {
+                (self.interpolate(&Point2D::new(p.x, p.y + dy))
+                    - self.interpolate(&Point2D::new(p.x, p.y - dy)))
+                    / (2.0 * dy)
+            }
             DerivativeStencil::Forward => {
                 (self.interpolate(&Point2D::new(p.x, p.y + dy)) - self.interpolate(p)) / dy
             }
             DerivativeStencil::Backward => {
                 (self.interpolate(p) - self.interpolate(&Point2D::new(p.x, p.y - dy))) / dy
             }
-            DerivativeStencil::Central => {
-                (self.interpolate(&Point2D::new(p.x, p.y + dy))
-                    - self.interpolate(&Point2D::new(p.x, p.y - dy)))
-                    / (2.0 * dy)
+            DerivativeStencil::Central4 => {
+                let f_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
+                let f_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                let f_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let f_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                (-f_p2 + 8.0 * f_p1 - 8.0 * f_m1 + f_m2) / (12.0 * dy)
+            }
+            DerivativeStencil::Central6 => {
+                let f_p3 = self.interpolate(&Point2D::new(p.x, p.y + 3.0 * dy));
+                let f_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
+                let f_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                let f_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let f_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                let f_m3 = self.interpolate(&Point2D::new(p.x, p.y - 3.0 * dy));
+                (f_p3 - 9.0 * f_p2 + 45.0 * f_p1 - 45.0 * f_m1 + 9.0 * f_m2 - f_m3) / (60.0 * dy)
             }
         };
 
         Point2D::new(dvdx, dvdy)
-    }
-
-    /// Compute Laplacian at a pixel (i, j) using 5-point stencil
-    ///
-    /// # Arguments
-    /// * `i` - pixel grid index along x axis
-    /// * `j` - pixel grid index along y axis
-    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    #[inline]
-    pub fn laplacian(
-        &self,
-        i: usize,
-        j: usize,
-        stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> f64 {
-        let stencil = stencil.into().unwrap_or_default();
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-        let dx2 = self.grid.dx * self.grid.dx;
-        let dy2 = self.grid.dy * self.grid.dy;
-        let v_ij = self.values[[j, i]];
-
-        let d2vdx2 = match stencil {
-            DerivativeStencil::Central => {
-                if i > 0 && i < nx - 1 {
-                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
-                } else if i == 0 && nx > 2 {
-                    (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_ij) / dx2
-                } else if i == nx - 1 && nx > 2 {
-                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
-                } else {
-                    0.0
-                }
-            }
-            DerivativeStencil::Forward => {
-                if i + 2 < nx {
-                    (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) / dx2
-                } else if i + 1 < nx && i > 0 {
-                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
-                } else if i > 1 {
-                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
-                } else {
-                    0.0
-                }
-            }
-            DerivativeStencil::Backward => {
-                if i >= 2 {
-                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
-                } else if i > 0 && i + 1 < nx {
-                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
-                } else if i + 2 < nx {
-                    (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) / dx2
-                } else {
-                    0.0
-                }
-            }
-        };
-
-        let d2vdy2 = match stencil {
-            DerivativeStencil::Central => {
-                if j > 0 && j < ny - 1 {
-                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
-                } else if j == 0 && ny > 2 {
-                    (self.values[[2, i]] - 2.0 * self.values[[1, i]] + v_ij) / dy2
-                } else if j == ny - 1 && ny > 2 {
-                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
-                } else {
-                    0.0
-                }
-            }
-            DerivativeStencil::Forward => {
-                if j + 2 < ny {
-                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
-                } else if j + 1 < ny && j > 0 {
-                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
-                } else if j > 1 {
-                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
-                } else {
-                    0.0
-                }
-            }
-            DerivativeStencil::Backward => {
-                if j + 2 < ny {
-                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
-                } else if j + 1 < ny && j > 0 {
-                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
-                } else if j > 1 {
-                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
-                } else {
-                    0.0
-                }
-            }
-        };
-
-        d2vdx2 + d2vdy2
-    }
-
-    /// Compute Laplacian at arbitrary point using interpolation
-    ///
-    /// # Arguments
-    /// * `p` - point coordinate for gradient calculation
-    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    pub fn laplacian_interp(
-        &self,
-        p: &Point2D,
-        stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> f64 {
-        let stencil = stencil.into().unwrap_or_default();
-        let dx = self.grid.dx;
-        let dy = self.grid.dy;
-        let dx2 = dx * dx;
-        let dy2 = dy * dy;
-        let v_00 = self.interpolate(p);
-
-        let d2vdx2 = match stencil {
-            DerivativeStencil::Central => {
-                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                (v_px - 2.0 * v_00 + v_mx) / dx2
-            }
-            DerivativeStencil::Forward => {
-                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let v_2px = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                (v_2px - 2.0 * v_px + v_00) / dx2
-            }
-            DerivativeStencil::Backward => {
-                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_2mx = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
-                (v_00 - 2.0 * v_mx + v_2mx) / dx2
-            }
-        };
-
-        let d2vdy2 = match stencil {
-            DerivativeStencil::Central => {
-                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                (v_py - 2.0 * v_00 + v_my) / dy2
-            }
-            DerivativeStencil::Forward => {
-                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let v_2py = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                (v_2py - 2.0 * v_py + v_00) / dy2
-            }
-            DerivativeStencil::Backward => {
-                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_2my = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
-                (v_00 - 2.0 * v_my + v_2my) / dy2
-            }
-        };
-
-        d2vdx2 + d2vdy2
     }
 
     /// Compute gradient field over the entire grid
@@ -774,11 +727,143 @@ impl PixelGrid {
                         dvdx[[j, i]] = (self.values[[j, i]] - self.values[[j, i - 1]]) * inv_dx;
                     }
                 }
-
                 for i in 0..nx {
                     dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
                     for j in 1..ny {
                         dvdy[[j, i]] = (self.values[[j, i]] - self.values[[j - 1, i]]) * inv_dy;
+                    }
+                }
+            }
+            DerivativeStencil::Central4 => {
+                let inv_2dx = 0.5 * inv_dx;
+                let c1x = 2.0 / 3.0 * inv_dx;
+                let c2x = inv_dx / 12.0;
+                let inv_2dy = 0.5 * inv_dy;
+                let c1y = 2.0 / 3.0 * inv_dy;
+                let c2y = inv_dy / 12.0;
+
+                for j in 0..ny {
+                    for i in 2..nx - 2 {
+                        dvdx[[j, i]] = c1x * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
+                            - c2x * (self.values[[j, i + 2]] - self.values[[j, i - 2]]);
+                    }
+                    // Fall back to 2nd-order central
+                    if nx > 2 {
+                        dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
+                        dvdx[[j, 1]] = (self.values[[j, 2]] - self.values[[j, 0]]) * inv_2dx;
+                        dvdx[[j, nx - 2]] =
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 3]]) * inv_2dx;
+                        dvdx[[j, nx - 1]] =
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    }
+                }
+
+                for i in 0..nx {
+                    for j in 2..ny - 2 {
+                        dvdy[[j, i]] = c1y * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
+                            - c2y * (self.values[[j + 2, i]] - self.values[[j - 2, i]]);
+                    }
+                    // Fall back to 2nd-order central
+                    if ny > 2 {
+                        dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
+                        dvdy[[1, i]] = (self.values[[2, i]] - self.values[[0, i]]) * inv_2dy;
+                        dvdy[[ny - 2, i]] =
+                            (self.values[[ny - 1, i]] - self.values[[ny - 3, i]]) * inv_2dy;
+                        dvdy[[ny - 1, i]] =
+                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
+                    }
+                }
+            }
+            DerivativeStencil::Central6 => {
+                let inv_2dx = 0.5 * inv_dx;
+                let inv_12dx = inv_dx / 12.0;
+                let c1x = 0.75 * inv_dx;
+                let c2x = 0.15 * inv_dx;
+                let c3x = 0.2 * inv_12dx;
+                let inv_2dy = 0.5 * inv_dy;
+                let inv_12dy = inv_dy / 12.0;
+                let c1y = 0.75 * inv_dy;
+                let c2y = 0.15 * inv_dy;
+                let c3y = 0.2 * inv_12dy;
+
+                for j in 0..ny {
+                    for i in 3..nx - 3 {
+                        dvdx[[j, i]] = c1x * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
+                            - c2x * (self.values[[j, i + 2]] - self.values[[j, i - 2]])
+                            + c3x * (self.values[[j, i + 3]] - self.values[[j, i - 3]]);
+                    }
+                    // Fall back to lower orders
+                    if nx >= 4 {
+                        // forward
+                        dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
+                        // 2nd-order central
+                        dvdx[[j, 1]] = (self.values[[j, 2]] - self.values[[j, 0]]) * inv_2dx;
+                        // 4th-order if possible
+                        if nx > 4 {
+                            dvdx[[j, 2]] = (8.0 * (self.values[[j, 3]] - self.values[[j, 1]])
+                                - (self.values[[j, 4]] - self.values[[j, 0]]))
+                                * inv_12dx;
+                        } else {
+                            // otherwise 2nd-order
+                            dvdx[[j, 2]] = (self.values[[j, 3]] - self.values[[j, 1]]) * inv_2dx;
+                        }
+                        if nx > 4 {
+                            dvdx[[j, nx - 3]] = (8.0
+                                * (self.values[[j, nx - 2]] - self.values[[j, nx - 4]])
+                                - (self.values[[j, nx - 1]] - self.values[[j, nx - 5]]))
+                                * inv_12dx;
+                        } else {
+                            // otherwise 2nd-order
+                            dvdx[[j, nx - 3]] =
+                                (self.values[[j, nx - 2]] - self.values[[j, nx - 4]]) * inv_2dx;
+                        }
+                        // 2nd-order central
+                        dvdx[[j, nx - 2]] =
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 3]]) * inv_2dx;
+                        // backward
+                        dvdx[[j, nx - 1]] =
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    }
+                }
+
+                for i in 0..nx {
+                    for j in 3..ny - 3 {
+                        dvdy[[j, i]] = c1y * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
+                            - c2y * (self.values[[j + 2, i]] - self.values[[j - 2, i]])
+                            + c3y * (self.values[[j + 3, i]] - self.values[[j - 3, i]]);
+                    }
+                    // Fall back to lower orders
+                    if ny >= 4 {
+                        // forward
+                        dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
+                        // 2nd-order central
+                        dvdy[[1, i]] = (self.values[[2, i]] - self.values[[0, i]]) * inv_2dy;
+                        // 4th-order if possible
+                        if ny > 4 {
+                            dvdy[[2, i]] = (8.0 * (self.values[[3, i]] - self.values[[1, i]])
+                                - (self.values[[4, i]] - self.values[[0, i]]))
+                                * inv_12dy;
+                        } else {
+                            // otherwise 2nd-order
+                            dvdy[[2, i]] = (self.values[[3, i]] - self.values[[1, i]]) * inv_2dy;
+                        }
+                        // 4th-order if possible
+                        if ny > 4 {
+                            dvdy[[ny - 3, i]] = (8.0
+                                * (self.values[[ny - 2, i]] - self.values[[ny - 4, i]])
+                                - (self.values[[ny - 1, i]] - self.values[[ny - 5, i]]))
+                                * inv_12dy;
+                        } else {
+                            // otherwise 2nd-order
+                            dvdy[[ny - 3, i]] =
+                                (self.values[[ny - 2, i]] - self.values[[ny - 4, i]]) * inv_2dy;
+                        }
+                        // 2nd-order central
+                        dvdy[[ny - 2, i]] =
+                            (self.values[[ny - 1, i]] - self.values[[ny - 3, i]]) * inv_2dy;
+                        // backward
+                        dvdy[[ny - 1, i]] =
+                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
                     }
                 }
             }
@@ -799,9 +884,13 @@ impl PixelGrid {
         let nx = self.grid.nx;
         let ny = self.grid.ny;
         let inv_dx = 1.0 / self.grid.dx;
-        let inv_dy = 1.0 / self.grid.dy;
         let inv_2dx = 0.5 * inv_dx;
+        let inv_12dx = inv_dx / 12.0;
+        let inv_60dx = 0.2 * inv_12dx;
+        let inv_dy = 1.0 / self.grid.dy;
         let inv_2dy = 0.5 * inv_dy;
+        let inv_12dy = inv_dy / 12.0;
+        let inv_60dy = 0.2 * inv_12dy;
 
         let gradients: Vec<(f64, f64)> = (0..ny * nx)
             .into_par_iter()
@@ -837,6 +926,48 @@ impl PixelGrid {
                             (self.values[[j, i + 1]] - self.values[[j, i]]) * inv_dx
                         }
                     }
+                    DerivativeStencil::Central4 => {
+                        if i >= 2 && i < nx - 2 {
+                            // 4th-order central
+                            (8.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
+                                - (self.values[[j, i + 2]] - self.values[[j, i - 2]]))
+                                * inv_12dx
+                        } else if i >= 1 && i < nx - 1 {
+                            // 2nd-order central
+                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx
+                        } else if i == 0 && nx > 1 {
+                            // forward
+                            (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx
+                        } else if i == nx - 1 && nx > 1 {
+                            // backward
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx
+                        } else {
+                            0.0
+                        }
+                    }
+                    DerivativeStencil::Central6 => {
+                        if i >= 3 && i < nx - 3 {
+                            // 6th-order central
+                            (45.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
+                                - 9.0 * (self.values[[j, i + 2]] - self.values[[j, i - 2]])
+                                + (self.values[[j, i + 3]] - self.values[[j, i - 3]]))
+                                * inv_60dx
+                        } else if i >= 2 && i < nx - 2 {
+                            // 4th-order central
+                            (8.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
+                                - (self.values[[j, i + 2]] - self.values[[j, i - 2]]))
+                                * inv_12dx
+                        } else if i >= 1 && i < nx - 1 {
+                            // 2nd-order central
+                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx
+                        } else if i == 0 && nx > 1 {
+                            (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx
+                        } else if i == nx - 1 && nx > 1 {
+                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx
+                        } else {
+                            0.0
+                        }
+                    }
                 };
 
                 let dvdy = match stencil {
@@ -865,6 +996,41 @@ impl PixelGrid {
                             (self.values[[j, i]] - self.values[[j - 1, i]]) * inv_dy
                         } else {
                             (self.values[[j + 1, i]] - self.values[[j, i]]) * inv_dy
+                        }
+                    }
+                    DerivativeStencil::Central4 => {
+                        if j >= 2 && j < ny - 2 {
+                            (8.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
+                                - (self.values[[j + 2, i]] - self.values[[j - 2, i]]))
+                                * inv_12dy
+                        } else if j >= 1 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy
+                        } else if j == 0 && ny > 1 {
+                            (self.values[[1, i]] - self.values[[0, i]]) * inv_dy
+                        } else if j == ny - 1 && ny > 1 {
+                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy
+                        } else {
+                            0.0
+                        }
+                    }
+                    DerivativeStencil::Central6 => {
+                        if j >= 3 && j < ny - 3 {
+                            (45.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
+                                - 9.0 * (self.values[[j + 2, i]] - self.values[[j - 2, i]])
+                                + (self.values[[j + 3, i]] - self.values[[j - 3, i]]))
+                                * inv_60dy
+                        } else if j >= 2 && j < ny - 2 {
+                            (8.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
+                                - (self.values[[j + 2, i]] - self.values[[j - 2, i]]))
+                                * inv_12dy
+                        } else if j >= 1 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy
+                        } else if j == 0 && ny > 1 {
+                            (self.values[[1, i]] - self.values[[0, i]]) * inv_dy
+                        } else if j == ny - 1 && ny > 1 {
+                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy
+                        } else {
+                            0.0
                         }
                     }
                 };
@@ -923,6 +1089,272 @@ impl PixelGrid {
         magnitude
     }
 
+    /// Compute Laplacian at a pixel (i, j) using 5-point stencil
+    ///
+    /// # Arguments
+    /// * `i` - pixel grid index along x axis
+    /// * `j` - pixel grid index along y axis
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    #[inline]
+    pub fn laplacian(
+        &self,
+        i: usize,
+        j: usize,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> f64 {
+        let stencil = stencil.into().unwrap_or_default();
+        let nx = self.grid.nx;
+        let ny = self.grid.ny;
+        let dx2 = self.grid.dx * self.grid.dx;
+        let dy2 = self.grid.dy * self.grid.dy;
+        let v_ij = self.values[[j, i]];
+
+        let d2vdx2 = match stencil {
+            DerivativeStencil::Central => {
+                if i > 0 && i < nx - 1 {
+                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
+                } else if i == 0 && nx > 2 {
+                    (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_ij) / dx2
+                } else if i == nx - 1 && nx > 2 {
+                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Forward => {
+                if i + 2 < nx {
+                    (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) / dx2
+                } else if i + 1 < nx && i > 0 {
+                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
+                } else if i > 1 {
+                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Backward => {
+                if i >= 2 {
+                    (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) / dx2
+                } else if i > 0 && i + 1 < nx {
+                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
+                } else if i + 2 < nx {
+                    (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) / dx2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Central4 => {
+                if i >= 2 && i < nx - 2 {
+                    (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]] - 30.0 * v_ij
+                        + 16.0 * self.values[[j, i - 1]]
+                        - self.values[[j, i - 2]])
+                        / (12.0 * dx2)
+                } else if i > 0 && i < nx - 1 {
+                    // fall back to central
+                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Central6 => {
+                if i >= 3 && i < nx - 3 {
+                    (2.0 * self.values[[j, i + 3]] - 27.0 * self.values[[j, i + 2]]
+                        + 270.0 * self.values[[j, i + 1]]
+                        - 490.0 * v_ij
+                        + 270.0 * self.values[[j, i - 1]]
+                        - 27.0 * self.values[[j, i - 2]]
+                        + 2.0 * self.values[[j, i - 3]])
+                        / (180.0 * dx2)
+                } else if i >= 2 && i < nx - 2 {
+                    // fall back to 4-th order
+                    (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]] - 30.0 * v_ij
+                        + 16.0 * self.values[[j, i - 1]]
+                        - self.values[[j, i - 2]])
+                        / (12.0 * dx2)
+                } else if i > 0 && i < nx - 1 {
+                    // fall back to central
+                    (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) / dx2
+                } else {
+                    0.0
+                }
+            }
+        };
+
+        let d2vdy2 = match stencil {
+            DerivativeStencil::Central => {
+                if j > 0 && j < ny - 1 {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else if j == 0 && ny > 2 {
+                    (self.values[[2, i]] - 2.0 * self.values[[1, i]] + v_ij) / dy2
+                } else if j == ny - 1 && ny > 2 {
+                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Forward => {
+                if j + 2 < ny {
+                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
+                } else if j + 1 < ny && j > 0 {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else if j > 1 {
+                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Backward => {
+                if j + 2 < ny {
+                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
+                } else if j + 1 < ny && j > 0 {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else if j > 1 {
+                    (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Central4 => {
+                if j >= 2 && j < ny - 2 {
+                    (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]] - 30.0 * v_ij
+                        + 16.0 * self.values[[j - 1, i]]
+                        - self.values[[j - 2, i]])
+                        / (12.0 * dy2)
+                } else if j > 0 && j < ny - 1 {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else {
+                    0.0
+                }
+            }
+            DerivativeStencil::Central6 => {
+                if j >= 3 && j < ny - 3 {
+                    (2.0 * self.values[[j + 3, i]] - 27.0 * self.values[[j + 2, i]]
+                        + 270.0 * self.values[[j + 1, i]]
+                        - 490.0 * v_ij
+                        + 270.0 * self.values[[j - 1, i]]
+                        - 27.0 * self.values[[j - 2, i]]
+                        + 2.0 * self.values[[j - 3, i]])
+                        / (180.0 * dy2)
+                } else if j >= 2 && j < ny - 2 {
+                    (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]] - 30.0 * v_ij
+                        + 16.0 * self.values[[j - 1, i]]
+                        - self.values[[j - 2, i]])
+                        / (12.0 * dy2)
+                } else if j > 0 && j < ny - 1 {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else {
+                    0.0
+                }
+            }
+        };
+
+        d2vdx2 + d2vdy2
+    }
+
+    /// Compute Laplacian at arbitrary point using interpolation
+    ///
+    /// # Arguments
+    /// * `p` - point coordinate for gradient calculation
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    pub fn laplacian_interp(
+        &self,
+        p: &Point2D,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> f64 {
+        let stencil = stencil.into().unwrap_or_default();
+        let dx = self.grid.dx;
+        let dy = self.grid.dy;
+        let dx2 = dx * dx;
+        let dy2 = dy * dy;
+        let v_00 = self.interpolate(p);
+
+        let d2vdx2 = match stencil {
+            // 3-point
+            DerivativeStencil::Central => {
+                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                (v_px - 2.0 * v_00 + v_mx) / dx2
+            }
+            DerivativeStencil::Forward => {
+                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                let v_2px = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
+                (v_2px - 2.0 * v_px + v_00) / dx2
+            }
+            DerivativeStencil::Backward => {
+                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let v_2mx = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                (v_00 - 2.0 * v_mx + v_2mx) / dx2
+            }
+            DerivativeStencil::Central4 => {
+                // 5-point
+                let v_00 = self.interpolate(p);
+                let v_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                let v_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
+                let v_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let v_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                (-v_p2 + 16.0 * v_p1 - 30.0 * v_00 + 16.0 * v_m1 - v_m2) / (12.0 * dx2)
+            }
+            DerivativeStencil::Central6 => {
+                // 7-point
+                let v_00 = self.interpolate(p);
+                let v_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
+                let v_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
+                let v_p3 = self.interpolate(&Point2D::new(p.x + 3.0 * dx, p.y));
+                let v_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
+                let v_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                let v_m3 = self.interpolate(&Point2D::new(p.x - 3.0 * dx, p.y));
+                (2.0 * v_p3 - 27.0 * v_p2 + 270.0 * v_p1 - 490.0 * v_00 + 270.0 * v_m1
+                    - 27.0 * v_m2
+                    + 2.0 * v_m3)
+                    / (180.0 * dx2)
+            }
+        };
+
+        let d2vdy2 = match stencil {
+            // 3-point
+            DerivativeStencil::Central => {
+                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                (v_py - 2.0 * v_00 + v_my) / dy2
+            }
+            DerivativeStencil::Forward => {
+                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                let v_2py = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
+                (v_2py - 2.0 * v_py + v_00) / dy2
+            }
+            DerivativeStencil::Backward => {
+                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let v_2my = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                (v_00 - 2.0 * v_my + v_2my) / dy2
+            }
+            // 5-point
+            DerivativeStencil::Central4 => {
+                let v_00 = self.interpolate(p);
+                let v_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                let v_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
+                let v_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let v_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                (-v_p2 + 16.0 * v_p1 - 30.0 * v_00 + 16.0 * v_m1 - v_m2) / (12.0 * dy2)
+            }
+            // 8-point
+            DerivativeStencil::Central6 => {
+                let v_00 = self.interpolate(p);
+                let v_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
+                let v_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
+                let v_p3 = self.interpolate(&Point2D::new(p.x, p.y + 3.0 * dy));
+                let v_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
+                let v_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                let v_m3 = self.interpolate(&Point2D::new(p.x, p.y - 3.0 * dy));
+                (2.0 * v_p3 - 27.0 * v_p2 + 270.0 * v_p1 - 490.0 * v_00 + 270.0 * v_m1
+                    - 27.0 * v_m2
+                    + 2.0 * v_m3)
+                    / (180.0 * dy2)
+            }
+        };
+
+        d2vdx2 + d2vdy2
+    }
+
     /// Compute Laplace field over the entire grid
     ///
     /// # Arguments
@@ -948,9 +1380,9 @@ impl PixelGrid {
                                 * inv_dy2;
                     }
                 }
-                // Fallback to forward/backward stencils
+                // fall back to forward/backward stencils
                 if nx > 2 && ny > 2 {
-                    // Top and bottom rows (excluding corners)
+                    // top and bottom rows (excluding corners)
                     for i in 1..nx - 1 {
                         let v_0i = self.values[[0, i]];
                         laplace[[0, i]] = (self.values[[0, i + 1]] - 2.0 * v_0i
@@ -966,7 +1398,7 @@ impl PixelGrid {
                                 * inv_dy2;
                     }
 
-                    // Left and right columns (excluding corners)
+                    // left and right columns (excluding corners)
                     for j in 1..ny - 1 {
                         let v_j0 = self.values[[j, 0]];
                         laplace[[j, 0]] = (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_j0)
@@ -983,7 +1415,7 @@ impl PixelGrid {
                                 * inv_dy2;
                     }
 
-                    // Corners
+                    // corners
                     let v00 = self.values[[0, 0]];
                     laplace[[0, 0]] = (self.values[[0, 2]] - 2.0 * self.values[[0, 1]] + v00)
                         * inv_dx2
@@ -1080,6 +1512,102 @@ impl PixelGrid {
                     }
                 }
             }
+            DerivativeStencil::Central4 => {
+                let inv_12dx2 = inv_dx2 / 12.0;
+                let inv_12dy2 = inv_dy2 / 12.0;
+
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let v_ij = self.values[[j, i]];
+
+                        let d2vdx2 = if i >= 2 && i < nx - 2 {
+                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j, i - 1]]
+                                - self.values[[j, i - 2]])
+                                * inv_12dx2
+                        } else if i > 0 && i < nx - 1 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+
+                        let d2vdy2 = if j >= 2 && j < ny - 2 {
+                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j - 1, i]]
+                                - self.values[[j - 2, i]])
+                                * inv_12dy2
+                        } else if j > 0 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
+                        } else {
+                            0.0
+                        };
+
+                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                    }
+                }
+            }
+            DerivativeStencil::Central6 => {
+                let inv_12dx2 = inv_dx2 / 12.0;
+                let inv_12dy2 = inv_dy2 / 12.0;
+                let c3 = 2.0 / 15.0;
+                let c2 = 9.0 / 5.0;
+                let c0 = 98.0 / 3.0;
+
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let v_ij = self.values[[j, i]];
+
+                        let d2vdx2 = if i >= 3 && i < nx - 3 {
+                            (c3 * self.values[[j, i + 3]] - c2 * self.values[[j, i + 2]]
+                                + 18.0 * self.values[[j, i + 1]]
+                                - c0 * v_ij
+                                + 18.0 * self.values[[j, i - 1]]
+                                - c2 * self.values[[j, i - 2]]
+                                + c3 * self.values[[j, i - 3]])
+                                * inv_12dx2
+                        } else if i >= 2 && i < nx - 2 {
+                            // Fall back to 4th-order
+                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j, i - 1]]
+                                - self.values[[j, i - 2]])
+                                * inv_12dx2
+                        } else if i > 0 && i < nx - 1 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+
+                        let d2vdy2 = if j >= 3 && j < ny - 3 {
+                            (c3 * self.values[[j + 3, i]] - c2 * self.values[[j + 2, i]]
+                                + 18.0 * self.values[[j + 1, i]]
+                                - c0 * v_ij
+                                + 18.0 * self.values[[j - 1, i]]
+                                - c2 * self.values[[j - 2, i]]
+                                + c3 * self.values[[j - 3, i]])
+                                * inv_dy2
+                        } else if j >= 2 && j < ny - 2 {
+                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j - 1, i]]
+                                - self.values[[j - 2, i]])
+                                * inv_12dy2
+                        } else if j > 0 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
+                        } else {
+                            0.0
+                        };
+
+                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                    }
+                }
+            }
         }
 
         laplace
@@ -1098,6 +1626,12 @@ impl PixelGrid {
         let ny = self.grid.ny;
         let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
         let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
+        let inv_12dx2 = inv_dx2 / 12.0;
+        let inv_12dy2 = inv_dy2 / 12.0;
+        let c3 = 2.0 / 15.0; //   2 / 180
+        let c2 = 9.0 / 5.0; //  27 / 180
+        //  c1 = 1;          // 270 / 180
+        let c0 = 98.0 / 3.0; // 490 / 180
 
         // Compute as flat vec in parallel, then reshape
         let laplace: Vec<f64> = (0..ny * nx)
@@ -1107,75 +1641,155 @@ impl PixelGrid {
                 let j = idx / nx;
                 let v_ij = self.values[[j, i]];
 
-		let d2vdx2 = match stencil {
-                    DerivativeStencil:: Central => {
-                        if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) * inv_dx2
-                        } else if i == 0 && nx > 2 {
-                            (self. values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_ij) * inv_dx2
-                        } else if i == nx - 1 && nx > 2 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) * inv_dx2
-                        } else {
-                            0.0
-                        }
-                    }
-                    DerivativeStencil::Forward => {
-                        if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) * inv_dx2
-                        } else if i + 1 < nx && i > 0 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) * inv_dx2
-                        } else if i > 1 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) * inv_dx2
-                        } else {
-                            0.0
-                        }
-                    }
-                    DerivativeStencil::Backward => {
-                        if i >= 2 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]]) * inv_dx2
-                        } else if i > 0 && i + 1 < nx {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]]) * inv_dx2
-                        } else if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij) * inv_dx2
-                        } else {
-                            0.0
-                        }
-                    }
-                };
-
-                let d2vdy2 = match stencil {
+                let (d2vdx2, d2vdy2): (f64, f64) = match stencil {
                     DerivativeStencil::Central => {
-                        if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) * inv_dy2
+                        let d2x = if i > 0 && i < nx - 1 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else if i == 0 && nx > 2 {
+                            (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_ij) * inv_dx2
+                        } else if i == nx - 1 && nx > 2 {
+                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+                        let d2y = if j > 0 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
                         } else if j == 0 && ny > 2 {
                             (self.values[[2, i]] - 2.0 * self.values[[1, i]] + v_ij) * inv_dy2
                         } else if j == ny - 1 && ny > 2 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) * inv_dy2
+                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
+                                * inv_dy2
                         } else {
                             0.0
-                        }
+                        };
+                        (d2x, d2y)
                     }
-                    DerivativeStencil:: Forward => {
-                        if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) * inv_dy2
+                    DerivativeStencil::Forward => {
+                        let d2x = if i + 2 < nx {
+                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
+                                * inv_dx2
+                        } else if i + 1 < nx && i > 0 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else if i > 1 {
+                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+                        let d2y = if j + 2 < ny {
+                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
+                                * inv_dy2
                         } else if j + 1 < ny && j > 0 {
-                            (self. values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) * inv_dy2
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
                         } else if j > 1 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) * inv_dy2
+                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
+                                * inv_dy2
                         } else {
                             0.0
-                        }
+                        };
+                        (d2x, d2y)
                     }
-                    DerivativeStencil:: Backward => {
-                        if j >= 2 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) * inv_dy2
-                        } else if j > 0 && j + 1 < ny {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) * inv_dy2
-                        } else if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) * inv_dy2
+                    DerivativeStencil::Backward => {
+                        let d2x = if i >= 2 {
+                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
+                                * inv_dx2
+                        } else if i > 0 && i + 1 < nx {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else if i + 2 < nx {
+                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
+                                * inv_dx2
                         } else {
                             0.0
-                        }
+                        };
+                        let d2y = if j >= 2 {
+                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
+                                * inv_dy2
+                        } else if j > 0 && j + 1 < ny {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
+                        } else if j + 2 < ny {
+                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
+                                * inv_dy2
+                        } else {
+                            0.0
+                        };
+                        (d2x, d2y)
+                    }
+                    DerivativeStencil::Central4 => {
+                        let d2x = if i >= 2 && i < nx - 2 {
+                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j, i - 1]]
+                                - self.values[[j, i - 2]])
+                                * inv_12dx2
+                        } else if i > 0 && i < nx - 1 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+                        let d2y = if j >= 2 && j < ny - 2 {
+                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j - 1, i]]
+                                - self.values[[j - 2, i]])
+                                * inv_12dy2
+                        } else if j > 0 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
+                        } else {
+                            0.0
+                        };
+                        (d2x, d2y)
+                    }
+                    DerivativeStencil::Central6 => {
+                        let d2x = if i >= 3 && i < nx - 3 {
+                            (c3 * self.values[[j, i + 3]] - c2 * self.values[[j, i + 2]]
+                                + self.values[[j, i + 1]]
+                                - c0 * v_ij
+                                + self.values[[j, i - 1]]
+                                - c2 * self.values[[j, i - 2]]
+                                + c3 * self.values[[j, i - 3]])
+                                * inv_12dx2
+                        } else if i >= 2 && i < nx - 2 {
+                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j, i - 1]]
+                                - self.values[[j, i - 2]])
+                                * inv_12dx2
+                        } else if i > 0 && i < nx - 1 {
+                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
+                                * inv_dx2
+                        } else {
+                            0.0
+                        };
+                        let d2y = if j >= 3 && j < ny - 3 {
+                            (c3 * self.values[[j + 3, i]] - c2 * self.values[[j + 2, i]]
+                                + self.values[[j + 1, i]]
+                                - c0 * v_ij
+                                + self.values[[j - 1, i]]
+                                - c2 * self.values[[j - 2, i]]
+                                + c3 * self.values[[j - 3, i]])
+                                * inv_12dy2
+                        } else if j >= 2 && j < ny - 2 {
+                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
+                                - 30.0 * v_ij
+                                + 16.0 * self.values[[j - 1, i]]
+                                - self.values[[j - 2, i]])
+                                * inv_12dy2
+                        } else if j > 0 && j < ny - 1 {
+                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
+                                * inv_dy2
+                        } else {
+                            0.0
+                        };
+                        (d2x, d2y)
                     }
                 };
 
@@ -1457,13 +2071,23 @@ impl PixelGrid {
 /// Discrete derivative stencil type
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum DerivativeStencil {
-    /// Forward difference:  (f[i+1] - f[i]) / dx
+    /// Forward difference: ∇ - (f[i+1] - f[i]) / dx
     Forward,
-    /// Backward difference: (f[i] - f[i-1]) / dx
+    /// Backward difference: ∇ - (f[i] - f[i-1]) / dx
     Backward,
-    /// Central difference:  (f[i+1] - f[i-1]) / (2*dx)
+    /// Central difference:
+    /// ∇ - (f[i+1] - f[i-1]) / (2*dx)
+    /// Δ - (f[i+1] - 2*f[i] + f[i-1]) / (dx*dx)
     #[default]
     Central,
+    /// Central difference (4-th order):
+    /// * ∇ - (-f[i+2] + 8*f[i+1] - 8*f[i-1] + f[i-2]) / (12*dx)
+    /// * Δ - (-f[i+2] + 16*f[i+1] - 30*f[i] + 16*f[i-1] - f[i-2]) / (12*dx*dx)
+    Central4,
+    /// Central difference (6-th order):
+    /// * ∇ - (f[i+3] - 9*f[i+2] + 45*f[i+1] - 45*f[i-1] + 9*f[i-2] - f[i-3]) / (60*dx)
+    /// * Δ - (2*f[i+3] - 27*f[i+2] + 270*f[i+1] - 490*f[i] + 270*f[i-1] - 27*f[i-2] + 2*f[i-3]) / (180*dx*dx)
+    Central6,
 }
 
 /* ================ Display ================================================ */
