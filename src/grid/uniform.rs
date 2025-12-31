@@ -1965,67 +1965,227 @@ impl PixelGrid {
         unshifted
     }
 
-    /// Compute Laplacian using spectral method (using FFT)
+    /// Fourier symbols (for gradients) for given finite difference stencil types
     ///
-    /// Note: assumes periodic boundaries
-    pub fn laplacian_spectral(&self) -> Result<Array2<f64>> {
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-
-        let mut fft_data = self.fft2d()?;
-
+    /// # Arguments
+    /// * `stencil`: derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    #[inline]
+    fn fourier_symbols_fd1(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<(Array1<Complex<f64>>, Array1<Complex<f64>>)> {
+        let stencil = stencil.into().unwrap_or_default();
         let (kx, ky) = self.grid.wavenumbers();
-        let kx2 = kx.mapv(|k| k * k);
-        let ky2 = ky.mapv(|k| k * k);
-        for j in 0..ny {
-            for i in 0..nx {
-                let k2 = kx2[i] + ky2[j];
-                fft_data[[j, i]] *= Complex::new(-k2, 0.0);
-            }
-        }
+        let dx = self.grid.dx;
+        let dy = self.grid.dy;
+        let dkx = kx * dx;
+        let dky = ky * dy;
 
-        Self::ifft2d(&fft_data)
+        let (kxd1, kyd1) = match stencil {
+            DerivativeStencil::Central => {
+                (
+                    // (exp(ikh) - exp(-ikh)) / 2h = i*sin(kh) / h
+                    dkx.mapv(|theta| Complex::new(0.0, theta.sin() / dx)),
+                    dky.mapv(|theta| Complex::new(0.0, theta.sin() / dy)),
+                )
+            }
+            DerivativeStencil::Forward => {
+                (
+                    // (exp(ikh) - 1) / h
+                    dkx.mapv(|theta| Complex::new(theta.cos() - 1.0, theta.sin()) / dx),
+                    dky.mapv(|theta| Complex::new(theta.cos() - 1.0, theta.sin()) / dy),
+                )
+            }
+            DerivativeStencil::Backward => {
+                (
+                    // (1 - exp(-ikh)) / h
+                    dkx.mapv(|theta| Complex::new(1.0 - theta.cos(), theta.sin()) / dx),
+                    dky.mapv(|theta| Complex::new(1.0 - theta.cos(), theta.sin()) / dy),
+                )
+            }
+            DerivativeStencil::Central4 => {
+                (
+                    // (-exp(2ikh) + 8*exp(ikh) - 8*exp(-ikh) + exp(-2ikh)) / 12h
+                    // = i/h * (4/3 * sin(kh) - 1/6 * sin(2kh))
+                    dkx.mapv(|theta| {
+                        Complex::new(
+                            0.0,
+                            ((4.0 / 3.0) * theta.sin() - (1.0 / 6.0) * (2.0 * theta).sin()) / dx,
+                        )
+                    }),
+                    dky.mapv(|theta| {
+                        Complex::new(
+                            0.0,
+                            ((4.0 / 3.0) * theta.sin() - (1.0 / 6.0) * (2.0 * theta).sin()) / dy,
+                        )
+                    }),
+                )
+            }
+            DerivativeStencil::Central6 => {
+                (
+                    // (exp(3ikh) - 9*exp(2ikh) + 45*exp(ikh) - 45*exp(-ikh) + 9*exp(-2ikh) - exp(-3ikh)) / 60h
+                    // = i/h * (3/2 * sin(kh) - 3/10 * sin(2kh) + 1/30 * sin(3kh))
+                    dkx.mapv(|theta| {
+                        Complex::new(
+                            0.0,
+                            (1.5 * theta.sin() - 0.3 * (2.0 * theta).sin()
+                                + (1.0 / 30.0) * (3.0 * theta).sin())
+                                / dx,
+                        )
+                    }),
+                    dky.mapv(|theta| {
+                        Complex::new(
+                            0.0,
+                            (1.5 * theta.sin() - 0.3 * (2.0 * theta).sin()
+                                + (1.0 / 30.0) * (3.0 * theta).sin())
+                                / dy,
+                        )
+                    }),
+                )
+            }
+        };
+
+        Ok((kxd1, kyd1))
     }
 
-    /// Compute Laplacian using spectral method with given squared wavenumbers (using FFT)
+    /// Fourier symbols (for Laplacian) for given finite difference stencil types
     ///
-    /// Note: assumes periodic boundaries
-    pub fn laplacian_spectral_k(
+    /// # Arguments
+    /// * `stencil`: Laplacian stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    #[inline]
+    fn fourier_symbols_fd2(
         &self,
-        kx2: &Array1<f64>,
-        ky2: &Array1<f64>,
-    ) -> Result<Array2<f64>> {
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<(Array1<Complex<f64>>, Array1<Complex<f64>>)> {
+        let stencil = stencil.into().unwrap_or_default();
+        let (kx, ky) = self.grid.wavenumbers();
+        let dx = self.grid.dx;
+        let dy = self.grid.dy;
+        let dx2 = dx * dx;
+        let dy2 = dy * dy;
+        let dkx = kx * dx;
+        let dky = ky * dy;
 
-        let mut fft_data = self.fft2d()?;
-
-        for j in 0..ny {
-            for i in 0..nx {
-                let k2 = kx2[i] + ky2[j];
-                fft_data[[j, i]] *= Complex::new(-k2, 0.0);
+        let (kxd2, kyd2) = match stencil {
+            DerivativeStencil::Central => {
+                (
+                    // (exp(ikh) - 2 + exp(-ikh)) / h^2
+                    // = (2*cos(kh)-2) / h^2
+                    dkx.mapv(|theta| Complex::new((2.0 * theta.cos() - 2.0) / dx2, 0.0)),
+                    dky.mapv(|theta| Complex::new((2.0 * theta.cos() - 2.0) / dy2, 0.0)),
+                )
             }
-        }
+            DerivativeStencil::Forward => {
+                (
+                    // (exp(ikh) - 1)^2 / h^2
+                    dkx.mapv(|theta| {
+                        let cos_theta = theta.cos();
+                        Complex::new(
+                            2.0 * ((cos_theta - 1.0) * cos_theta),
+                            2.0 - 2.0 * cos_theta * theta.sin(),
+                        ) / dx2
+                    }),
+                    dky.mapv(|theta| {
+                        let cos_theta = theta.cos();
+                        Complex::new(
+                            2.0 * ((cos_theta - 1.0) * cos_theta),
+                            2.0 - 2.0 * cos_theta * theta.sin(),
+                        ) / dy2
+                    }),
+                )
+            }
+            DerivativeStencil::Backward => {
+                (
+                    // (1 - exp(-ikh))^2 / h^2
+                    dkx.mapv(|theta| {
+                        let cos_theta = theta.cos();
+                        Complex::new(
+                            2.0 * ((cos_theta - 1.0) * cos_theta),
+                            2.0 - 2.0 * cos_theta * theta.sin(),
+                        ) / dx2
+                    }),
+                    dky.mapv(|theta| {
+                        let cos_theta = theta.cos();
+                        Complex::new(
+                            2.0 * ((cos_theta - 1.0) * cos_theta),
+                            2.0 - 2.0 * cos_theta * theta.sin(),
+                        ) / dy2
+                    }),
+                )
+            }
+            DerivativeStencil::Central4 => {
+                let c2 = 1.0 / 6.0;
+                let c1 = 8.0 / 3.0;
+                (
+                    // (-exp(2ikh) + 16*exp(ikh) - 30 + 16*exp(-ikh) - exp(-2ikh)) / 12h^2
+                    // = (-1/6 * cos(2kh) + 8/3 * cos(kh) - 5/2 ) / h^2
+                    dkx.mapv(|theta| {
+                        Complex::new(
+                            (c2 * (2.0 * theta).cos() + c1 * theta.cos() - 2.5) / dx2,
+                            0.0,
+                        )
+                    }),
+                    dky.mapv(|theta| {
+                        Complex::new(
+                            (c2 * (2.0 * theta).cos() + c1 * theta.cos() - 2.5) / dy2,
+                            0.0,
+                        )
+                    }),
+                )
+            }
+            DerivativeStencil::Central6 => {
+                let c3 = 1.0 / 45.0;
+                let c0 = 49.0 / 18.0;
+                (
+                    // (2*exp(3ikh) - 27*exp(2ikh) + 270*exp(ikh) - 490 + 270*exp(-ikh) - 27*exp(-2ikh) + 2*exp(-3ikh)) / 180h^2
+                    // (1/45*cos(3kh) - 3/10*cos(2kh) + 2*cos(kh) - 49/18) / h^2
+                    dkx.mapv(|theta| {
+                        Complex::new(
+                            (c3 * (3.0 * theta).cos() - 0.3 * (2.0 * theta).cos()
+                                + 2.0 * theta.cos()
+                                - c0)
+                                / dx2,
+                            0.0,
+                        )
+                    }),
+                    dky.mapv(|theta| {
+                        Complex::new(
+                            (c3 * (3.0 * theta).cos() - 0.3 * (2.0 * theta).cos()
+                                + 2.0 * theta.cos()
+                                - c0)
+                                / dy2,
+                            0.0,
+                        )
+                    }),
+                )
+            }
+        };
 
-        Self::ifft2d(&fft_data)
+        Ok((kxd2, kyd2))
     }
 
     /// Compute gradient using spectral method (using FFT)
-    pub fn gradient_spectral(&self) -> Result<(Array2<f64>, Array2<f64>)> {
+    ///
+    /// # Arguments
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    pub fn gradient_spectral(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<(Array2<f64>, Array2<f64>)> {
+        let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
 
         let fft_data = self.fft2d()?;
-
-        let (kx, ky) = self.grid.wavenumbers();
+        let (kx_fd, ky_fd) = self.fourier_symbols_fd1(stencil)?;
 
         let mut dvdx_fft = fft_data.clone();
         let mut dvdy_fft = fft_data.clone();
         for j in 0..ny {
             for i in 0..nx {
                 let f_hat = fft_data[[j, i]];
-                dvdx_fft[[j, i]] = Complex::new(-f_hat.im * kx[i], f_hat.re * kx[i]);
-                dvdy_fft[[j, i]] = Complex::new(-f_hat.im * ky[j], f_hat.re * ky[j]);
+                dvdx_fft[[j, i]] = f_hat * kx_fd[i];
+                dvdy_fft[[j, i]] = f_hat * ky_fd[j];
             }
         }
 
@@ -2035,15 +2195,15 @@ impl PixelGrid {
         Ok((dvdx, dvdy))
     }
 
-    /// Compute gradient using spectral method with given wavenumbers (using FFT)
+    /// Compute gradient using spectral method with given Fourier symbols (using FFT)
     ///
     /// # Arguments
-    /// * `kx` - wavenumbers along the x axis
-    /// * `ky` - wavenumbers along the y axis
+    /// * `kx_fd` - pre-computed Fourier symbols (translation operators) along the x axis
+    /// * `ky_fd` - pre-computed Fourier symbols (translation operators) along the y axis
     pub fn gradient_spectral_k(
         &self,
-        kx: &Array1<f64>,
-        ky: &Array1<f64>,
+        kx_fd: &Array1<Complex<f64>>,
+        ky_fd: &Array1<Complex<f64>>,
     ) -> Result<(Array2<f64>, Array2<f64>)> {
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -2055,8 +2215,8 @@ impl PixelGrid {
         for j in 0..ny {
             for i in 0..nx {
                 let f_hat = fft_data[[j, i]];
-                dvdx_fft[[j, i]] = Complex::new(-f_hat.im * kx[i], f_hat.re * kx[i]);
-                dvdy_fft[[j, i]] = Complex::new(-f_hat.im * ky[j], f_hat.re * ky[j]);
+                dvdx_fft[[j, i]] = f_hat * kx_fd[i];
+                dvdy_fft[[j, i]] = f_hat * ky_fd[j];
             }
         }
 
@@ -2064,6 +2224,61 @@ impl PixelGrid {
         let dvdy = Self::ifft2d(&dvdy_fft)?;
 
         Ok((dvdx, dvdy))
+    }
+
+    /// Compute Laplacian using spectral method (using FFT)
+    ///
+    /// Note: assumes periodic boundaries
+    ///
+    /// # Arguments
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    pub fn laplacian_spectral(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<Array2<f64>> {
+        let stencil = stencil.into().unwrap_or_default();
+        let nx = self.grid.nx;
+        let ny = self.grid.ny;
+
+        let mut fft_data = self.fft2d()?;
+        let (kx_fd2, ky_fd2) = self.fourier_symbols_fd2(stencil)?;
+
+        for j in 0..ny {
+            for i in 0..nx {
+                let k2 = kx_fd2[i] + ky_fd2[j];
+                fft_data[[j, i]] *= k2;
+                // fft_data[[j, i]] *= Complex::new(-k2, 0.0);
+            }
+        }
+
+        Self::ifft2d(&fft_data)
+    }
+
+    /// Compute Laplacian using spectral method with given squared Fourier symbols (using FFT)
+    ///
+    /// Note: assumes periodic boundaries
+    ///
+    /// # Arguments
+    /// * `kx_fd2` - pre-computed Fourier symbols (translation operators) along the x axis
+    /// * `ky_fd2` - pre-computed Fourier symbols (translation operators) along the x axis
+    pub fn laplacian_spectral_k(
+        &self,
+        kx_fd2: &Array1<Complex<f64>>,
+        ky_fd2: &Array1<Complex<f64>>,
+    ) -> Result<Array2<f64>> {
+        let nx = self.grid.nx;
+        let ny = self.grid.ny;
+
+        let mut fft_data = self.fft2d()?;
+
+        for j in 0..ny {
+            for i in 0..nx {
+                let k2 = kx_fd2[i] + ky_fd2[j];
+                fft_data[[j, i]] *= k2;
+            }
+        }
+
+        Self::ifft2d(&fft_data)
     }
 }
 
@@ -2109,10 +2324,9 @@ impl std::fmt::Display for PixelGrid {
 mod tests {
     use super::*;
 
-    const EPS: f64 = 1e-10;
-
-    fn approx_eq(a: f64, b: f64) -> bool {
-        (a - b).abs() < EPS
+    fn approx_eq(a: f64, b: f64, eps: impl Into<Option<f64>>) -> bool {
+        let eps = eps.into().unwrap_or(1e-12);
+        (a - b).abs() < eps
     }
 
     #[test]
@@ -2121,7 +2335,7 @@ mod tests {
         let pg = PixelGrid::zeros(grid);
 
         assert_eq!(pg.values.shape(), &[4, 4]);
-        assert!(approx_eq(pg.sum(), 0.0));
+        assert!(approx_eq(pg.sum(), 0.0, None));
     }
 
     #[test]
@@ -2130,7 +2344,7 @@ mod tests {
         let pg = PixelGrid::ones(grid);
 
         assert_eq!(pg.values.shape(), &[4, 4]);
-        assert!(approx_eq(pg.sum(), 16.0));
+        assert!(approx_eq(pg.sum(), 16.0, None));
     }
 
     #[test]
@@ -2138,7 +2352,7 @@ mod tests {
         let grid = Grid2D::square(4, 1.0).unwrap();
         let pg = PixelGrid::constant(grid, 3.5);
 
-        assert!(approx_eq(pg.mean(), 3.5));
+        assert!(approx_eq(pg.mean(), 3.5, None));
     }
 
     #[test]
@@ -2148,7 +2362,7 @@ mod tests {
 
         let center_val = pg.get(2, 2);
         let expected = grid.x_at(2).powi(2) + grid.y_at(2).powi(2);
-        assert!(approx_eq(center_val, expected));
+        assert!(approx_eq(center_val, expected, None));
     }
 
     #[test]
@@ -2157,7 +2371,7 @@ mod tests {
         let mut pg = PixelGrid::zeros(grid);
 
         pg.set(1, 2, 5.0);
-        assert!(approx_eq(pg.get(1, 2), 5.0));
+        assert!(approx_eq(pg.get(1, 2), 5.0, None));
 
         assert!(pg.get_safely(1, 2).is_some());
         assert!(pg.get_safely(10, 10).is_none());
@@ -2168,12 +2382,12 @@ mod tests {
         let grid = Grid2D::square(4, 1.0).unwrap();
         let pg = PixelGrid::from_func(grid, |_, _| 2.0);
 
-        assert!(approx_eq(pg.sum(), 32.0));
-        assert!(approx_eq(pg.mean(), 2.0));
-        assert!(approx_eq(pg.min(), 2.0));
-        assert!(approx_eq(pg.max(), 2.0));
-        assert!(approx_eq(pg.var(), 0.0));
-        assert!(approx_eq(pg.std(), 0.0));
+        assert!(approx_eq(pg.sum(), 32.0, None));
+        assert!(approx_eq(pg.mean(), 2.0, None));
+        assert!(approx_eq(pg.min(), 2.0, None));
+        assert!(approx_eq(pg.max(), 2.0, None));
+        assert!(approx_eq(pg.var(), 0.0, None));
+        assert!(approx_eq(pg.std(), 0.0, None));
     }
 
     #[test]
@@ -2182,10 +2396,10 @@ mod tests {
         let pg = PixelGrid::ones(grid);
 
         let scaled = pg.scale(2.0);
-        assert!(approx_eq(scaled.mean(), 2.0));
+        assert!(approx_eq(scaled.mean(), 2.0, None));
 
         let shifted = pg.shift(3.0);
-        assert!(approx_eq(shifted.mean(), 4.0));
+        assert!(approx_eq(shifted.mean(), 4.0, None));
     }
 
     #[test]
@@ -2195,13 +2409,13 @@ mod tests {
         let pg2 = PixelGrid::constant(grid, 3.0);
 
         let added = pg1.add(&pg2).unwrap();
-        assert!(approx_eq(added.mean(), 5.0));
+        assert!(approx_eq(added.mean(), 5.0, None));
 
         let subtracted = pg1.sub(&pg2).unwrap();
-        assert!(approx_eq(subtracted.mean(), -1.0));
+        assert!(approx_eq(subtracted.mean(), -1.0, None));
 
         let multiplied = pg1.mul(&pg2).unwrap();
-        assert!(approx_eq(multiplied.mean(), 6.0));
+        assert!(approx_eq(multiplied.mean(), 6.0, None));
     }
 
     #[test]
@@ -2210,11 +2424,11 @@ mod tests {
         let mut pg = PixelGrid::constant(grid, 2.0);
 
         pg.normalize_sum(Some(1.0));
-        assert!(approx_eq(pg.sum(), 1.0));
+        assert!(approx_eq(pg.sum(), 1.0, None));
 
         let mut pg2 = PixelGrid::constant(grid, 2.0);
         pg2.normalize_max(Some(1.0));
-        assert!(approx_eq(pg2.max(), 1.0));
+        assert!(approx_eq(pg2.max(), 1.0, None));
     }
 
     #[test]
@@ -2231,7 +2445,7 @@ mod tests {
         let center = Point2D::origin();
         let orig_val = pg.interpolate(&center);
         let resampled_val = resampled.interpolate(&center);
-        assert!(approx_eq(orig_val, resampled_val));
+        assert!(approx_eq(orig_val, resampled_val, None));
     }
 
     #[test]
@@ -2245,7 +2459,11 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(resampled_seq.get(i, j), resampled_par.get(i, j)));
+                assert!(approx_eq(
+                    resampled_seq.get(i, j),
+                    resampled_par.get(i, j),
+                    None
+                ));
             }
         }
     }
@@ -2260,7 +2478,7 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(pg.values[[j, i]], reconstructed[[j, i]]));
+                assert!(approx_eq(pg.values[[j, i]], reconstructed[[j, i]], None));
             }
         }
     }
@@ -2285,8 +2503,8 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(fft_result[[j, i]].re, unshifted[[j, i]].re));
-                assert!(approx_eq(fft_result[[j, i]].im, unshifted[[j, i]].im));
+                assert!(approx_eq(fft_result[[j, i]].re, unshifted[[j, i]].re, None));
+                assert!(approx_eq(fft_result[[j, i]].im, unshifted[[j, i]].im, None));
             }
         }
     }
@@ -2299,7 +2517,7 @@ mod tests {
         let center = Point2D::origin();
         let interp = pg.interpolate(&center);
 
-        assert!(approx_eq(interp, 0.0));
+        assert!(approx_eq(interp, 0.0, None));
     }
 
     #[test]
@@ -2308,17 +2526,8 @@ mod tests {
         let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x + 3.0 * y);
 
         let grad = pg.gradient(4, 4, DerivativeStencil::Central);
-        assert!(approx_eq(grad.x, 2.0));
-        assert!(approx_eq(grad.y, 3.0));
-    }
-
-    #[test]
-    fn test_pixel_grid_laplacian() {
-        let grid = Grid2D::square(8, 2.0).unwrap();
-        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
-
-        let lap = pg.laplacian(4, 4, DerivativeStencil::Central);
-        assert!(approx_eq(lap, 4.0));
+        assert!(approx_eq(grad.x, 2.0, None));
+        assert!(approx_eq(grad.y, 3.0, None));
     }
 
     #[test]
@@ -2331,23 +2540,8 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(dvdx[[j, i]], par_dvdx[[j, i]]));
-                assert!(approx_eq(dvdy[[j, i]], par_dvdy[[j, i]]));
-            }
-        }
-    }
-
-    #[test]
-    fn test_pixel_grid_laplacian_field() {
-        let grid = Grid2D::square(8, 2.0).unwrap();
-        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
-
-        let laplace = pg.laplacian_field(None);
-        let par_laplace = pg.par_laplacian_field(None);
-
-        for j in 0..8 {
-            for i in 0..8 {
-                assert!(approx_eq(laplace[[j, i]], par_laplace[[j, i]]));
+                assert!(approx_eq(dvdx[[j, i]], par_dvdx[[j, i]], None));
+                assert!(approx_eq(dvdy[[j, i]], par_dvdy[[j, i]], None));
             }
         }
     }
@@ -2355,22 +2549,23 @@ mod tests {
     #[test]
     fn test_pixel_grid_gradient_spectral() {
         let grid = Grid2D::square(64, 2.0).unwrap();
+        //
         let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
 
-        let (dvdx, dvdy) = pg.gradient_spectral().unwrap();
+        let (dvdx, dvdy) = pg.gradient_spectral(DerivativeStencil::Central).unwrap();
 
         // Check interior
         for j in 16..48 {
             for i in 16..48 {
                 assert!(
-                    approx_eq(dvdx[[j, i]], 1.0),
+                    approx_eq(dvdx[[j, i]], 1.0, None),
                     "dvdx at ({}, {}) = {}, expected 1.0",
                     i,
                     j,
                     dvdx[[j, i]]
                 );
                 assert!(
-                    approx_eq(dvdy[[j, i]], 2.0),
+                    approx_eq(dvdy[[j, i]], 2.0, None),
                     "dvdy at ({}, {}) = {}, expected 2.0",
                     i,
                     j,
@@ -2381,26 +2576,75 @@ mod tests {
     }
 
     #[test]
+    fn test_pixel_grid_laplacian() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        // Quadratic function: Laplacian should be constant
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
+
+        let lap = pg.laplacian(4, 4, DerivativeStencil::Central);
+        assert!(approx_eq(lap, 4.0, None));
+    }
+
+    #[test]
+    fn test_pixel_grid_laplacian_field() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        // Quadratic function: Laplacian should be constant
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
+
+        let laplace = pg.laplacian_field(None);
+        let par_laplace = pg.par_laplacian_field(None);
+
+        for j in 0..8 {
+            for i in 0..8 {
+                assert!(approx_eq(laplace[[j, i]], par_laplace[[j, i]], None));
+            }
+        }
+    }
+
+    #[test]
     fn test_pixel_grid_laplacian_spectral() {
-        let grid = Grid2D::square(64, 2.0).unwrap();
-        let k = 2.0 * std::f64::consts::PI / 4.0;
-        let pg = PixelGrid::from_func(grid, |x, y| (k * x).cos() * (k * y).cos());
+        let size: usize = 64;
+        let grid = Grid2D::square(size, 2.0).unwrap();
+	// Quadratic function: Laplacian should be constant
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let laplace_fft = pg.laplacian_spectral().unwrap();
-        let f_expected = -2.0 * k * k;
+        let laplace_fft = pg.laplacian_spectral(DerivativeStencil::Central).unwrap();
 
-        for j in 0..64 {
-            for i in 0..64 {
-                let expected = f_expected * pg.values[[j, i]];
+        let border_size = size / 32;
+        for j in border_size..size - border_size {
+            for i in border_size..size - border_size {
                 assert!(
-                    approx_eq(laplace_fft[[j, i]], expected),
+                    approx_eq(laplace_fft[[j, i]], 4.0, None),
                     "Laplacian at ({}, {}) = {}, expected {}",
                     i,
                     j,
                     laplace_fft[[j, i]],
-                    expected
+                    4.0
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_laplacian_spectral_vs_finite_diff() {
+        let size: usize = 64;
+        let grid = Grid2D::square(size, 2.0).unwrap();
+        // Quadratic function: Laplacian should be constant
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
+
+        let lap_fd = pg.laplacian_field(DerivativeStencil::Central);
+        let lap_spec = pg.laplacian_spectral(DerivativeStencil::Central).unwrap();
+
+        let mut max_err: f64 = 0.0;
+
+        let border_size = size / 32;
+        for j in border_size..size - border_size {
+            for i in border_size..size - border_size {
+                let err = (lap_fd[[j, i]] - lap_spec[[j, i]]).abs();
+                max_err = max_err.max(err);
+            }
+        }
+        println!("Max Laplacian error: {}", max_err);
+        assert!(max_err < 1e-12, "Laplacian error too large: {}", max_err);
     }
 }
