@@ -15,6 +15,28 @@ use phastft::{
 };
 use rayon::prelude::*;
 
+macro_rules! zip3_for_each {
+    ($par:expr, $out:expr, $a:expr, $b:expr, $body:expr) => {{
+        let z = Zip::from($out).and($a).and($b);
+        if $par {
+            z.par_for_each($body);
+        } else {
+            z.for_each($body);
+        }
+    }};
+}
+
+macro_rules! zip5_for_each {
+    ($par:expr, $out:expr, $a:expr, $b:expr, $c:expr, $d:expr, $body:expr) => {{
+        let z = ndarray::Zip::from($out).and($a).and($b).and($c).and($d);
+        if $par {
+            z.par_for_each($body);
+        } else {
+            z.for_each($body);
+        }
+    }};
+}
+
 /// A 2D pixel grid with associated values
 #[derive(Debug, Clone)]
 pub struct PixelGrid {
@@ -668,6 +690,28 @@ impl PixelGrid {
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> (Array2<f64>, Array2<f64>) {
+        self.gradient_field_impl::<false>(stencil)
+    }
+
+    /// Compute gradient field over the entire grid in parallel (using rayon backend)
+    ///
+    /// # Arguments
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    pub fn par_gradient_field(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> (Array2<f64>, Array2<f64>) {
+        self.gradient_field_impl::<true>(stencil)
+    }
+
+    /// Base implementation to compute gradient fields (parallel or sequential)
+    ///
+    /// # Arguments
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    fn gradient_field_impl<const PAR: bool>(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> (Array2<f64>, Array2<f64>) {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -676,7 +720,8 @@ impl PixelGrid {
 
         let mut dvdx = Array2::zeros((ny, nx));
         let mut dvdy = Array2::zeros((ny, nx));
-        let v = self.values.view();
+        let v = self.values.as_standard_layout();
+        let v = v.view();
 
         if nx == 0 || ny == 0 {
             return (dvdx, dvdy);
@@ -691,19 +736,13 @@ impl PixelGrid {
                     let mut out = dvdx.slice_mut(s![.., 1..nx - 1]);
                     let vr = v.slice(s![.., 2..nx]);
                     let vl = v.slice(s![.., 0..nx - 2]);
-                    Zip::from(&mut out)
-                        .and(vr)
-                        .and(vl)
-                        .for_each(|o, &r, &l| *o = (r - l) * inv_2dx);
+                    zip3_for_each!(PAR, &mut out, vr, vl, |o, &r, &l| *o = (r - l) * inv_2dx);
                 }
                 if ny >= 3 {
                     let mut out = dvdy.slice_mut(s![1..ny - 1, ..]);
                     let vb = v.slice(s![2..ny, ..]);
                     let vt = v.slice(s![0..ny - 2, ..]);
-                    Zip::from(&mut out)
-                        .and(vb)
-                        .and(vt)
-                        .for_each(|o, &b, &t| *o = (b - t) * inv_2dy);
+                    zip3_for_each!(PAR, &mut out, vb, vt, |o, &b, &t| *o = (b - t) * inv_2dy);
                 }
                 // boundary fallbacks (forward / backward)
                 if nx >= 2 {
@@ -711,19 +750,15 @@ impl PixelGrid {
                         let mut out = dvdx.slice_mut(s![.., 0..1]);
                         let right = v.slice(s![.., 1..2]);
                         let left = v.slice(s![.., 0..1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, rr, ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                     {
                         let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
                         let right = v.slice(s![.., nx - 1..nx]);
                         let left = v.slice(s![.., nx - 2..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                 }
                 if ny >= 2 {
@@ -731,19 +766,15 @@ impl PixelGrid {
                         let mut out = dvdy.slice_mut(s![0..1, ..]);
                         let bottom = v.slice(s![1..2, ..]);
                         let top = v.slice(s![0..1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, bb, tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                     {
                         let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
                         let bottom = v.slice(s![ny - 1..ny, ..]);
                         let top = v.slice(s![ny - 2..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -754,20 +785,16 @@ impl PixelGrid {
                         let mut out = dvdx.slice_mut(s![.., 0..nx - 1]);
                         let right = v.slice(s![.., 1..nx]);
                         let left = v.slice(s![.., 0..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                     // boundary fallback (forward)
                     {
                         let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
                         let right = v.slice(s![.., nx - 1..nx]);
                         let left = v.slice(s![.., nx - 2..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                 }
 
@@ -777,20 +804,16 @@ impl PixelGrid {
                         let mut out = dvdy.slice_mut(s![0..ny - 1, ..]);
                         let bottom = v.slice(s![1..ny, ..]);
                         let top = v.slice(s![0..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                     // boundary fallback (forward)
                     {
                         let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
                         let bottom = v.slice(s![ny - 1..ny, ..]);
                         let top = v.slice(s![ny - 2..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -801,20 +824,16 @@ impl PixelGrid {
                         let mut out = dvdx.slice_mut(s![.., 1..nx]);
                         let right = v.slice(s![.., 1..nx]);
                         let left = v.slice(s![.., 0..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                     // boundary fallback (backward)
                     {
                         let mut out = dvdx.slice_mut(s![.., 0..1]);
                         let right = v.slice(s![.., 1..2]);
                         let left = v.slice(s![.., 0..1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                 }
 
@@ -824,20 +843,16 @@ impl PixelGrid {
                         let mut out = dvdy.slice_mut(s![1..ny, ..]);
                         let bottom = v.slice(s![1..ny, ..]);
                         let top = v.slice(s![0..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                     // boundary fallback (backward)
                     {
                         let mut out = dvdy.slice_mut(s![0..1, ..]);
                         let bottom = v.slice(s![1..2, ..]);
                         let top = v.slice(s![0..1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -856,15 +871,17 @@ impl PixelGrid {
                     let l1 = v.slice(s![.., 1..nx - 3]);
                     let r2 = v.slice(s![.., 4..nx]);
                     let l2 = v.slice(s![.., 0..nx - 4]);
-
-                    Zip::from(&mut out)
-                        .and(r1)
-                        .and(l1)
-                        .and(r2)
-                        .and(l2)
-                        .for_each(|o, &rr1, &ll1, &rr2, &ll2| {
+                    zip5_for_each!(
+                        PAR,
+                        &mut out,
+                        r1,
+                        l1,
+                        r2,
+                        l2,
+                        |o, &rr1, &ll1, &rr2, &ll2| {
                             *o = c1x * (rr1 - ll1) - c2x * (rr2 - ll2);
-                        });
+                        }
+                    );
                 }
                 if ny >= 5 {
                     let mut out = dvdy.slice_mut(s![2..ny - 2, ..]);
@@ -872,15 +889,17 @@ impl PixelGrid {
                     let t1 = v.slice(s![1..ny - 3, ..]);
                     let b2 = v.slice(s![4..ny, ..]);
                     let t2 = v.slice(s![0..ny - 4, ..]);
-
-                    Zip::from(&mut out)
-                        .and(b1)
-                        .and(t1)
-                        .and(b2)
-                        .and(t2)
-                        .for_each(|o, &bb1, &tt1, &bb2, &tt2| {
+                    zip5_for_each!(
+                        PAR,
+                        &mut out,
+                        b1,
+                        t1,
+                        b2,
+                        t2,
+                        |o, &bb1, &tt1, &bb2, &tt2| {
                             *o = c1y * (bb1 - tt1) - c2y * (bb2 - tt2);
-                        });
+                        }
+                    );
                 }
                 // boundary fallbacks (forward, 2nd central, backward)
                 if nx >= 2 {
@@ -888,39 +907,31 @@ impl PixelGrid {
                         let mut out = dvdx.slice_mut(s![.., 0..1]);
                         let right = v.slice(s![.., 1..2]);
                         let left = v.slice(s![.., 0..1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                     if nx >= 3 {
                         {
                             let mut out = dvdx.slice_mut(s![.., 1..2]);
                             let right = v.slice(s![.., 2..3]);
                             let left = v.slice(s![.., 0..1]);
-                            Zip::from(&mut out)
-                                .and(right)
-                                .and(left)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                         {
                             let mut out = dvdx.slice_mut(s![.., nx - 2..nx - 1]);
                             let right = v.slice(s![.., nx - 1..nx]);
                             let left = v.slice(s![.., nx - 3..nx - 2]);
-                            Zip::from(&mut out)
-                                .and(right)
-                                .and(left)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                     }
                     {
                         let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
                         let right = v.slice(s![.., nx - 1..nx]);
                         let left = v.slice(s![.., nx - 2..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(right)
-                            .and(left)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, right, left, |o, &rr, &ll| *o =
+                            (rr - ll) * inv_dx);
                     }
                 }
                 if ny >= 2 {
@@ -928,39 +939,31 @@ impl PixelGrid {
                         let mut out = dvdy.slice_mut(s![0..1, ..]);
                         let bottom = v.slice(s![1..2, ..]);
                         let top = v.slice(s![0..1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                     if ny >= 3 {
                         {
                             let mut out = dvdy.slice_mut(s![1..2, ..]);
                             let bottom = v.slice(s![2..3, ..]);
                             let top = v.slice(s![0..1, ..]);
-                            Zip::from(&mut out)
-                                .and(bottom)
-                                .and(top)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                         {
                             let mut out = dvdy.slice_mut(s![ny - 2..ny - 1, ..]);
                             let bottom = v.slice(s![ny - 1..ny, ..]);
                             let top = v.slice(s![ny - 3..ny - 2, ..]);
-                            Zip::from(&mut out)
-                                .and(bottom)
-                                .and(top)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                     }
                     {
                         let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
                         let bottom = v.slice(s![ny - 1..ny, ..]);
                         let top = v.slice(s![ny - 2..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(bottom)
-                            .and(top)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, bottom, top, |o, &bb, &tt| *o =
+                            (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -984,28 +987,21 @@ impl PixelGrid {
                     {
                         let r1 = v.slice(s![.., 4..nx - 2]);
                         let l1 = v.slice(s![.., 2..nx - 4]);
-                        Zip::from(&mut out)
-                            .and(r1)
-                            .and(l1)
-                            .for_each(|o, &rr1, &ll1| *o = c1x * (rr1 - ll1));
+                        zip3_for_each!(PAR, &mut out, r1, l1, |o, &rr1, &ll1| *o =
+                            c1x * (rr1 - ll1));
                     }
                     {
                         let r2 = v.slice(s![.., 5..nx - 1]);
                         let l2 = v.slice(s![.., 1..nx - 5]);
-                        Zip::from(&mut out)
-                            .and(r2)
-                            .and(l2)
-                            .for_each(|o, &rr2, &ll2| *o += -c2x * (rr2 - ll2));
+                        zip3_for_each!(PAR, &mut out, r2, l2, |o, &rr2, &ll2| *o +=
+                            -c2x * (rr2 - ll2));
                     }
 
                     {
                         let r3 = v.slice(s![.., 6..nx]);
                         let l3 = v.slice(s![.., 0..nx - 6]);
-
-                        Zip::from(&mut out)
-                            .and(r3)
-                            .and(l3)
-                            .for_each(|o, &rr3, &ll3| *o += c3x * (rr3 - ll3));
+                        zip3_for_each!(PAR, &mut out, r3, l3, |o, &rr3, &ll3| *o +=
+                            c3x * (rr3 - ll3));
                     }
                 }
                 if ny >= 7 {
@@ -1014,26 +1010,20 @@ impl PixelGrid {
                     {
                         let b1 = v.slice(s![4..ny - 2, ..]);
                         let t1 = v.slice(s![2..ny - 4, ..]);
-                        Zip::from(&mut out)
-                            .and(b1)
-                            .and(t1)
-                            .for_each(|o, &bb1, &tt1| *o = c1y * (bb1 - tt1));
+                        zip3_for_each!(PAR, &mut out, b1, t1, |o, &bb1, &tt1| *o =
+                            c1y * (bb1 - tt1));
                     }
                     {
                         let b2 = v.slice(s![5..ny - 1, ..]);
                         let t2 = v.slice(s![1..ny - 5, ..]);
-                        Zip::from(&mut out)
-                            .and(b2)
-                            .and(t2)
-                            .for_each(|o, &bb2, &tt2| *o += -c2y * (bb2 - tt2));
+                        zip3_for_each!(PAR, &mut out, b2, t2, |o, &bb2, &tt2| *o +=
+                            -c2y * (bb2 - tt2));
                     }
                     {
                         let b3 = v.slice(s![6..ny, ..]);
                         let t3 = v.slice(s![0..ny - 6, ..]);
-                        Zip::from(&mut out)
-                            .and(b3)
-                            .and(t3)
-                            .for_each(|o, &bb3, &tt3| *o += c3y * (bb3 - tt3));
+                        zip3_for_each!(PAR, &mut out, b3, t3, |o, &bb3, &tt3| *o +=
+                            c3y * (bb3 - tt3));
                     }
                 }
 
@@ -1045,29 +1035,22 @@ impl PixelGrid {
                         let mut out = dvdx.slice_mut(s![.., 0..1]);
                         let r = v.slice(s![.., 1..2]);
                         let l = v.slice(s![.., 0..1]);
-                        Zip::from(&mut out)
-                            .and(r)
-                            .and(l)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
                     if nx >= 3 {
                         {
                             let mut out = dvdx.slice_mut(s![.., 1..2]);
                             let r = v.slice(s![.., 2..3]);
                             let l = v.slice(s![.., 0..1]);
-                            Zip::from(&mut out)
-                                .and(r)
-                                .and(l)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                         {
                             let mut out = dvdx.slice_mut(s![.., nx - 2..nx - 1]);
                             let r = v.slice(s![.., nx - 1..nx]);
                             let l = v.slice(s![.., nx - 3..nx - 2]);
-                            Zip::from(&mut out)
-                                .and(r)
-                                .and(l)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                     }
                     if nx > 4 {
@@ -1077,14 +1060,17 @@ impl PixelGrid {
                             let l1 = v.slice(s![.., 1..2]);
                             let l4 = v.slice(s![.., 4..5]);
                             let l0 = v.slice(s![.., 0..1]);
-                            Zip::from(&mut out)
-                                .and(l3)
-                                .and(l1)
-                                .and(l4)
-                                .and(l0)
-                                .for_each(|o, &ll3, &ll1, &ll4, &ll0| {
+                            zip5_for_each!(
+                                PAR,
+                                &mut out,
+                                l3,
+                                l1,
+                                l4,
+                                l0,
+                                |o, &ll3, &ll1, &ll4, &ll0| {
                                     *o = (8.0 * (ll3 - ll1) - (ll4 - ll0)) * inv_12dx;
-                                });
+                                }
+                            );
                         }
                         {
                             let mut out = dvdx.slice_mut(s![.., nx - 3..nx - 2]);
@@ -1092,43 +1078,39 @@ impl PixelGrid {
                             let r3 = v.slice(s![.., nx - 4..nx - 3]);
                             let r0 = v.slice(s![.., nx - 1..nx]);
                             let r4 = v.slice(s![.., nx - 5..nx - 4]);
-                            Zip::from(&mut out)
-                                .and(r1)
-                                .and(r3)
-                                .and(r0)
-                                .and(r4)
-                                .for_each(|o, &rr1, &rr3, &rr0, &rr4| {
+                            zip5_for_each!(
+                                PAR,
+                                &mut out,
+                                r1,
+                                r3,
+                                r0,
+                                r4,
+                                |o, &rr1, &rr3, &rr0, &rr4| {
                                     *o = (8.0 * (rr1 - rr3) - (rr0 - rr4)) * inv_12dx;
-                                });
+                                }
+                            );
                         }
                     } else if nx >= 4 {
                         {
                             let mut out = dvdx.slice_mut(s![.., 2..3]);
                             let r = v.slice(s![.., 3..4]);
                             let l = v.slice(s![.., 1..2]);
-                            Zip::from(&mut out)
-                                .and(r)
-                                .and(l)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                         {
                             let mut out = dvdx.slice_mut(s![.., nx - 3..nx - 2]);
                             let r = v.slice(s![.., nx - 2..nx - 1]);
                             let l = v.slice(s![.., nx - 4..nx - 3]);
-                            Zip::from(&mut out)
-                                .and(r)
-                                .and(l)
-                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                            zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o =
+                                (rr - ll) * inv_2dx);
                         }
                     }
                     {
                         let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
                         let r = v.slice(s![.., nx - 1..nx]);
                         let l = v.slice(s![.., nx - 2..nx - 1]);
-                        Zip::from(&mut out)
-                            .and(r)
-                            .and(l)
-                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                        zip3_for_each!(PAR, &mut out, r, l, |o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
                 }
 
@@ -1140,29 +1122,22 @@ impl PixelGrid {
                         let mut out = dvdy.slice_mut(s![0..1, ..]);
                         let b = v.slice(s![1..2, ..]);
                         let t = v.slice(s![0..1, ..]);
-                        Zip::from(&mut out)
-                            .and(b)
-                            .and(t)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                     if ny >= 3 {
                         {
                             let mut out = dvdy.slice_mut(s![1..2, ..]);
                             let b = v.slice(s![2..3, ..]);
                             let t = v.slice(s![0..1, ..]);
-                            Zip::from(&mut out)
-                                .and(b)
-                                .and(t)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                         {
                             let mut out = dvdy.slice_mut(s![ny - 2..ny - 1, ..]);
                             let b = v.slice(s![ny - 1..ny, ..]);
                             let t = v.slice(s![ny - 3..ny - 2, ..]);
-                            Zip::from(&mut out)
-                                .and(b)
-                                .and(t)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                     }
                     if ny > 4 {
@@ -1172,14 +1147,17 @@ impl PixelGrid {
                             let t1 = v.slice(s![1..2, ..]);
                             let t4 = v.slice(s![4..5, ..]);
                             let t0 = v.slice(s![0..1, ..]);
-                            Zip::from(&mut out)
-                                .and(t3)
-                                .and(t1)
-                                .and(t4)
-                                .and(t0)
-                                .for_each(|o, &tt3, &tt1, &tt4, &tt0| {
+                            zip5_for_each!(
+                                PAR,
+                                &mut out,
+                                t3,
+                                t1,
+                                t4,
+                                t0,
+                                |o, &tt3, &tt1, &tt4, &tt0| {
                                     *o = (8.0 * (tt3 - tt1) - (tt4 - tt0)) * inv_12dy;
-                                });
+                                }
+                            );
                         }
                         {
                             let mut out = dvdy.slice_mut(s![ny - 3..ny - 2, ..]);
@@ -1187,43 +1165,39 @@ impl PixelGrid {
                             let b3 = v.slice(s![ny - 4..ny - 3, ..]);
                             let b0 = v.slice(s![ny - 1..ny, ..]);
                             let b4 = v.slice(s![ny - 5..ny - 4, ..]);
-                            Zip::from(&mut out)
-                                .and(b1)
-                                .and(b3)
-                                .and(b0)
-                                .and(b4)
-                                .for_each(|o, &bb1, &bb3, &bb0, &bb4| {
+                            zip5_for_each!(
+                                PAR,
+                                &mut out,
+                                b1,
+                                b3,
+                                b0,
+                                b4,
+                                |o, &bb1, &bb3, &bb0, &bb4| {
                                     *o = (8.0 * (bb1 - bb3) - (bb0 - bb4)) * inv_12dy;
-                                });
+                                }
+                            );
                         }
                     } else if ny >= 4 {
                         {
                             let mut out = dvdy.slice_mut(s![2..3, ..]);
                             let b = v.slice(s![3..4, ..]);
                             let t = v.slice(s![1..2, ..]);
-                            Zip::from(&mut out)
-                                .and(b)
-                                .and(t)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                         {
                             let mut out = dvdy.slice_mut(s![ny - 3..ny - 2, ..]);
                             let b = v.slice(s![ny - 2..ny - 1, ..]);
                             let t = v.slice(s![ny - 4..ny - 3, ..]);
-                            Zip::from(&mut out)
-                                .and(b)
-                                .and(t)
-                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                            zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o =
+                                (bb - tt) * inv_2dy);
                         }
                     }
                     {
                         let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
                         let b = v.slice(s![ny - 1..ny, ..]);
                         let t = v.slice(s![ny - 2..ny - 1, ..]);
-                        Zip::from(&mut out)
-                            .and(b)
-                            .and(t)
-                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                        zip3_for_each!(PAR, &mut out, b, t, |o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -1232,199 +1206,12 @@ impl PixelGrid {
         (dvdx, dvdy)
     }
 
-    /// Compute gradient field over the entire grid in parallel (using rayon backend)
-    ///
-    /// # Arguments
-    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    pub fn par_gradient_field(
-        &self,
-        stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> (Array2<f64>, Array2<f64>) {
-        let stencil = stencil.into().unwrap_or_default();
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-        let inv_dx = 1.0 / self.grid.dx;
-        let inv_2dx = 0.5 * inv_dx;
-        let inv_12dx = inv_dx / 12.0;
-        let inv_60dx = 0.2 * inv_12dx;
-        let inv_dy = 1.0 / self.grid.dy;
-        let inv_2dy = 0.5 * inv_dy;
-        let inv_12dy = inv_dy / 12.0;
-        let inv_60dy = 0.2 * inv_12dy;
-
-        let gradients: Vec<(f64, f64)> = (0..ny * nx)
-            .into_par_iter()
-            .map(|idx| {
-                let i = idx % nx;
-                let j = idx / nx;
-
-                let dvdx = match stencil {
-                    DerivativeStencil::Central => {
-                        if i == 0 {
-                            if nx > 1 {
-                                (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx
-                            } else {
-                                0.0
-                            }
-                        } else if i == nx - 1 {
-                            (self.values[[j, i]] - self.values[[j, i - 1]]) * inv_dx
-                        } else {
-                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx
-                        }
-                    }
-                    DerivativeStencil::Forward => {
-                        if i < nx - 1 {
-                            (self.values[[j, i + 1]] - self.values[[j, i]]) * inv_dx
-                        } else {
-                            (self.values[[j, i]] - self.values[[j, i - 1]]) * inv_dx
-                        }
-                    }
-                    DerivativeStencil::Backward => {
-                        if i > 0 {
-                            (self.values[[j, i]] - self.values[[j, i - 1]]) * inv_dx
-                        } else {
-                            (self.values[[j, i + 1]] - self.values[[j, i]]) * inv_dx
-                        }
-                    }
-                    DerivativeStencil::Central4 => {
-                        if i >= 2 && i < nx - 2 {
-                            // 4th-order central
-                            (8.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
-                                - (self.values[[j, i + 2]] - self.values[[j, i - 2]]))
-                                * inv_12dx
-                        } else if i >= 1 && i < nx - 1 {
-                            // 2nd-order central
-                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx
-                        } else if i == 0 && nx > 1 {
-                            // forward
-                            (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx
-                        } else if i == nx - 1 && nx > 1 {
-                            // backward
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx
-                        } else {
-                            0.0
-                        }
-                    }
-                    DerivativeStencil::Central6 => {
-                        if i >= 3 && i < nx - 3 {
-                            // 6th-order central
-                            (45.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
-                                - 9.0 * (self.values[[j, i + 2]] - self.values[[j, i - 2]])
-                                + (self.values[[j, i + 3]] - self.values[[j, i - 3]]))
-                                * inv_60dx
-                        } else if i >= 2 && i < nx - 2 {
-                            // 4th-order central
-                            (8.0 * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
-                                - (self.values[[j, i + 2]] - self.values[[j, i - 2]]))
-                                * inv_12dx
-                        } else if i >= 1 && i < nx - 1 {
-                            // 2nd-order central
-                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx
-                        } else if i == 0 && nx > 1 {
-                            (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx
-                        } else if i == nx - 1 && nx > 1 {
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx
-                        } else {
-                            0.0
-                        }
-                    }
-                };
-
-                let dvdy = match stencil {
-                    DerivativeStencil::Central => {
-                        if j == 0 {
-                            if ny > 1 {
-                                (self.values[[1, i]] - self.values[[0, i]]) * inv_dy
-                            } else {
-                                0.0
-                            }
-                        } else if j == ny - 1 {
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy
-                        } else {
-                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy
-                        }
-                    }
-                    DerivativeStencil::Forward => {
-                        if j < ny - 1 {
-                            (self.values[[j + 1, i]] - self.values[[j, i]]) * inv_dy
-                        } else {
-                            (self.values[[j, i]] - self.values[[j - 1, i]]) * inv_dy
-                        }
-                    }
-                    DerivativeStencil::Backward => {
-                        if j > 0 {
-                            (self.values[[j, i]] - self.values[[j - 1, i]]) * inv_dy
-                        } else {
-                            (self.values[[j + 1, i]] - self.values[[j, i]]) * inv_dy
-                        }
-                    }
-                    DerivativeStencil::Central4 => {
-                        if j >= 2 && j < ny - 2 {
-                            (8.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
-                                - (self.values[[j + 2, i]] - self.values[[j - 2, i]]))
-                                * inv_12dy
-                        } else if j >= 1 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy
-                        } else if j == 0 && ny > 1 {
-                            (self.values[[1, i]] - self.values[[0, i]]) * inv_dy
-                        } else if j == ny - 1 && ny > 1 {
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy
-                        } else {
-                            0.0
-                        }
-                    }
-                    DerivativeStencil::Central6 => {
-                        if j >= 3 && j < ny - 3 {
-                            (45.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
-                                - 9.0 * (self.values[[j + 2, i]] - self.values[[j - 2, i]])
-                                + (self.values[[j + 3, i]] - self.values[[j - 3, i]]))
-                                * inv_60dy
-                        } else if j >= 2 && j < ny - 2 {
-                            (8.0 * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
-                                - (self.values[[j + 2, i]] - self.values[[j - 2, i]]))
-                                * inv_12dy
-                        } else if j >= 1 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy
-                        } else if j == 0 && ny > 1 {
-                            (self.values[[1, i]] - self.values[[0, i]]) * inv_dy
-                        } else if j == ny - 1 && ny > 1 {
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy
-                        } else {
-                            0.0
-                        }
-                    }
-                };
-
-                (dvdx, dvdy)
-            })
-            .collect();
-
-        let dvdx_data: Vec<f64> = gradients.iter().map(|(gx, _)| *gx).collect();
-        let dvdy_data: Vec<f64> = gradients.iter().map(|(_, gy)| *gy).collect();
-
-        (
-            Array2::from_shape_vec((ny, nx), dvdx_data).unwrap(),
-            Array2::from_shape_vec((ny, nx), dvdy_data).unwrap(),
-        )
-    }
-
     /// Compute gradient magnitude of the entire grid
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
     pub fn gradient_magnitude(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
-        let stencil = stencil.into().unwrap_or_default();
-        let (dvdx, dvdy) = self.gradient_field(stencil);
-        let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
-
-        Zip::from(&mut magnitude)
-            .and(&dvdx)
-            .and(&dvdy)
-            .for_each(|m, &gx, &gy| {
-                *m = (gx * gx + gy * gy).sqrt();
-            });
-
-        magnitude
+	self.gradient_magnitude_impl::<false>(stencil)
     }
 
     /// Compute gradient magnitude of the entire grid in parallel (using rayon backend)
@@ -1435,17 +1222,19 @@ impl PixelGrid {
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Array2<f64> {
-        let stencil = stencil.into().unwrap_or_default();
-        let (dvdx, dvdy) = self.par_gradient_field(stencil);
+        self.gradient_magnitude_impl::<true>(stencil)
+    }
+
+    fn gradient_magnitude_impl<const PAR: bool>(
+	&self,
+	stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Array2<f64> {
+	let stencil = stencil.into().unwrap_or_default();
+        let (dvdx, dvdy) = self.gradient_field_impl::<PAR>(stencil);
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
-
-        Zip::from(&mut magnitude)
-            .and(&dvdx)
-            .and(&dvdy)
-            .par_for_each(|m, &gx, &gy| {
-                *m = (gx * gx + gy * gy).sqrt();
-            });
-
+	zip3_for_each!(PAR, &mut magnitude, &dvdx, &dvdy, |m, &gx, &gy| {
+            *m = (gx * gx + gy * gy).sqrt();
+        });
         magnitude
     }
 
