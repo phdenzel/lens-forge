@@ -6,7 +6,7 @@
 use crate::grid::{Grid2D, Point2D};
 use crate::{LensForgeError, Result};
 use core::f64;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip, s};
 use num::complex::Complex;
 use phastft::{
     fft_64_with_opts_and_plan,
@@ -676,194 +676,554 @@ impl PixelGrid {
 
         let mut dvdx = Array2::zeros((ny, nx));
         let mut dvdy = Array2::zeros((ny, nx));
+        let v = self.values.view();
+
+        if nx == 0 || ny == 0 {
+            return (dvdx, dvdy);
+        }
 
         match stencil {
             DerivativeStencil::Central => {
                 let inv_2dx = 0.5 * inv_dx;
-                for j in 0..ny {
-                    for i in 1..nx - 1 {
-                        dvdx[[j, i]] =
-                            (self.values[[j, i + 1]] - self.values[[j, i - 1]]) * inv_2dx;
+                let inv_2dy = 0.5 * inv_dy;
+                // interior
+                if nx >= 3 {
+                    let mut out = dvdx.slice_mut(s![.., 1..nx - 1]);
+                    let vr = v.slice(s![.., 2..nx]);
+                    let vl = v.slice(s![.., 0..nx - 2]);
+                    Zip::from(&mut out)
+                        .and(vr)
+                        .and(vl)
+                        .for_each(|o, &r, &l| *o = (r - l) * inv_2dx);
+                }
+                if ny >= 3 {
+                    let mut out = dvdy.slice_mut(s![1..ny - 1, ..]);
+                    let vb = v.slice(s![2..ny, ..]);
+                    let vt = v.slice(s![0..ny - 2, ..]);
+                    Zip::from(&mut out)
+                        .and(vb)
+                        .and(vt)
+                        .for_each(|o, &b, &t| *o = (b - t) * inv_2dy);
+                }
+                // boundary fallbacks (forward / backward)
+                if nx >= 2 {
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 0..1]);
+                        let right = v.slice(s![.., 1..2]);
+                        let left = v.slice(s![.., 0..1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, rr, ll| *o = (rr - ll) * inv_dx);
                     }
-                    if nx > 1 {
-                        dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
-                        dvdx[[j, nx - 1]] =
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    {
+                        let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
+                        let right = v.slice(s![.., nx - 1..nx]);
+                        let left = v.slice(s![.., nx - 2..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
                 }
-                let inv_2dy = 0.5 * inv_dy;
-                for i in 0..nx {
-                    for j in 1..ny - 1 {
-                        dvdy[[j, i]] =
-                            (self.values[[j + 1, i]] - self.values[[j - 1, i]]) * inv_2dy;
+                if ny >= 2 {
+                    {
+                        let mut out = dvdy.slice_mut(s![0..1, ..]);
+                        let bottom = v.slice(s![1..2, ..]);
+                        let top = v.slice(s![0..1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, bb, tt| *o = (bb - tt) * inv_dy);
                     }
-                    if ny > 1 {
-                        dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
-                        dvdy[[ny - 1, i]] =
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
+                    {
+                        let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
+                        let bottom = v.slice(s![ny - 1..ny, ..]);
+                        let top = v.slice(s![ny - 2..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                 }
             }
             DerivativeStencil::Forward => {
-                for j in 0..ny {
-                    for i in 0..nx - 1 {
-                        dvdx[[j, i]] = (self.values[[j, i + 1]] - self.values[[j, i]]) * inv_dx;
+                if nx >= 2 {
+                    // interior
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 0..nx - 1]);
+                        let right = v.slice(s![.., 1..nx]);
+                        let left = v.slice(s![.., 0..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
-                    dvdx[[j, nx - 1]] =
-                        (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    // boundary fallback (forward)
+                    {
+                        let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
+                        let right = v.slice(s![.., nx - 1..nx]);
+                        let left = v.slice(s![.., nx - 2..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                    }
                 }
-                for i in 0..nx {
-                    for j in 0..ny - 1 {
-                        dvdy[[j, i]] = (self.values[[j + 1, i]] - self.values[[j, i]]) * inv_dy;
+
+                if ny >= 2 {
+                    // interior
+                    {
+                        let mut out = dvdy.slice_mut(s![0..ny - 1, ..]);
+                        let bottom = v.slice(s![1..ny, ..]);
+                        let top = v.slice(s![0..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
-                    dvdy[[ny - 1, i]] =
-                        (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
+                    // boundary fallback (forward)
+                    {
+                        let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
+                        let bottom = v.slice(s![ny - 1..ny, ..]);
+                        let top = v.slice(s![ny - 2..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                    }
                 }
             }
             DerivativeStencil::Backward => {
-                for j in 0..ny {
-                    dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
-                    for i in 1..nx {
-                        dvdx[[j, i]] = (self.values[[j, i]] - self.values[[j, i - 1]]) * inv_dx;
+                if nx >= 2 {
+                    // interior
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 1..nx]);
+                        let right = v.slice(s![.., 1..nx]);
+                        let left = v.slice(s![.., 0..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                    }
+                    // boundary fallback (backward)
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 0..1]);
+                        let right = v.slice(s![.., 1..2]);
+                        let left = v.slice(s![.., 0..1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
                 }
-                for i in 0..nx {
-                    dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
-                    for j in 1..ny {
-                        dvdy[[j, i]] = (self.values[[j, i]] - self.values[[j - 1, i]]) * inv_dy;
+
+                if ny >= 2 {
+                    // interior
+                    {
+                        let mut out = dvdy.slice_mut(s![1..ny, ..]);
+                        let bottom = v.slice(s![1..ny, ..]);
+                        let top = v.slice(s![0..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                    }
+                    // boundary fallback (backward)
+                    {
+                        let mut out = dvdy.slice_mut(s![0..1, ..]);
+                        let bottom = v.slice(s![1..2, ..]);
+                        let top = v.slice(s![0..1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                 }
             }
             DerivativeStencil::Central4 => {
                 let inv_2dx = 0.5 * inv_dx;
-                let c1x = 2.0 / 3.0 * inv_dx;
-                let c2x = inv_dx / 12.0;
                 let inv_2dy = 0.5 * inv_dy;
-                let c1y = 2.0 / 3.0 * inv_dy;
+                let c1x = (2.0 / 3.0) * inv_dx;
+                let c2x = inv_dx / 12.0;
+                let c1y = (2.0 / 3.0) * inv_dy;
                 let c2y = inv_dy / 12.0;
 
-                for j in 0..ny {
-                    for i in 2..nx - 2 {
-                        dvdx[[j, i]] = c1x * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
-                            - c2x * (self.values[[j, i + 2]] - self.values[[j, i - 2]]);
+                // interior
+                if nx >= 5 {
+                    let mut out = dvdx.slice_mut(s![.., 2..nx - 2]);
+                    let r1 = v.slice(s![.., 3..nx - 1]);
+                    let l1 = v.slice(s![.., 1..nx - 3]);
+                    let r2 = v.slice(s![.., 4..nx]);
+                    let l2 = v.slice(s![.., 0..nx - 4]);
+
+                    Zip::from(&mut out)
+                        .and(r1)
+                        .and(l1)
+                        .and(r2)
+                        .and(l2)
+                        .for_each(|o, &rr1, &ll1, &rr2, &ll2| {
+                            *o = c1x * (rr1 - ll1) - c2x * (rr2 - ll2);
+                        });
+                }
+                if ny >= 5 {
+                    let mut out = dvdy.slice_mut(s![2..ny - 2, ..]);
+                    let b1 = v.slice(s![3..ny - 1, ..]);
+                    let t1 = v.slice(s![1..ny - 3, ..]);
+                    let b2 = v.slice(s![4..ny, ..]);
+                    let t2 = v.slice(s![0..ny - 4, ..]);
+
+                    Zip::from(&mut out)
+                        .and(b1)
+                        .and(t1)
+                        .and(b2)
+                        .and(t2)
+                        .for_each(|o, &bb1, &tt1, &bb2, &tt2| {
+                            *o = c1y * (bb1 - tt1) - c2y * (bb2 - tt2);
+                        });
+                }
+                // boundary fallbacks (forward, 2nd central, backward)
+                if nx >= 2 {
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 0..1]);
+                        let right = v.slice(s![.., 1..2]);
+                        let left = v.slice(s![.., 0..1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
-                    // Fall back to 2nd-order central
-                    if nx > 2 {
-                        dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
-                        dvdx[[j, 1]] = (self.values[[j, 2]] - self.values[[j, 0]]) * inv_2dx;
-                        dvdx[[j, nx - 2]] =
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 3]]) * inv_2dx;
-                        dvdx[[j, nx - 1]] =
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    if nx >= 3 {
+                        {
+                            let mut out = dvdx.slice_mut(s![.., 1..2]);
+                            let right = v.slice(s![.., 2..3]);
+                            let left = v.slice(s![.., 0..1]);
+                            Zip::from(&mut out)
+                                .and(right)
+                                .and(left)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                        }
+                        {
+                            let mut out = dvdx.slice_mut(s![.., nx - 2..nx - 1]);
+                            let right = v.slice(s![.., nx - 1..nx]);
+                            let left = v.slice(s![.., nx - 3..nx - 2]);
+                            Zip::from(&mut out)
+                                .and(right)
+                                .and(left)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                        }
+                    }
+                    {
+                        let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
+                        let right = v.slice(s![.., nx - 1..nx]);
+                        let left = v.slice(s![.., nx - 2..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(right)
+                            .and(left)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
                 }
-
-                for i in 0..nx {
-                    for j in 2..ny - 2 {
-                        dvdy[[j, i]] = c1y * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
-                            - c2y * (self.values[[j + 2, i]] - self.values[[j - 2, i]]);
+                if ny >= 2 {
+                    {
+                        let mut out = dvdy.slice_mut(s![0..1, ..]);
+                        let bottom = v.slice(s![1..2, ..]);
+                        let top = v.slice(s![0..1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
-                    // Fall back to 2nd-order central
-                    if ny > 2 {
-                        dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
-                        dvdy[[1, i]] = (self.values[[2, i]] - self.values[[0, i]]) * inv_2dy;
-                        dvdy[[ny - 2, i]] =
-                            (self.values[[ny - 1, i]] - self.values[[ny - 3, i]]) * inv_2dy;
-                        dvdy[[ny - 1, i]] =
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
+                    if ny >= 3 {
+                        {
+                            let mut out = dvdy.slice_mut(s![1..2, ..]);
+                            let bottom = v.slice(s![2..3, ..]);
+                            let top = v.slice(s![0..1, ..]);
+                            Zip::from(&mut out)
+                                .and(bottom)
+                                .and(top)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                        {
+                            let mut out = dvdy.slice_mut(s![ny - 2..ny - 1, ..]);
+                            let bottom = v.slice(s![ny - 1..ny, ..]);
+                            let top = v.slice(s![ny - 3..ny - 2, ..]);
+                            Zip::from(&mut out)
+                                .and(bottom)
+                                .and(top)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                    }
+                    {
+                        let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
+                        let bottom = v.slice(s![ny - 1..ny, ..]);
+                        let top = v.slice(s![ny - 2..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(bottom)
+                            .and(top)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                 }
             }
             DerivativeStencil::Central6 => {
                 let inv_2dx = 0.5 * inv_dx;
+                let inv_2dy = 0.5 * inv_dy;
                 let inv_12dx = inv_dx / 12.0;
+                let inv_12dy = inv_dy / 12.0;
                 let c1x = 0.75 * inv_dx;
                 let c2x = 0.15 * inv_dx;
                 let c3x = 0.2 * inv_12dx;
-                let inv_2dy = 0.5 * inv_dy;
-                let inv_12dy = inv_dy / 12.0;
                 let c1y = 0.75 * inv_dy;
                 let c2y = 0.15 * inv_dy;
                 let c3y = 0.2 * inv_12dy;
 
-                for j in 0..ny {
-                    for i in 3..nx - 3 {
-                        dvdx[[j, i]] = c1x * (self.values[[j, i + 1]] - self.values[[j, i - 1]])
-                            - c2x * (self.values[[j, i + 2]] - self.values[[j, i - 2]])
-                            + c3x * (self.values[[j, i + 3]] - self.values[[j, i - 3]]);
+                // interior
+                if nx >= 7 {
+                    let mut out = dvdx.slice_mut(s![.., 3..nx - 3]);
+                    // Note: Zip arity limit is 5
+                    //     (future versions might manage a single Zip pass)
+                    {
+                        let r1 = v.slice(s![.., 4..nx - 2]);
+                        let l1 = v.slice(s![.., 2..nx - 4]);
+                        Zip::from(&mut out)
+                            .and(r1)
+                            .and(l1)
+                            .for_each(|o, &rr1, &ll1| *o = c1x * (rr1 - ll1));
                     }
-                    // Fall back to lower orders
-                    if nx >= 4 {
-                        // forward
-                        dvdx[[j, 0]] = (self.values[[j, 1]] - self.values[[j, 0]]) * inv_dx;
-                        // 2nd-order central
-                        dvdx[[j, 1]] = (self.values[[j, 2]] - self.values[[j, 0]]) * inv_2dx;
-                        // 4th-order if possible
-                        if nx > 4 {
-                            dvdx[[j, 2]] = (8.0 * (self.values[[j, 3]] - self.values[[j, 1]])
-                                - (self.values[[j, 4]] - self.values[[j, 0]]))
-                                * inv_12dx;
-                        } else {
-                            // otherwise 2nd-order
-                            dvdx[[j, 2]] = (self.values[[j, 3]] - self.values[[j, 1]]) * inv_2dx;
-                        }
-                        if nx > 4 {
-                            dvdx[[j, nx - 3]] = (8.0
-                                * (self.values[[j, nx - 2]] - self.values[[j, nx - 4]])
-                                - (self.values[[j, nx - 1]] - self.values[[j, nx - 5]]))
-                                * inv_12dx;
-                        } else {
-                            // otherwise 2nd-order
-                            dvdx[[j, nx - 3]] =
-                                (self.values[[j, nx - 2]] - self.values[[j, nx - 4]]) * inv_2dx;
-                        }
-                        // 2nd-order central
-                        dvdx[[j, nx - 2]] =
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 3]]) * inv_2dx;
-                        // backward
-                        dvdx[[j, nx - 1]] =
-                            (self.values[[j, nx - 1]] - self.values[[j, nx - 2]]) * inv_dx;
+                    {
+                        let r2 = v.slice(s![.., 5..nx - 1]);
+                        let l2 = v.slice(s![.., 1..nx - 5]);
+                        Zip::from(&mut out)
+                            .and(r2)
+                            .and(l2)
+                            .for_each(|o, &rr2, &ll2| *o += -c2x * (rr2 - ll2));
+                    }
+
+                    {
+                        let r3 = v.slice(s![.., 6..nx]);
+                        let l3 = v.slice(s![.., 0..nx - 6]);
+
+                        Zip::from(&mut out)
+                            .and(r3)
+                            .and(l3)
+                            .for_each(|o, &rr3, &ll3| *o += c3x * (rr3 - ll3));
+                    }
+                }
+                if ny >= 7 {
+                    let mut out = dvdy.slice_mut(s![3..ny - 3, ..]);
+
+                    {
+                        let b1 = v.slice(s![4..ny - 2, ..]);
+                        let t1 = v.slice(s![2..ny - 4, ..]);
+                        Zip::from(&mut out)
+                            .and(b1)
+                            .and(t1)
+                            .for_each(|o, &bb1, &tt1| *o = c1y * (bb1 - tt1));
+                    }
+                    {
+                        let b2 = v.slice(s![5..ny - 1, ..]);
+                        let t2 = v.slice(s![1..ny - 5, ..]);
+                        Zip::from(&mut out)
+                            .and(b2)
+                            .and(t2)
+                            .for_each(|o, &bb2, &tt2| *o += -c2y * (bb2 - tt2));
+                    }
+                    {
+                        let b3 = v.slice(s![6..ny, ..]);
+                        let t3 = v.slice(s![0..ny - 6, ..]);
+                        Zip::from(&mut out)
+                            .and(b3)
+                            .and(t3)
+                            .for_each(|o, &bb3, &tt3| *o += c3y * (bb3 - tt3));
                     }
                 }
 
-                for i in 0..nx {
-                    for j in 3..ny - 3 {
-                        dvdy[[j, i]] = c1y * (self.values[[j + 1, i]] - self.values[[j - 1, i]])
-                            - c2y * (self.values[[j + 2, i]] - self.values[[j - 2, i]])
-                            + c3y * (self.values[[j + 3, i]] - self.values[[j - 3, i]]);
+                // boundary fallbacks on x axis
+                //   (forward, 2nd central, 4th/2nd central2,
+                //    4th/2nd central, 2nd central, backward)
+                if nx >= 2 {
+                    {
+                        let mut out = dvdx.slice_mut(s![.., 0..1]);
+                        let r = v.slice(s![.., 1..2]);
+                        let l = v.slice(s![.., 0..1]);
+                        Zip::from(&mut out)
+                            .and(r)
+                            .and(l)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
                     }
-                    // Fall back to lower orders
-                    if ny >= 4 {
-                        // forward
-                        dvdy[[0, i]] = (self.values[[1, i]] - self.values[[0, i]]) * inv_dy;
-                        // 2nd-order central
-                        dvdy[[1, i]] = (self.values[[2, i]] - self.values[[0, i]]) * inv_2dy;
-                        // 4th-order if possible
-                        if ny > 4 {
-                            dvdy[[2, i]] = (8.0 * (self.values[[3, i]] - self.values[[1, i]])
-                                - (self.values[[4, i]] - self.values[[0, i]]))
-                                * inv_12dy;
-                        } else {
-                            // otherwise 2nd-order
-                            dvdy[[2, i]] = (self.values[[3, i]] - self.values[[1, i]]) * inv_2dy;
+                    if nx >= 3 {
+                        {
+                            let mut out = dvdx.slice_mut(s![.., 1..2]);
+                            let r = v.slice(s![.., 2..3]);
+                            let l = v.slice(s![.., 0..1]);
+                            Zip::from(&mut out)
+                                .and(r)
+                                .and(l)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
                         }
-                        // 4th-order if possible
-                        if ny > 4 {
-                            dvdy[[ny - 3, i]] = (8.0
-                                * (self.values[[ny - 2, i]] - self.values[[ny - 4, i]])
-                                - (self.values[[ny - 1, i]] - self.values[[ny - 5, i]]))
-                                * inv_12dy;
-                        } else {
-                            // otherwise 2nd-order
-                            dvdy[[ny - 3, i]] =
-                                (self.values[[ny - 2, i]] - self.values[[ny - 4, i]]) * inv_2dy;
+                        {
+                            let mut out = dvdx.slice_mut(s![.., nx - 2..nx - 1]);
+                            let r = v.slice(s![.., nx - 1..nx]);
+                            let l = v.slice(s![.., nx - 3..nx - 2]);
+                            Zip::from(&mut out)
+                                .and(r)
+                                .and(l)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
                         }
-                        // 2nd-order central
-                        dvdy[[ny - 2, i]] =
-                            (self.values[[ny - 1, i]] - self.values[[ny - 3, i]]) * inv_2dy;
-                        // backward
-                        dvdy[[ny - 1, i]] =
-                            (self.values[[ny - 1, i]] - self.values[[ny - 2, i]]) * inv_dy;
+                    }
+                    if nx > 4 {
+                        {
+                            let mut out = dvdx.slice_mut(s![.., 2..3]);
+                            let l3 = v.slice(s![.., 3..4]);
+                            let l1 = v.slice(s![.., 1..2]);
+                            let l4 = v.slice(s![.., 4..5]);
+                            let l0 = v.slice(s![.., 0..1]);
+                            Zip::from(&mut out)
+                                .and(l3)
+                                .and(l1)
+                                .and(l4)
+                                .and(l0)
+                                .for_each(|o, &ll3, &ll1, &ll4, &ll0| {
+                                    *o = (8.0 * (ll3 - ll1) - (ll4 - ll0)) * inv_12dx;
+                                });
+                        }
+                        {
+                            let mut out = dvdx.slice_mut(s![.., nx - 3..nx - 2]);
+                            let r1 = v.slice(s![.., nx - 2..nx - 1]);
+                            let r3 = v.slice(s![.., nx - 4..nx - 3]);
+                            let r0 = v.slice(s![.., nx - 1..nx]);
+                            let r4 = v.slice(s![.., nx - 5..nx - 4]);
+                            Zip::from(&mut out)
+                                .and(r1)
+                                .and(r3)
+                                .and(r0)
+                                .and(r4)
+                                .for_each(|o, &rr1, &rr3, &rr0, &rr4| {
+                                    *o = (8.0 * (rr1 - rr3) - (rr0 - rr4)) * inv_12dx;
+                                });
+                        }
+                    } else if nx >= 4 {
+                        {
+                            let mut out = dvdx.slice_mut(s![.., 2..3]);
+                            let r = v.slice(s![.., 3..4]);
+                            let l = v.slice(s![.., 1..2]);
+                            Zip::from(&mut out)
+                                .and(r)
+                                .and(l)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                        }
+                        {
+                            let mut out = dvdx.slice_mut(s![.., nx - 3..nx - 2]);
+                            let r = v.slice(s![.., nx - 2..nx - 1]);
+                            let l = v.slice(s![.., nx - 4..nx - 3]);
+                            Zip::from(&mut out)
+                                .and(r)
+                                .and(l)
+                                .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_2dx);
+                        }
+                    }
+                    {
+                        let mut out = dvdx.slice_mut(s![.., nx - 1..nx]);
+                        let r = v.slice(s![.., nx - 1..nx]);
+                        let l = v.slice(s![.., nx - 2..nx - 1]);
+                        Zip::from(&mut out)
+                            .and(r)
+                            .and(l)
+                            .for_each(|o, &rr, &ll| *o = (rr - ll) * inv_dx);
+                    }
+                }
+
+                // boundary fallbacks on y axis
+                //   (forward, 2nd central, 4th/2nd central2,
+                //    4th/2nd central, 2nd central, backward)
+                if ny >= 2 {
+                    {
+                        let mut out = dvdy.slice_mut(s![0..1, ..]);
+                        let b = v.slice(s![1..2, ..]);
+                        let t = v.slice(s![0..1, ..]);
+                        Zip::from(&mut out)
+                            .and(b)
+                            .and(t)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
+                    }
+                    if ny >= 3 {
+                        {
+                            let mut out = dvdy.slice_mut(s![1..2, ..]);
+                            let b = v.slice(s![2..3, ..]);
+                            let t = v.slice(s![0..1, ..]);
+                            Zip::from(&mut out)
+                                .and(b)
+                                .and(t)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                        {
+                            let mut out = dvdy.slice_mut(s![ny - 2..ny - 1, ..]);
+                            let b = v.slice(s![ny - 1..ny, ..]);
+                            let t = v.slice(s![ny - 3..ny - 2, ..]);
+                            Zip::from(&mut out)
+                                .and(b)
+                                .and(t)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                    }
+                    if ny > 4 {
+                        {
+                            let mut out = dvdy.slice_mut(s![2..3, ..]);
+                            let t3 = v.slice(s![3..4, ..]);
+                            let t1 = v.slice(s![1..2, ..]);
+                            let t4 = v.slice(s![4..5, ..]);
+                            let t0 = v.slice(s![0..1, ..]);
+                            Zip::from(&mut out)
+                                .and(t3)
+                                .and(t1)
+                                .and(t4)
+                                .and(t0)
+                                .for_each(|o, &tt3, &tt1, &tt4, &tt0| {
+                                    *o = (8.0 * (tt3 - tt1) - (tt4 - tt0)) * inv_12dy;
+                                });
+                        }
+                        {
+                            let mut out = dvdy.slice_mut(s![ny - 3..ny - 2, ..]);
+                            let b1 = v.slice(s![ny - 2..ny - 1, ..]);
+                            let b3 = v.slice(s![ny - 4..ny - 3, ..]);
+                            let b0 = v.slice(s![ny - 1..ny, ..]);
+                            let b4 = v.slice(s![ny - 5..ny - 4, ..]);
+                            Zip::from(&mut out)
+                                .and(b1)
+                                .and(b3)
+                                .and(b0)
+                                .and(b4)
+                                .for_each(|o, &bb1, &bb3, &bb0, &bb4| {
+                                    *o = (8.0 * (bb1 - bb3) - (bb0 - bb4)) * inv_12dy;
+                                });
+                        }
+                    } else if ny >= 4 {
+                        {
+                            let mut out = dvdy.slice_mut(s![2..3, ..]);
+                            let b = v.slice(s![3..4, ..]);
+                            let t = v.slice(s![1..2, ..]);
+                            Zip::from(&mut out)
+                                .and(b)
+                                .and(t)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                        {
+                            let mut out = dvdy.slice_mut(s![ny - 3..ny - 2, ..]);
+                            let b = v.slice(s![ny - 2..ny - 1, ..]);
+                            let t = v.slice(s![ny - 4..ny - 3, ..]);
+                            Zip::from(&mut out)
+                                .and(b)
+                                .and(t)
+                                .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_2dy);
+                        }
+                    }
+                    {
+                        let mut out = dvdy.slice_mut(s![ny - 1..ny, ..]);
+                        let b = v.slice(s![ny - 1..ny, ..]);
+                        let t = v.slice(s![ny - 2..ny - 1, ..]);
+                        Zip::from(&mut out)
+                            .and(b)
+                            .and(t)
+                            .for_each(|o, &bb, &tt| *o = (bb - tt) * inv_dy);
                     }
                 }
             }
@@ -1057,7 +1417,7 @@ impl PixelGrid {
         let (dvdx, dvdy) = self.gradient_field(stencil);
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
 
-        ndarray::Zip::from(&mut magnitude)
+        Zip::from(&mut magnitude)
             .and(&dvdx)
             .and(&dvdy)
             .for_each(|m, &gx, &gy| {
@@ -1079,7 +1439,7 @@ impl PixelGrid {
         let (dvdx, dvdy) = self.par_gradient_field(stencil);
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
 
-        ndarray::Zip::from(&mut magnitude)
+        Zip::from(&mut magnitude)
             .and(&dvdx)
             .and(&dvdy)
             .par_for_each(|m, &gx, &gy| {
@@ -2605,7 +2965,7 @@ mod tests {
     fn test_pixel_grid_laplacian_spectral() {
         let size: usize = 64;
         let grid = Grid2D::square(size, 2.0).unwrap();
-	// Quadratic function: Laplacian should be constant
+        // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
         let laplace_fft = pg.laplacian_spectral(DerivativeStencil::Central).unwrap();
