@@ -2034,7 +2034,7 @@ impl PixelGrid {
                         });
                     }
                 }
-		// boundary fallbacks (2nd central)
+                // boundary fallbacks (2nd central)
                 if ny >= 3 {
                     {
                         let mut out = laplace.slice_mut(s![1..2, ..]);
