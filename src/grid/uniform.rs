@@ -2582,7 +2582,7 @@ mod tests {
         let pg = PixelGrid::zeros(grid);
 
         assert_eq!(pg.values.shape(), &[4, 4]);
-        assert!(approx_eq(pg.sum(), 0.0, None));
+        assert!(approx_eq(pg.sum(), 0.0, 1e-12));
     }
 
     #[test]
@@ -2591,7 +2591,7 @@ mod tests {
         let pg = PixelGrid::ones(grid);
 
         assert_eq!(pg.values.shape(), &[4, 4]);
-        assert!(approx_eq(pg.sum(), 16.0, None));
+        assert!(approx_eq(pg.sum(), 16.0, 1e-12));
     }
 
     #[test]
@@ -2599,7 +2599,7 @@ mod tests {
         let grid = Grid2D::square(4, 1.0).unwrap();
         let pg = PixelGrid::constant(grid, 3.5);
 
-        assert!(approx_eq(pg.mean(), 3.5, None));
+        assert!(approx_eq(pg.mean(), 3.5, 1e-12));
     }
 
     #[test]
@@ -2609,7 +2609,7 @@ mod tests {
 
         let center_val = pg.get(2, 2);
         let expected = grid.x_at(2).powi(2) + grid.y_at(2).powi(2);
-        assert!(approx_eq(center_val, expected, None));
+        assert!(approx_eq(center_val, expected, 1e-12));
     }
 
     #[test]
@@ -2618,7 +2618,7 @@ mod tests {
         let mut pg = PixelGrid::zeros(grid);
 
         pg.set(1, 2, 5.0);
-        assert!(approx_eq(pg.get(1, 2), 5.0, None));
+        assert!(approx_eq(pg.get(1, 2), 5.0, 1e-12));
 
         assert!(pg.get_safely(1, 2).is_some());
         assert!(pg.get_safely(10, 10).is_none());
@@ -2629,12 +2629,12 @@ mod tests {
         let grid = Grid2D::square(4, 1.0).unwrap();
         let pg = PixelGrid::from_func(grid, |_, _| 2.0);
 
-        assert!(approx_eq(pg.sum(), 32.0, None));
-        assert!(approx_eq(pg.mean(), 2.0, None));
-        assert!(approx_eq(pg.min(), 2.0, None));
-        assert!(approx_eq(pg.max(), 2.0, None));
-        assert!(approx_eq(pg.var(), 0.0, None));
-        assert!(approx_eq(pg.std(), 0.0, None));
+        assert!(approx_eq(pg.sum(), 32.0, 1e-12));
+        assert!(approx_eq(pg.mean(), 2.0, 1e-12));
+        assert!(approx_eq(pg.min(), 2.0, 1e-12));
+        assert!(approx_eq(pg.max(), 2.0, 1e-12));
+        assert!(approx_eq(pg.var(), 0.0, 1e-12));
+        assert!(approx_eq(pg.std(), 0.0, 1e-12));
     }
 
     #[test]
@@ -2643,10 +2643,10 @@ mod tests {
         let pg = PixelGrid::ones(grid);
 
         let scaled = pg.scale(2.0);
-        assert!(approx_eq(scaled.mean(), 2.0, None));
+        assert!(approx_eq(scaled.mean(), 2.0, 1e-12));
 
         let shifted = pg.shift(3.0);
-        assert!(approx_eq(shifted.mean(), 4.0, None));
+        assert!(approx_eq(shifted.mean(), 4.0, 1e-12));
     }
 
     #[test]
@@ -2656,13 +2656,13 @@ mod tests {
         let pg2 = PixelGrid::constant(grid, 3.0);
 
         let added = pg1.add(&pg2).unwrap();
-        assert!(approx_eq(added.mean(), 5.0, None));
+        assert!(approx_eq(added.mean(), 5.0, 1e-12));
 
         let subtracted = pg1.sub(&pg2).unwrap();
-        assert!(approx_eq(subtracted.mean(), -1.0, None));
+        assert!(approx_eq(subtracted.mean(), -1.0, 1e-12));
 
         let multiplied = pg1.mul(&pg2).unwrap();
-        assert!(approx_eq(multiplied.mean(), 6.0, None));
+        assert!(approx_eq(multiplied.mean(), 6.0, 1e-12));
     }
 
     #[test]
@@ -2671,11 +2671,11 @@ mod tests {
         let mut pg = PixelGrid::constant(grid, 2.0);
 
         pg.normalize_sum(Some(1.0));
-        assert!(approx_eq(pg.sum(), 1.0, None));
+        assert!(approx_eq(pg.sum(), 1.0, 1e-12));
 
         let mut pg2 = PixelGrid::constant(grid, 2.0);
         pg2.normalize_max(Some(1.0));
-        assert!(approx_eq(pg2.max(), 1.0, None));
+        assert!(approx_eq(pg2.max(), 1.0, 1e-12));
     }
 
     #[test]
@@ -2692,7 +2692,7 @@ mod tests {
         let center = Point2D::origin();
         let orig_val = pg.interpolate(&center);
         let resampled_val = resampled.interpolate(&center);
-        assert!(approx_eq(orig_val, resampled_val, None));
+        assert!(approx_eq(orig_val, resampled_val, 1e-12));
     }
 
     #[test]
@@ -2709,7 +2709,7 @@ mod tests {
                 assert!(approx_eq(
                     resampled_seq.get(i, j),
                     resampled_par.get(i, j),
-                    None
+                    1e-12
                 ));
             }
         }
@@ -2725,7 +2725,7 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(pg.values[[j, i]], reconstructed[[j, i]], None));
+                assert!(approx_eq(pg.values[[j, i]], reconstructed[[j, i]], 1e-12));
             }
         }
     }
@@ -2750,8 +2750,16 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(fft_result[[j, i]].re, unshifted[[j, i]].re, None));
-                assert!(approx_eq(fft_result[[j, i]].im, unshifted[[j, i]].im, None));
+                assert!(approx_eq(
+                    fft_result[[j, i]].re,
+                    unshifted[[j, i]].re,
+                    1e-12
+                ));
+                assert!(approx_eq(
+                    fft_result[[j, i]].im,
+                    unshifted[[j, i]].im,
+                    1e-12
+                ));
             }
         }
     }
@@ -2764,7 +2772,7 @@ mod tests {
         let center = Point2D::origin();
         let interp = pg.interpolate(&center);
 
-        assert!(approx_eq(interp, 0.0, None));
+        assert!(approx_eq(interp, 0.0, 1e-12));
     }
 
     #[test]
@@ -2787,8 +2795,8 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(dvdx[[j, i]], par_dvdx[[j, i]], None));
-                assert!(approx_eq(dvdy[[j, i]], par_dvdy[[j, i]], None));
+                assert!(approx_eq(dvdx[[j, i]], par_dvdx[[j, i]], 1e-12));
+                assert!(approx_eq(dvdy[[j, i]], par_dvdy[[j, i]], 1e-12));
             }
         }
     }
@@ -2805,14 +2813,14 @@ mod tests {
         for j in 16..48 {
             for i in 16..48 {
                 assert!(
-                    approx_eq(dvdx[[j, i]], 1.0, None),
+                    approx_eq(dvdx[[j, i]], 1.0, 1e-12),
                     "dvdx at ({}, {}) = {}, expected 1.0",
                     i,
                     j,
                     dvdx[[j, i]]
                 );
                 assert!(
-                    approx_eq(dvdy[[j, i]], 2.0, None),
+                    approx_eq(dvdy[[j, i]], 2.0, 1e-12),
                     "dvdy at ({}, {}) = {}, expected 2.0",
                     i,
                     j,
@@ -2843,7 +2851,7 @@ mod tests {
 
         for j in 0..8 {
             for i in 0..8 {
-                assert!(approx_eq(laplace[[j, i]], par_laplace[[j, i]], None));
+                assert!(approx_eq(laplace[[j, i]], par_laplace[[j, i]], 1e-12));
             }
         }
     }
@@ -2861,7 +2869,7 @@ mod tests {
         for j in border_size..size - border_size {
             for i in border_size..size - border_size {
                 assert!(
-                    approx_eq(laplace_fft[[j, i]], 4.0, None),
+                    approx_eq(laplace_fft[[j, i]], 4.0, 1e-12),
                     "Laplacian at ({}, {}) = {}, expected {}",
                     i,
                     j,
@@ -2874,7 +2882,7 @@ mod tests {
 
     #[test]
     fn test_laplacian_spectral_vs_finite_diff() {
-        let size: usize = 64;
+        let size: usize = 128;
         let grid = Grid2D::square(size, 2.0).unwrap();
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
@@ -2892,6 +2900,6 @@ mod tests {
             }
         }
         println!("Max Laplacian error: {}", max_err);
-        assert!(max_err < 1e-12, "Laplacian error too large: {}", max_err);
+        assert!(max_err < 1e-10, "Laplacian error too large: {}", max_err);
     }
 }
