@@ -15,9 +15,21 @@ use phastft::{
 };
 use rayon::prelude::*;
 
+
 macro_rules! zip3_for_each {
     ($par:expr, $out:expr, $a:expr, $b:expr, $body:expr) => {{
         let z = Zip::from($out).and($a).and($b);
+        if $par {
+            z.par_for_each($body);
+        } else {
+            z.for_each($body);
+        }
+    }};
+}
+
+macro_rules! zip4_for_each {
+    ($par:expr, $out:expr, $a:expr, $b:expr, $c:expr, $body:expr) => {{
+        let z = Zip::from($out).and($a).and($b).and($c);
         if $par {
             z.par_for_each($body);
         } else {
@@ -1211,7 +1223,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
     pub fn gradient_magnitude(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
-	self.gradient_magnitude_impl::<false>(stencil)
+        self.gradient_magnitude_impl::<false>(stencil)
     }
 
     /// Compute gradient magnitude of the entire grid in parallel (using rayon backend)
@@ -1226,13 +1238,13 @@ impl PixelGrid {
     }
 
     fn gradient_magnitude_impl<const PAR: bool>(
-	&self,
-	stencil: impl Into<Option<DerivativeStencil>>,
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Array2<f64> {
-	let stencil = stencil.into().unwrap_or_default();
+        let stencil = stencil.into().unwrap_or_default();
         let (dvdx, dvdy) = self.gradient_field_impl::<PAR>(stencil);
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
-	zip3_for_each!(PAR, &mut magnitude, &dvdx, &dvdy, |m, &gx, &gy| {
+        zip3_for_each!(PAR, &mut magnitude, &dvdx, &dvdy, |m, &gx, &gy| {
             *m = (gx * gx + gy * gy).sqrt();
         });
         magnitude
@@ -1504,11 +1516,14 @@ impl PixelGrid {
         d2vdx2 + d2vdy2
     }
 
-    /// Compute Laplace field over the entire grid
+    /// Base implementation to compute Laplacian fields (parallel or sequential)
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    pub fn laplacian_field(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
+    fn laplacian_field_impl<const PAR: bool>(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Array2<f64> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -1516,186 +1531,330 @@ impl PixelGrid {
         let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
 
         let mut laplace = Array2::zeros((ny, nx));
+        if nx == 0 || ny == 0 {
+            return laplace;
+        }
+
+        let v = self.values.as_standard_layout();
+        let v = v.view();
 
         match stencil {
             DerivativeStencil::Central => {
-                for j in 1..ny - 1 {
-                    for i in 1..nx - 1 {
-                        let v_ij = self.values[[j, i]];
-                        laplace[[j, i]] = (self.values[[j, i + 1]] - 2.0 * v_ij
-                            + self.values[[j, i - 1]])
-                            * inv_dx2
-                            + (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2;
+                // interior
+                if nx >= 3 && ny >= 3 {
+                    {
+                        let mut out = laplace.slice_mut(s![1..ny - 1, 1..nx - 1]);
+                        let c = v.slice(s![1..ny - 1, 1..nx - 1]);
+                        let xl = v.slice(s![1..ny - 1, 0..nx - 2]);
+                        let xr = v.slice(s![1..ny - 1, 2..nx]);
+                        zip4_for_each!(PAR, &mut out, xr, c, xl, |o, &r, &cc, &l| {
+                            *o = (r - 2.0 * cc + l) * inv_dx2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![1..ny - 1, 1..nx - 1]);
+                        let c = v.slice(s![1..ny - 1, 1..nx - 1]);
+                        let yt = v.slice(s![0..ny - 2, 1..nx - 1]);
+                        let yb = v.slice(s![2..ny, 1..nx - 1]);
+                        zip4_for_each!(PAR, &mut out, yt, c, yb, |o, &t, &cc, &b| {
+                            *o += (b - 2.0 * cc + t) * inv_dy2;
+                        });
                     }
                 }
-                // fall back to forward/backward stencils
-                if nx > 2 && ny > 2 {
-                    // top and bottom rows (excluding corners)
-                    for i in 1..nx - 1 {
-                        let v_0i = self.values[[0, i]];
-                        laplace[[0, i]] = (self.values[[0, i + 1]] - 2.0 * v_0i
-                            + self.values[[0, i - 1]])
-                            * inv_dx2
-                            + (self.values[[2, i]] - 2.0 * self.values[[1, i]] + v_0i) * inv_dy2;
 
-                        let v_ni = self.values[[ny - 1, i]];
-                        laplace[[ny - 1, i]] = (self.values[[ny - 1, i + 1]] - 2.0 * v_ni
-                            + self.values[[ny - 1, i - 1]])
-                            * inv_dx2
-                            + (v_ni - 2.0 * self.values[[ny - 2, i]] + self.values[[ny - 3, i]])
-                                * inv_dy2;
+                // boundary fallbacks (forward, backward)
+                if ny > 2 && nx > 2 {
+                    {
+                        let mut out = laplace.slice_mut(s![0..1, 1..nx - 1]);
+                        let xc = v.slice(s![0..1, 1..nx - 1]);
+                        let xl = v.slice(s![0..1, 0..nx - 2]);
+                        let xr = v.slice(s![0..1, 2..nx]);
+                        zip4_for_each!(PAR, &mut out, xr, xc, xl, |o, &r, &cc, &l| {
+                            *o = (r - 2.0 * cc + l) * inv_dx2;
+                        });
+                        let y0 = v.slice(s![0..1, 1..nx - 1]);
+                        let y1 = v.slice(s![1..2, 1..nx - 1]);
+                        let y2 = v.slice(s![2..3, 1..nx - 1]);
+                        zip4_for_each!(PAR, &mut out, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                            *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                        });
                     }
-
-                    // left and right columns (excluding corners)
-                    for j in 1..ny - 1 {
-                        let v_j0 = self.values[[j, 0]];
-                        laplace[[j, 0]] = (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_j0)
-                            * inv_dx2
-                            + (self.values[[j + 1, 0]] - 2.0 * v_j0 + self.values[[j - 1, 0]])
-                                * inv_dy2;
-
-                        let v_jn = self.values[[j, nx - 1]];
-                        laplace[[j, nx - 1]] = (v_jn - 2.0 * self.values[[j, nx - 2]]
-                            + self.values[[j, nx - 3]])
-                            * inv_dx2
-                            + (self.values[[j + 1, nx - 1]] - 2.0 * v_jn
-                                + self.values[[j - 1, nx - 1]])
-                                * inv_dy2;
+                    {
+                        let mut out = laplace.slice_mut(s![ny - 1..ny, 1..nx - 1]);
+                        let c = v.slice(s![ny - 1..ny, 1..nx - 1]);
+                        let xl = v.slice(s![ny - 1..ny, 0..nx - 2]);
+                        let xr = v.slice(s![ny - 1..ny, 2..nx]);
+                        zip4_for_each!(PAR, &mut out, xr, c, xl, |o, &r, &cc, &l| {
+                            *o = (r - 2.0 * cc + l) * inv_dx2;
+                        });
+                        let y0 = v.slice(s![ny - 3..ny - 2, 1..nx - 1]);
+                        let y1 = v.slice(s![ny - 2..ny - 1, 1..nx - 1]);
+                        let y2 = v.slice(s![ny - 1..ny, 1..nx - 1]);
+                        zip4_for_each!(PAR, &mut out, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                            *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                        });
                     }
+                    {
+                        let mut out = laplace.slice_mut(s![1..ny - 1, 0..1]);
+                        let c = v.slice(s![1..ny - 1, 0..1]);
+                        let yt = v.slice(s![0..ny - 2, 0..1]);
+                        let yb = v.slice(s![2..ny, 0..1]);
+                        zip4_for_each!(PAR, &mut out, yb, c, yt, |o, &b, &cc, &t| {
+                            *o = (b - 2.0 * cc + t) * inv_dy2;
+                        });
+                        let x0 = v.slice(s![1..ny - 1, 0..1]);
+                        let x1 = v.slice(s![1..ny - 1, 1..2]);
+                        let x2 = v.slice(s![1..ny - 1, 2..3]);
+                        zip4_for_each!(PAR, &mut out, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                            *o += (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![1..ny - 1, nx - 1..nx]);
+                        let c = v.slice(s![1..ny - 1, nx - 1..nx]);
+                        let yt = v.slice(s![0..ny - 2, nx - 1..nx]);
+                        let yb = v.slice(s![2..ny, nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut out, yb, c, yt, |o, &b, &cc, &t| {
+                            *o = (b - 2.0 * cc + t) * inv_dy2;
+                        });
+                        let x0 = v.slice(s![1..ny - 1, nx - 3..nx - 2]);
+                        let x1 = v.slice(s![1..ny - 1, nx - 2..nx - 1]);
+                        let x2 = v.slice(s![1..ny - 1, nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut out, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                            *o += (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                        });
+                    }
+                    if nx >= 3 && ny >= 3 {
+                        let v00 = v[[0, 0]];
+                        laplace[[0, 0]] = (v[[0, 2]] - 2.0 * v[[0, 1]] + v00) * inv_dx2
+                            + (v[[2, 0]] - 2.0 * v[[1, 0]] + v00) * inv_dy2;
 
-                    // corners
-                    let v00 = self.values[[0, 0]];
-                    laplace[[0, 0]] = (self.values[[0, 2]] - 2.0 * self.values[[0, 1]] + v00)
-                        * inv_dx2
-                        + (self.values[[2, 0]] - 2.0 * self.values[[1, 0]] + v00) * inv_dy2;
+                        let v0n = v[[0, nx - 1]];
+                        laplace[[0, nx - 1]] = (v0n - 2.0 * v[[0, nx - 2]] + v[[0, nx - 3]])
+                            * inv_dx2
+                            + (v[[2, nx - 1]] - 2.0 * v[[1, nx - 1]] + v0n) * inv_dy2;
 
-                    let v0n = self.values[[0, nx - 1]];
-                    laplace[[0, nx - 1]] =
-                        (v0n - 2.0 * self.values[[0, nx - 2]] + self.values[[0, nx - 3]]) * inv_dx2
-                            + (self.values[[2, nx - 1]] - 2.0 * self.values[[1, nx - 1]] + v0n)
-                                * inv_dy2;
+                        let vn0 = v[[ny - 1, 0]];
+                        laplace[[ny - 1, 0]] = (v[[ny - 1, 2]] - 2.0 * v[[ny - 1, 1]] + vn0)
+                            * inv_dx2
+                            + (vn0 - 2.0 * v[[ny - 2, 0]] + v[[ny - 3, 0]]) * inv_dy2;
 
-                    let vn0 = self.values[[ny - 1, 0]];
-                    laplace[[ny - 1, 0]] =
-                        (self.values[[ny - 1, 2]] - 2.0 * self.values[[ny - 1, 1]] + vn0) * inv_dx2
-                            + (vn0 - 2.0 * self.values[[ny - 2, 0]] + self.values[[ny - 3, 0]])
-                                * inv_dy2;
-
-                    let vnn = self.values[[ny - 1, nx - 1]];
-                    laplace[[ny - 1, nx - 1]] = (vnn - 2.0 * self.values[[ny - 1, nx - 2]]
-                        + self.values[[ny - 1, nx - 3]])
-                        * inv_dx2
-                        + (vnn - 2.0 * self.values[[ny - 2, nx - 1]]
-                            + self.values[[ny - 3, nx - 1]])
-                            * inv_dy2;
+                        let vnn = v[[ny - 1, nx - 1]];
+                        laplace[[ny - 1, nx - 1]] =
+                            (vnn - 2.0 * v[[ny - 1, nx - 2]] + v[[ny - 1, nx - 3]]) * inv_dx2
+                                + (vnn - 2.0 * v[[ny - 2, nx - 1]] + v[[ny - 3, nx - 1]]) * inv_dy2;
+                    }
                 }
             }
             DerivativeStencil::Forward => {
-                for j in 0..ny {
-                    for i in 0..nx {
-                        let v_ij = self.values[[j, i]];
-
-                        let d2vdx2 = if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
-                                * inv_dx2
-                        } else if i + 1 < nx && i > 0 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else if i > 1 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-
-                        let d2vdy2 = if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
-                                * inv_dy2
-                        } else if j + 1 < ny && j > 0 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else if j > 1 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-
-                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                if nx >= 3 {
+                    // interior along x axis
+                    let mut out = laplace.slice_mut(s![.., 0..nx - 2]);
+                    let x0 = v.slice(s![.., 0..nx - 2]);
+                    let x1 = v.slice(s![.., 1..nx - 1]);
+                    let x2 = v.slice(s![.., 2..nx]);
+                    zip4_for_each!(PAR, &mut out, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                        *o = (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                    });
+                    // boundary fallbacks (2nd central, backward)
+                    if nx >= 3 {
+                        let mut col = laplace.slice_mut(s![.., nx - 2..nx - 1]);
+                        let xl = v.slice(s![.., nx - 3..nx - 2]);
+                        let xc = v.slice(s![.., nx - 2..nx - 1]);
+                        let xr = v.slice(s![.., nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut col, xr, xc, xl, |o, &r, &c, &l| {
+                            *o = (r - 2.0 * c + l) * inv_dx2;
+                        });
+                    }
+                    {
+                        let mut col = laplace.slice_mut(s![.., nx - 1..nx]);
+                        let x0 = v.slice(s![.., nx - 3..nx - 2]);
+                        let x1 = v.slice(s![.., nx - 2..nx - 1]);
+                        let x2 = v.slice(s![.., nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut col, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                            *o = (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                        });
+                    }
+                }
+                if ny >= 3 {
+                    // interior along y axis
+                    let mut out = laplace.slice_mut(s![0..ny - 2, ..]);
+                    let y0 = v.slice(s![0..ny - 2, ..]);
+                    let y1 = v.slice(s![1..ny - 1, ..]);
+                    let y2 = v.slice(s![2..ny, ..]);
+                    zip4_for_each!(PAR, &mut out, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                        *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                    });
+                    // boundary fallbacks (2nd central, backward)
+                    {
+                        let mut row = laplace.slice_mut(s![ny - 2..ny - 1, ..]);
+                        let yt = v.slice(s![ny - 3..ny - 2, ..]);
+                        let yc = v.slice(s![ny - 2..ny - 1, ..]);
+                        let yb = v.slice(s![ny - 1..ny, ..]);
+                        zip4_for_each!(PAR, &mut row, yb, yc, yt, |o, &b, &c, &t| {
+                            *o += (b - 2.0 * c + t) * inv_dy2;
+                        });
+                    }
+                    {
+                        let mut row = laplace.slice_mut(s![ny - 1..ny, ..]);
+                        let y0 = v.slice(s![ny - 3..ny - 2, ..]);
+                        let y1 = v.slice(s![ny - 2..ny - 1, ..]);
+                        let y2 = v.slice(s![ny - 1..ny, ..]);
+                        zip4_for_each!(PAR, &mut row, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                            *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                        });
                     }
                 }
             }
             DerivativeStencil::Backward => {
-                for j in 0..ny {
-                    for i in 0..nx {
-                        let v_ij = self.values[[j, i]];
+                if nx >= 3 {
+                    // interior along x axis
+                    let mut out = laplace.slice_mut(s![.., 2..nx]);
+                    let x2 = v.slice(s![.., 2..nx]);
+                    let x1 = v.slice(s![.., 1..nx - 1]);
+                    let x0 = v.slice(s![.., 0..nx - 2]);
+                    zip4_for_each!(PAR, &mut out, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                        *o = (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                    });
+                    // boundary fallback (2nd central, forward)
+                    {
+                        let mut col = laplace.slice_mut(s![.., 0..1]);
+                        let xl = v.slice(s![.., 0..1]);
+                        let xc = v.slice(s![.., 1..2]);
+                        let xr = v.slice(s![.., 2..3]);
+                        zip4_for_each!(PAR, &mut col, xr, xc, xl, |o, &r, &c, &l| {
+                            *o = (r - 2.0 * c + l) * inv_dx2;
+                        });
+                    }
+                    {
+                        let mut col = laplace.slice_mut(s![.., 1..2]);
+                        let x0 = v.slice(s![.., 0..1]);
+                        let x1 = v.slice(s![.., 1..2]);
+                        let x2 = v.slice(s![.., 2..3]);
+                        zip4_for_each!(PAR, &mut col, x2, x1, x0, |o, &xx2, &xx1, &xx0| {
+                            *o = (xx2 - 2.0 * xx1 + xx0) * inv_dx2;
+                        });
+                    }
+                }
+                if ny >= 3 {
+                    // interior along y axis
+                    let mut out = laplace.slice_mut(s![2..ny, ..]);
+                    let y2 = v.slice(s![2..ny, ..]);
+                    let y1 = v.slice(s![1..ny - 1, ..]);
+                    let y0 = v.slice(s![0..ny - 2, ..]);
+                    zip4_for_each!(PAR, &mut out, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                        *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                    });
 
-                        let d2vdx2 = if i >= 2 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
-                                * inv_dx2
-                        } else if i > 0 && i + 1 < nx {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-
-                        let d2vdy2 = if j >= 2 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
-                                * inv_dy2
-                        } else if j > 0 && j + 1 < ny {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-
-                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                    // boundary fallbacks (2nd central, forward)
+                    {
+                        let mut row = laplace.slice_mut(s![0..1, ..]);
+                        let yl = v.slice(s![0..1, ..]);
+                        let yc = v.slice(s![1..2, ..]);
+                        let yr = v.slice(s![2..3, ..]);
+                        zip4_for_each!(PAR, &mut row, yr, yc, yl, |o, &r, &c, &l| {
+                            *o += (r - 2.0 * c + l) * inv_dy2;
+                        });
+                    }
+                    {
+                        let mut row = laplace.slice_mut(s![1..2, ..]);
+                        let y0 = v.slice(s![0..1, ..]);
+                        let y1 = v.slice(s![1..2, ..]);
+                        let y2 = v.slice(s![2..3, ..]);
+                        zip4_for_each!(PAR, &mut row, y2, y1, y0, |o, &yy2, &yy1, &yy0| {
+                            *o += (yy2 - 2.0 * yy1 + yy0) * inv_dy2;
+                        });
                     }
                 }
             }
             DerivativeStencil::Central4 => {
                 let inv_12dx2 = inv_dx2 / 12.0;
                 let inv_12dy2 = inv_dy2 / 12.0;
+                // interior along x axis
+                if nx >= 5 {
+                    let mut out = laplace.slice_mut(s![.., 2..nx - 2]);
+                    let c = v.slice(s![.., 2..nx - 2]);
+                    zip3_for_each!(PAR, &mut out, c, c, |o, &cc, &_| {
+                        *o = (-30.0 * cc) * inv_12dx2;
+                    });
+                    {
+                        let p1 = v.slice(s![.., 3..nx - 1]);
+                        let m1 = v.slice(s![.., 1..nx - 3]);
+                        zip3_for_each!(PAR, &mut out, p1, m1, |o, &pp, &mm| {
+                            *o += (16.0 * (pp + mm)) * inv_12dx2;
+                        });
+                    }
+                    {
+                        let p2 = v.slice(s![.., 4..nx]);
+                        let m2 = v.slice(s![.., 0..nx - 4]);
+                        zip3_for_each!(PAR, &mut out, p2, m2, |o, &pp, &mm| {
+                            *o += (-(pp + mm)) * inv_12dx2;
+                        });
+                    }
+                }
+                // boundary fallbacks (2nd central, leave edge cases 0)
+                if nx >= 3 {
+                    {
+                        let mut out = laplace.slice_mut(s![.., 1..2]);
+                        let l = v.slice(s![.., 0..1]);
+                        let c = v.slice(s![.., 1..2]);
+                        let r = v.slice(s![.., 2..3]);
+                        zip4_for_each!(PAR, &mut out, r, c, l, |o, &rr, &cc, &ll| {
+                            *o += (rr - 2.0 * cc + ll) * inv_dx2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![.., nx - 2..nx - 1]);
+                        let l = v.slice(s![.., nx - 3..nx - 2]);
+                        let c = v.slice(s![.., nx - 2..nx - 1]);
+                        let r = v.slice(s![.., nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut out, r, c, l, |o, &rr, &cc, &ll| {
+                            *o += (rr - 2.0 * cc + ll) * inv_dx2;
+                        });
+                    }
+                }
 
-                for j in 0..ny {
-                    for i in 0..nx {
-                        let v_ij = self.values[[j, i]];
-
-                        let d2vdx2 = if i >= 2 && i < nx - 2 {
-                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j, i - 1]]
-                                - self.values[[j, i - 2]])
-                                * inv_12dx2
-                        } else if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-
-                        let d2vdy2 = if j >= 2 && j < ny - 2 {
-                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j - 1, i]]
-                                - self.values[[j - 2, i]])
-                                * inv_12dy2
-                        } else if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-
-                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                // interior along y axis
+                if ny >= 5 {
+                    let mut out = laplace.slice_mut(s![2..ny - 2, ..]);
+                    let c = v.slice(s![2..ny - 2, ..]);
+                    zip3_for_each!(PAR, &mut out, c, c, |o, &cc, &_| {
+                        *o += (-30.0 * cc) * inv_12dy2;
+                    });
+                    {
+                        let p1 = v.slice(s![3..ny - 1, ..]);
+                        let m1 = v.slice(s![1..ny - 3, ..]);
+                        zip3_for_each!(PAR, &mut out, p1, m1, |o, &pp, &mm| {
+                            *o += (16.0 * (pp + mm)) * inv_12dy2;
+                        });
+                    }
+                    {
+                        let p2 = v.slice(s![4..ny, ..]);
+                        let m2 = v.slice(s![0..ny - 4, ..]);
+                        zip3_for_each!(PAR, &mut out, p2, m2, |o, &pp, &mm| {
+                            *o += (-(pp + mm)) * inv_12dy2;
+                        });
+                    }
+                }
+                // boundary fallbacks (2nd central, leave edge cases 0)
+                if ny >= 3 {
+                    {
+                        let mut out = laplace.slice_mut(s![1..2, ..]);
+                        let t = v.slice(s![0..1, ..]);
+                        let c = v.slice(s![1..2, ..]);
+                        let b = v.slice(s![2..3, ..]);
+                        zip4_for_each!(PAR, &mut out, b, c, t, |o, &bb, &cc, &tt| {
+                            *o += (bb - 2.0 * cc + tt) * inv_dy2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![ny - 2..ny - 1, ..]);
+                        let t = v.slice(s![ny - 3..ny - 2, ..]);
+                        let c = v.slice(s![ny - 2..ny - 1, ..]);
+                        let b = v.slice(s![ny - 1..ny, ..]);
+                        zip4_for_each!(PAR, &mut out, b, c, t, |o, &bb, &cc, &tt| {
+                            *o += (bb - 2.0 * cc + tt) * inv_dy2;
+                        });
                     }
                 }
             }
@@ -1706,54 +1865,192 @@ impl PixelGrid {
                 let c2 = 9.0 / 5.0;
                 let c0 = 98.0 / 3.0;
 
-                for j in 0..ny {
-                    for i in 0..nx {
-                        let v_ij = self.values[[j, i]];
+                let c0x = (-c0) * inv_12dx2;
+                let c1x = 18.0 * inv_12dx2;
+                let c2x = (-c2) * inv_12dx2;
+                let c3x = c3 * inv_12dx2;
+                let c0y = (-c0) * inv_12dy2;
+                let c1y = 18.0 * inv_12dy2;
+                let c2y = (-c2) * inv_12dy2;
+                let c3y = c3 * inv_12dy2;
 
-                        let d2vdx2 = if i >= 3 && i < nx - 3 {
-                            (c3 * self.values[[j, i + 3]] - c2 * self.values[[j, i + 2]]
-                                + 18.0 * self.values[[j, i + 1]]
-                                - c0 * v_ij
-                                + 18.0 * self.values[[j, i - 1]]
-                                - c2 * self.values[[j, i - 2]]
-                                + c3 * self.values[[j, i - 3]])
-                                * inv_12dx2
-                        } else if i >= 2 && i < nx - 2 {
-                            // Fall back to 4th-order
-                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j, i - 1]]
-                                - self.values[[j, i - 2]])
-                                * inv_12dx2
-                        } else if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
+                // interior along x axis
+                if nx >= 7 {
+                    let mut out = laplace.slice_mut(s![.., 3..nx - 3]);
+                    let c = v.slice(s![.., 3..nx - 3]);
+                    zip3_for_each!(PAR, &mut out, c, c, |o, &cc, &_| {
+                        *o = c0x * cc;
+                    });
+                    {
+                        let p1 = v.slice(s![.., 4..nx - 2]);
+                        let m1 = v.slice(s![.., 2..nx - 4]);
+                        zip3_for_each!(PAR, &mut out, p1, m1, |o, &pp, &mm| {
+                            *o += c1x * (pp + mm);
+                        });
+                    }
+                    {
+                        let p2 = v.slice(s![.., 5..nx - 1]);
+                        let m2 = v.slice(s![.., 1..nx - 5]);
+                        zip3_for_each!(PAR, &mut out, p2, m2, |o, &pp, &mm| {
+                            *o += c2x * (pp + mm);
+                        });
+                    }
+                    {
+                        let p3 = v.slice(s![.., 6..nx]);
+                        let m3 = v.slice(s![.., 0..nx - 6]);
+                        zip3_for_each!(PAR, &mut out, p3, m3, |o, &pp, &mm| {
+                            *o += c3x * (pp + mm);
+                        });
+                    }
+                }
 
-                        let d2vdy2 = if j >= 3 && j < ny - 3 {
-                            (c3 * self.values[[j + 3, i]] - c2 * self.values[[j + 2, i]]
-                                + 18.0 * self.values[[j + 1, i]]
-                                - c0 * v_ij
-                                + 18.0 * self.values[[j - 1, i]]
-                                - c2 * self.values[[j - 2, i]]
-                                + c3 * self.values[[j - 3, i]])
-                                * inv_dy2
-                        } else if j >= 2 && j < ny - 2 {
-                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j - 1, i]]
-                                - self.values[[j - 2, i]])
-                                * inv_12dy2
-                        } else if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
+                // boundary fallbacks (4th central)
+                if nx >= 5 {
+                    {
+                        let mut out = laplace.slice_mut(s![.., 2..3]);
+                        let l0 = v.slice(s![.., 0..1]);
+                        let l1 = v.slice(s![.., 1..2]);
+                        let xc = v.slice(s![.., 2..3]);
+                        let r3 = v.slice(s![.., 3..4]);
+                        let r4 = v.slice(s![.., 4..5]);
+                        zip3_for_each!(PAR, &mut out, xc, xc, |o, &cc, &_| {
+                            *o += (-30.0 * cc) * inv_12dx2;
+                        });
+                        zip3_for_each!(PAR, &mut out, r3, l1, |o, &p, &m| {
+                            *o += (16.0 * (p + m)) * inv_12dx2;
+                        });
+                        zip3_for_each!(PAR, &mut out, r4, l0, |o, &p2, &m2| {
+                            *o += (-(p2 + m2)) * inv_12dx2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![.., nx - 3..nx - 2]);
+                        let l0 = v.slice(s![.., nx - 5..nx - 4]);
+                        let l1 = v.slice(s![.., nx - 4..nx - 3]);
+                        let xc = v.slice(s![.., nx - 3..nx - 2]);
+                        let r3 = v.slice(s![.., nx - 2..nx - 1]);
+                        let r4 = v.slice(s![.., nx - 1..nx]);
 
-                        laplace[[j, i]] = d2vdx2 + d2vdy2;
+                        zip3_for_each!(PAR, &mut out, xc, xc, |o, &cc, &_| {
+                            *o += (-30.0 * cc) * inv_12dx2;
+                        });
+                        zip3_for_each!(PAR, &mut out, r3, l1, |o, &p, &m| {
+                            *o += (16.0 * (p + m)) * inv_12dx2;
+                        });
+                        zip3_for_each!(PAR, &mut out, r4, l0, |o, &p2, &m2| {
+                            *o += (-(p2 + m2)) * inv_12dx2;
+                        });
+                    }
+                }
+                // boundary fallbacks (2nd central)
+                if nx >= 3 {
+                    {
+                        let mut out = laplace.slice_mut(s![.., 1..2]);
+                        let l = v.slice(s![.., 0..1]);
+                        let c = v.slice(s![.., 1..2]);
+                        let r = v.slice(s![.., 2..3]);
+                        zip4_for_each!(PAR, &mut out, r, c, l, |o, &rr, &cc, &ll| {
+                            *o += (rr - 2.0 * cc + ll) * inv_dx2;
+                        });
+                    }
+                    // i = nx-2
+                    {
+                        let mut out = laplace.slice_mut(s![.., nx - 2..nx - 1]);
+                        let l = v.slice(s![.., nx - 3..nx - 2]);
+                        let c = v.slice(s![.., nx - 2..nx - 1]);
+                        let r = v.slice(s![.., nx - 1..nx]);
+                        zip4_for_each!(PAR, &mut out, r, c, l, |o, &rr, &cc, &ll| {
+                            *o += (rr - 2.0 * cc + ll) * inv_dx2;
+                        });
+                    }
+                }
+
+                // interior along y axis
+                if ny >= 7 {
+                    let mut out = laplace.slice_mut(s![3..ny - 3, ..]);
+                    let c = v.slice(s![3..ny - 3, ..]);
+                    zip3_for_each!(PAR, &mut out, c, c, |o, &cc, &_| {
+                        *o += c0y * cc;
+                    });
+                    {
+                        let p1 = v.slice(s![4..ny - 2, ..]);
+                        let m1 = v.slice(s![2..ny - 4, ..]);
+                        zip3_for_each!(PAR, &mut out, p1, m1, |o, &pp, &mm| {
+                            *o += c1y * (pp + mm);
+                        });
+                    }
+                    {
+                        let p2 = v.slice(s![5..ny - 1, ..]);
+                        let m2 = v.slice(s![1..ny - 5, ..]);
+                        zip3_for_each!(PAR, &mut out, p2, m2, |o, &pp, &mm| {
+                            *o += c2y * (pp + mm);
+                        });
+                    }
+                    {
+                        let p3 = v.slice(s![6..ny, ..]);
+                        let m3 = v.slice(s![0..ny - 6, ..]);
+                        zip3_for_each!(PAR, &mut out, p3, m3, |o, &pp, &mm| {
+                            *o += c3y * (pp + mm);
+                        });
+                    }
+                }
+
+                // boundary fallbacks (4th central)
+                if ny >= 5 {
+                    {
+                        let mut out = laplace.slice_mut(s![2..3, ..]);
+                        let t0 = v.slice(s![0..1, ..]);
+                        let t1 = v.slice(s![1..2, ..]);
+                        let yc = v.slice(s![2..3, ..]);
+                        let b3 = v.slice(s![3..4, ..]);
+                        let b4 = v.slice(s![4..5, ..]);
+                        zip3_for_each!(PAR, &mut out, yc, yc, |o, &cc, &_| {
+                            *o += (-30.0 * cc) * inv_12dy2;
+                        });
+                        zip3_for_each!(PAR, &mut out, b3, t1, |o, &p, &m| {
+                            *o += (16.0 * (p + m)) * inv_12dy2;
+                        });
+                        zip3_for_each!(PAR, &mut out, b4, t0, |o, &p2, &m2| {
+                            *o += (-(p2 + m2)) * inv_12dy2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![ny - 3..ny - 2, ..]);
+                        let t0 = v.slice(s![ny - 5..ny - 4, ..]);
+                        let t1 = v.slice(s![ny - 4..ny - 3, ..]);
+                        let yc = v.slice(s![ny - 3..ny - 2, ..]);
+                        let b3 = v.slice(s![ny - 2..ny - 1, ..]);
+                        let b4 = v.slice(s![ny - 1..ny, ..]);
+                        zip3_for_each!(PAR, &mut out, yc, yc, |o, &cc, &_| {
+                            *o += (-30.0 * cc) * inv_12dy2;
+                        });
+                        zip3_for_each!(PAR, &mut out, b3, t1, |o, &p, &m| {
+                            *o += (16.0 * (p + m)) * inv_12dy2;
+                        });
+                        zip3_for_each!(PAR, &mut out, b4, t0, |o, &p2, &m2| {
+                            *o += (-(p2 + m2)) * inv_12dy2;
+                        });
+                    }
+                }
+		// boundary fallbacks (2nd central)
+                if ny >= 3 {
+                    {
+                        let mut out = laplace.slice_mut(s![1..2, ..]);
+                        let d = v.slice(s![0..1, ..]);
+                        let c = v.slice(s![1..2, ..]);
+                        let u = v.slice(s![2..3, ..]);
+                        zip4_for_each!(PAR, &mut out, u, c, d, |o, &uu, &cc, &dd| {
+                            *o += (uu - 2.0 * cc + dd) * inv_dy2;
+                        });
+                    }
+                    {
+                        let mut out = laplace.slice_mut(s![ny - 2..ny - 1, ..]);
+                        let d = v.slice(s![ny - 3..ny - 2, ..]);
+                        let c = v.slice(s![ny - 2..ny - 1, ..]);
+                        let u = v.slice(s![ny - 1..ny, ..]);
+                        zip4_for_each!(PAR, &mut out, u, c, d, |o, &uu, &cc, &dd| {
+                            *o += (uu - 2.0 * cc + dd) * inv_dy2;
+                        });
                     }
                 }
             }
@@ -1766,187 +2063,19 @@ impl PixelGrid {
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    pub fn laplacian_field(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
+        self.laplacian_field_impl::<false>(stencil)
+    }
+
+    /// Compute Laplace field over the entire grid (in parallel)
+    ///
+    /// # Arguments
+    /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
     pub fn par_laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Array2<f64> {
-        let stencil = stencil.into().unwrap_or_default();
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-        let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
-        let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
-        let inv_12dx2 = inv_dx2 / 12.0;
-        let inv_12dy2 = inv_dy2 / 12.0;
-        let c3 = 2.0 / 15.0; //   2 / 180
-        let c2 = 9.0 / 5.0; //  27 / 180
-        //  c1 = 1;          // 270 / 180
-        let c0 = 98.0 / 3.0; // 490 / 180
-
-        // Compute as flat vec in parallel, then reshape
-        let laplace: Vec<f64> = (0..ny * nx)
-            .into_par_iter()
-            .map(|idx| {
-                let i = idx % nx;
-                let j = idx / nx;
-                let v_ij = self.values[[j, i]];
-
-                let (d2vdx2, d2vdy2): (f64, f64) = match stencil {
-                    DerivativeStencil::Central => {
-                        let d2x = if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else if i == 0 && nx > 2 {
-                            (self.values[[j, 2]] - 2.0 * self.values[[j, 1]] + v_ij) * inv_dx2
-                        } else if i == nx - 1 && nx > 2 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-                        let d2y = if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else if j == 0 && ny > 2 {
-                            (self.values[[2, i]] - 2.0 * self.values[[1, i]] + v_ij) * inv_dy2
-                        } else if j == ny - 1 && ny > 2 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-                        (d2x, d2y)
-                    }
-                    DerivativeStencil::Forward => {
-                        let d2x = if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
-                                * inv_dx2
-                        } else if i + 1 < nx && i > 0 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else if i > 1 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-                        let d2y = if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
-                                * inv_dy2
-                        } else if j + 1 < ny && j > 0 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else if j > 1 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-                        (d2x, d2y)
-                    }
-                    DerivativeStencil::Backward => {
-                        let d2x = if i >= 2 {
-                            (v_ij - 2.0 * self.values[[j, i - 1]] + self.values[[j, i - 2]])
-                                * inv_dx2
-                        } else if i > 0 && i + 1 < nx {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else if i + 2 < nx {
-                            (self.values[[j, i + 2]] - 2.0 * self.values[[j, i + 1]] + v_ij)
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-                        let d2y = if j >= 2 {
-                            (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]])
-                                * inv_dy2
-                        } else if j > 0 && j + 1 < ny {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else if j + 2 < ny {
-                            (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij)
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-                        (d2x, d2y)
-                    }
-                    DerivativeStencil::Central4 => {
-                        let d2x = if i >= 2 && i < nx - 2 {
-                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j, i - 1]]
-                                - self.values[[j, i - 2]])
-                                * inv_12dx2
-                        } else if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-                        let d2y = if j >= 2 && j < ny - 2 {
-                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j - 1, i]]
-                                - self.values[[j - 2, i]])
-                                * inv_12dy2
-                        } else if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-                        (d2x, d2y)
-                    }
-                    DerivativeStencil::Central6 => {
-                        let d2x = if i >= 3 && i < nx - 3 {
-                            (c3 * self.values[[j, i + 3]] - c2 * self.values[[j, i + 2]]
-                                + self.values[[j, i + 1]]
-                                - c0 * v_ij
-                                + self.values[[j, i - 1]]
-                                - c2 * self.values[[j, i - 2]]
-                                + c3 * self.values[[j, i - 3]])
-                                * inv_12dx2
-                        } else if i >= 2 && i < nx - 2 {
-                            (-self.values[[j, i + 2]] + 16.0 * self.values[[j, i + 1]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j, i - 1]]
-                                - self.values[[j, i - 2]])
-                                * inv_12dx2
-                        } else if i > 0 && i < nx - 1 {
-                            (self.values[[j, i + 1]] - 2.0 * v_ij + self.values[[j, i - 1]])
-                                * inv_dx2
-                        } else {
-                            0.0
-                        };
-                        let d2y = if j >= 3 && j < ny - 3 {
-                            (c3 * self.values[[j + 3, i]] - c2 * self.values[[j + 2, i]]
-                                + self.values[[j + 1, i]]
-                                - c0 * v_ij
-                                + self.values[[j - 1, i]]
-                                - c2 * self.values[[j - 2, i]]
-                                + c3 * self.values[[j - 3, i]])
-                                * inv_12dy2
-                        } else if j >= 2 && j < ny - 2 {
-                            (-self.values[[j + 2, i]] + 16.0 * self.values[[j + 1, i]]
-                                - 30.0 * v_ij
-                                + 16.0 * self.values[[j - 1, i]]
-                                - self.values[[j - 2, i]])
-                                * inv_12dy2
-                        } else if j > 0 && j < ny - 1 {
-                            (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]])
-                                * inv_dy2
-                        } else {
-                            0.0
-                        };
-                        (d2x, d2y)
-                    }
-                };
-
-                d2vdx2 + d2vdy2
-            })
-            .collect();
-
-        Array2::from_shape_vec((ny, nx), laplace).unwrap()
+        self.laplacian_field_impl::<true>(stencil)
     }
 
     /* ================ Spectral methods =================================== */
