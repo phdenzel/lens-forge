@@ -6,7 +6,7 @@
 use crate::grid::{Grid2D, Point2D};
 use crate::{LensForgeError, Result};
 use core::f64;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip, s};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis, Zip, s};
 use num::complex::Complex;
 use phastft::{
     fft_64_with_opts_and_plan,
@@ -14,7 +14,6 @@ use phastft::{
     planner::{Direction, Planner64},
 };
 use rayon::prelude::*;
-
 
 macro_rules! zip3_for_each {
     ($par:expr, $out:expr, $a:expr, $b:expr, $body:expr) => {{
@@ -2451,26 +2450,8 @@ impl PixelGrid {
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Result<(Array2<f64>, Array2<f64>)> {
         let stencil = stencil.into().unwrap_or_default();
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-
-        let fft_data = self.fft2d()?;
         let (kx_fd, ky_fd) = self.fourier_symbols_fd1(stencil)?;
-
-        let mut dvdx_fft = fft_data.clone();
-        let mut dvdy_fft = fft_data.clone();
-        for j in 0..ny {
-            for i in 0..nx {
-                let f_hat = fft_data[[j, i]];
-                dvdx_fft[[j, i]] = f_hat * kx_fd[i];
-                dvdy_fft[[j, i]] = f_hat * ky_fd[j];
-            }
-        }
-
-        let dvdx = Self::ifft2d(&dvdx_fft)?;
-        let dvdy = Self::ifft2d(&dvdy_fft)?;
-
-        Ok((dvdx, dvdy))
+        self.gradient_spectral_k(&kx_fd, &ky_fd)
     }
 
     /// Compute gradient using spectral method with given Fourier symbols (using FFT)
@@ -2483,19 +2464,18 @@ impl PixelGrid {
         kx_fd: &Array1<Complex<f64>>,
         ky_fd: &Array1<Complex<f64>>,
     ) -> Result<(Array2<f64>, Array2<f64>)> {
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
+        let mut dvdx_fft = self.fft2d()?;
+        let mut dvdy_fft = dvdx_fft.clone();
 
-        let fft_data = self.fft2d()?;
+        for mut row in dvdx_fft.axis_iter_mut(Axis(0)) {
+            Zip::from(&mut row)
+                .and(kx_fd)
+                .for_each(|fhat, &kx| *fhat *= kx);
+        }
 
-        let mut dvdx_fft = fft_data.clone();
-        let mut dvdy_fft = fft_data.clone();
-        for j in 0..ny {
-            for i in 0..nx {
-                let f_hat = fft_data[[j, i]];
-                dvdx_fft[[j, i]] = f_hat * kx_fd[i];
-                dvdy_fft[[j, i]] = f_hat * ky_fd[j];
-            }
+        for (j, mut row) in dvdy_fft.axis_iter_mut(Axis(0)).enumerate() {
+            let ky = ky_fd[j];
+            row.mapv_inplace(|fhat| fhat * ky);
         }
 
         let dvdx = Self::ifft2d(&dvdx_fft)?;
@@ -2515,21 +2495,8 @@ impl PixelGrid {
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Result<Array2<f64>> {
         let stencil = stencil.into().unwrap_or_default();
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-
-        let mut fft_data = self.fft2d()?;
         let (kx_fd2, ky_fd2) = self.fourier_symbols_fd2(stencil)?;
-
-        for j in 0..ny {
-            for i in 0..nx {
-                let k2 = kx_fd2[i] + ky_fd2[j];
-                fft_data[[j, i]] *= k2;
-                // fft_data[[j, i]] *= Complex::new(-k2, 0.0);
-            }
-        }
-
-        Self::ifft2d(&fft_data)
+        self.laplacian_spectral_k(&kx_fd2, &ky_fd2)
     }
 
     /// Compute Laplacian using spectral method with given squared Fourier symbols (using FFT)
@@ -2544,16 +2511,12 @@ impl PixelGrid {
         kx_fd2: &Array1<Complex<f64>>,
         ky_fd2: &Array1<Complex<f64>>,
     ) -> Result<Array2<f64>> {
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-
         let mut fft_data = self.fft2d()?;
-
-        for j in 0..ny {
-            for i in 0..nx {
-                let k2 = kx_fd2[i] + ky_fd2[j];
-                fft_data[[j, i]] *= k2;
-            }
+        for (j, mut row) in fft_data.axis_iter_mut(Axis(0)).enumerate() {
+            let ky2 = ky_fd2[j];
+            Zip::from(&mut row)
+                .and(kx_fd2)
+                .for_each(|fhat, &kx2| *fhat *= kx2 + ky2);
         }
 
         Self::ifft2d(&fft_data)
