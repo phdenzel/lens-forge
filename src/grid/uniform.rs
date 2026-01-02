@@ -484,7 +484,7 @@ impl PixelGrid {
         i: usize,
         j: usize,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Point2D {
+    ) -> Result<Point2D> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -613,7 +613,7 @@ impl PixelGrid {
             }
         };
 
-        Point2D::new(dvdx, dvdy)
+        Ok(Point2D::new(dvdx, dvdy))
     }
 
     /// Compute gradient at arbitrary point using interpolation
@@ -625,7 +625,7 @@ impl PixelGrid {
         &self,
         p: &Point2D,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Point2D {
+    ) -> Result<Point2D> {
         let stencil = stencil.into().unwrap_or_default();
         let dx = self.grid.dx;
         let dy = self.grid.dy;
@@ -690,7 +690,7 @@ impl PixelGrid {
             }
         };
 
-        Point2D::new(dvdx, dvdy)
+        Ok(Point2D::new(dvdx, dvdy))
     }
 
     /// Compute gradient field over the entire grid
@@ -700,7 +700,7 @@ impl PixelGrid {
     pub fn gradient_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> (Array2<f64>, Array2<f64>) {
+    ) -> Result<(Array2<f64>, Array2<f64>)> {
         self.gradient_field_impl::<false>(stencil)
     }
 
@@ -711,7 +711,7 @@ impl PixelGrid {
     pub fn par_gradient_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> (Array2<f64>, Array2<f64>) {
+    ) -> Result<(Array2<f64>, Array2<f64>)> {
         self.gradient_field_impl::<true>(stencil)
     }
 
@@ -722,7 +722,7 @@ impl PixelGrid {
     fn gradient_field_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> (Array2<f64>, Array2<f64>) {
+    ) -> Result<(Array2<f64>, Array2<f64>)> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -735,7 +735,7 @@ impl PixelGrid {
         let v = v.view();
 
         if nx == 0 || ny == 0 {
-            return (dvdx, dvdy);
+            return Ok((dvdx, dvdy));
         }
 
         match stencil {
@@ -1214,14 +1214,17 @@ impl PixelGrid {
             }
         }
 
-        (dvdx, dvdy)
+        Ok((dvdx, dvdy))
     }
 
     /// Compute gradient magnitude of the entire grid
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    pub fn gradient_magnitude(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
+    pub fn gradient_magnitude(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<Array2<f64>> {
         self.gradient_magnitude_impl::<false>(stencil)
     }
 
@@ -1232,21 +1235,21 @@ impl PixelGrid {
     pub fn par_gradient_magnitude(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Array2<f64> {
+    ) -> Result<Array2<f64>> {
         self.gradient_magnitude_impl::<true>(stencil)
     }
 
     fn gradient_magnitude_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Array2<f64> {
+    ) -> Result<Array2<f64>> {
         let stencil = stencil.into().unwrap_or_default();
-        let (dvdx, dvdy) = self.gradient_field_impl::<PAR>(stencil);
+        let (dvdx, dvdy) = self.gradient_field_impl::<PAR>(stencil)?;
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
         zip3_for_each!(PAR, &mut magnitude, &dvdx, &dvdy, |m, &gx, &gy| {
             *m = (gx * gx + gy * gy).sqrt();
         });
-        magnitude
+        Ok(magnitude)
     }
 
     /// Compute Laplacian at a pixel (i, j) using 5-point stencil
@@ -1261,7 +1264,7 @@ impl PixelGrid {
         i: usize,
         j: usize,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> f64 {
+    ) -> Result<f64> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -1408,7 +1411,7 @@ impl PixelGrid {
             }
         };
 
-        d2vdx2 + d2vdy2
+        Ok(d2vdx2 + d2vdy2)
     }
 
     /// Compute Laplacian at arbitrary point using interpolation
@@ -1420,7 +1423,7 @@ impl PixelGrid {
         &self,
         p: &Point2D,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> f64 {
+    ) -> Result<f64> {
         let stencil = stencil.into().unwrap_or_default();
         let dx = self.grid.dx;
         let dy = self.grid.dy;
@@ -1512,7 +1515,7 @@ impl PixelGrid {
             }
         };
 
-        d2vdx2 + d2vdy2
+        Ok(d2vdx2 + d2vdy2)
     }
 
     /// Base implementation to compute Laplacian fields (parallel or sequential)
@@ -1522,7 +1525,7 @@ impl PixelGrid {
     fn laplacian_field_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Array2<f64> {
+    ) -> Result<Array2<f64>> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -1531,7 +1534,7 @@ impl PixelGrid {
 
         let mut laplace = Array2::zeros((ny, nx));
         if nx == 0 || ny == 0 {
-            return laplace;
+            return Ok(laplace);
         }
 
         let v = self.values.as_standard_layout();
@@ -2055,14 +2058,17 @@ impl PixelGrid {
             }
         }
 
-        laplace
+        Ok(laplace)
     }
 
     /// Compute Laplace field over the entire grid
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
-    pub fn laplacian_field(&self, stencil: impl Into<Option<DerivativeStencil>>) -> Array2<f64> {
+    pub fn laplacian_field(
+        &self,
+        stencil: impl Into<Option<DerivativeStencil>>,
+    ) -> Result<Array2<f64>> {
         self.laplacian_field_impl::<false>(stencil)
     }
 
@@ -2073,7 +2079,7 @@ impl PixelGrid {
     pub fn par_laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Array2<f64> {
+    ) -> Result<Array2<f64>> {
         self.laplacian_field_impl::<true>(stencil)
     }
 
@@ -2766,9 +2772,9 @@ mod tests {
         let grid = Grid2D::square(8, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x + 3.0 * y);
 
-        let grad = pg.gradient(4, 4, DerivativeStencil::Central);
-        assert!(approx_eq(grad.x, 2.0, None));
-        assert!(approx_eq(grad.y, 3.0, None));
+        let grad = pg.gradient(4, 4, DerivativeStencil::Central).unwrap();
+        assert!(approx_eq(grad.x, 2.0, 1e-12));
+        assert!(approx_eq(grad.y, 3.0, 1e-12));
     }
 
     #[test]
@@ -2776,8 +2782,8 @@ mod tests {
         let grid = Grid2D::square(8, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x + 3.0 * y);
 
-        let (dvdx, dvdy) = pg.gradient_field(None);
-        let (par_dvdx, par_dvdy) = pg.par_gradient_field(None);
+        let (dvdx, dvdy) = pg.gradient_field(None).unwrap();
+        let (par_dvdx, par_dvdy) = pg.par_gradient_field(None).unwrap();
 
         for j in 0..8 {
             for i in 0..8 {
@@ -2822,8 +2828,8 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let lap = pg.laplacian(4, 4, DerivativeStencil::Central);
-        assert!(approx_eq(lap, 4.0, None));
+        let lap = pg.laplacian(4, 4, DerivativeStencil::Central).unwrap();
+        assert!(approx_eq(lap, 4.0, 1e-12));
     }
 
     #[test]
@@ -2832,8 +2838,8 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let laplace = pg.laplacian_field(None);
-        let par_laplace = pg.par_laplacian_field(None);
+        let laplace = pg.laplacian_field(None).unwrap();
+        let par_laplace = pg.par_laplacian_field(None).unwrap();
 
         for j in 0..8 {
             for i in 0..8 {
@@ -2873,7 +2879,7 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let lap_fd = pg.laplacian_field(DerivativeStencil::Central);
+        let lap_fd = pg.laplacian_field(DerivativeStencil::Central).unwrap();
         let lap_spec = pg.laplacian_spectral(DerivativeStencil::Central).unwrap();
 
         let mut max_err: f64 = 0.0;
