@@ -15,6 +15,13 @@ use phastft::{
 };
 use rayon::prelude::*;
 
+type FieldArray2D = ndarray::Array2<f64>;
+type VectorField2D = (FieldArray2D, FieldArray2D);
+type ComplexArray1D = ndarray::Array1<num::complex::Complex<f64>>;
+type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
+type FourierSymbols = (ComplexArray1D, ComplexArray1D);
+
+
 macro_rules! zip3_for_each {
     ($par:expr, $out:expr, $a:expr, $b:expr, $body:expr) => {{
         let z = Zip::from($out).and($a).and($b);
@@ -54,7 +61,7 @@ pub struct PixelGrid {
     /// The underlying grid geometry
     pub grid: Grid2D,
     /// The pixel values stored as a 2D array [ny, nx] (row-major)
-    pub values: Array2<f64>,
+    pub values: FieldArray2D,
 }
 
 impl PixelGrid {
@@ -64,7 +71,7 @@ impl PixelGrid {
     /// * `grid` - grid struct holding information about the geometry
     pub fn zeros(grid: Grid2D) -> Self {
         Self {
-            grid: grid,
+            grid,
             values: Array2::zeros(grid.shape()),
         }
     }
@@ -75,7 +82,7 @@ impl PixelGrid {
     /// * `grid` - grid struct holding information about the geometry
     pub fn ones(grid: Grid2D) -> Self {
         Self {
-            grid: grid,
+            grid,
             values: Array2::ones(grid.shape()),
         }
     }
@@ -87,7 +94,7 @@ impl PixelGrid {
     /// * `value` - constant value for the pixels
     pub fn constant(grid: Grid2D, value: f64) -> Self {
         Self {
-            grid: grid,
+            grid,
             values: Array2::from_elem(grid.shape(), value),
         }
     }
@@ -97,7 +104,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
     /// * `values` - pixel value array
-    pub fn from_values(grid: Grid2D, values: Array2<f64>) -> Result<Self> {
+    pub fn from_values(grid: Grid2D, values: FieldArray2D) -> Result<Self> {
         if values.nrows() != grid.ny || values.ncols() != grid.nx {
             return Err(LensForgeError::DimensionMismatch {
                 expected: format!("({}, {})", grid.ny, grid.nx),
@@ -208,7 +215,7 @@ impl PixelGrid {
     }
 
     /// Get a mutable reference to the underlying array
-    pub fn as_mut_array2(&mut self) -> &mut Array2<f64> {
+    pub fn as_mut_array2(&mut self) -> &mut FieldArray2D {
         &mut self.values
     }
 
@@ -347,7 +354,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `f` - function to be applied
     pub fn apply<F: Fn(f64) -> f64>(&mut self, f: F) {
-        self.values.mapv_inplace(|x| f(x));
+        self.values.mapv_inplace(f);
     }
 
     /// Map function to the pixel grid values
@@ -357,7 +364,7 @@ impl PixelGrid {
     pub fn map<F: Fn(f64) -> f64>(&self, f: F) -> Self {
         Self {
             grid: self.grid,
-            values: self.values.mapv(|x| f(x)),
+            values: self.values.mapv(f),
         }
     }
 
@@ -375,7 +382,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `num` - total sum normalization
     pub fn normalize_sum(&mut self, num: Option<f64>) {
-        let c = num.unwrap_or_else(|| 1.0);
+        let c = num.unwrap_or(1.0);
         let total = self.sum();
         if total.abs() > 1e-15 {
             self.values *= c / total;
@@ -387,7 +394,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `num` - total sum normalization
     pub fn normalize_max(&mut self, num: Option<f64>) {
-        let c = num.unwrap_or_else(|| 1.0);
+        let c = num.unwrap_or(1.0);
         let max = self.max();
         if max.abs() > 1e-15 {
             self.values *= c / max;
@@ -422,7 +429,7 @@ impl PixelGrid {
             .collect();
 
         Self {
-            grid: grid,
+            grid,
             values: Array2::from_shape_vec((ny, nx), values).unwrap(),
         }
     }
@@ -700,7 +707,7 @@ impl PixelGrid {
     pub fn gradient_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array2<f64>, Array2<f64>)> {
+    ) -> Result<VectorField2D> {
         self.gradient_field_impl::<false>(stencil)
     }
 
@@ -711,7 +718,7 @@ impl PixelGrid {
     pub fn par_gradient_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array2<f64>, Array2<f64>)> {
+    ) -> Result<VectorField2D> {
         self.gradient_field_impl::<true>(stencil)
     }
 
@@ -722,7 +729,7 @@ impl PixelGrid {
     fn gradient_field_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array2<f64>, Array2<f64>)> {
+    ) -> Result<VectorField2D> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -1224,7 +1231,7 @@ impl PixelGrid {
     pub fn gradient_magnitude(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         self.gradient_magnitude_impl::<false>(stencil)
     }
 
@@ -1235,14 +1242,14 @@ impl PixelGrid {
     pub fn par_gradient_magnitude(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         self.gradient_magnitude_impl::<true>(stencil)
     }
 
     fn gradient_magnitude_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         let stencil = stencil.into().unwrap_or_default();
         let (dvdx, dvdy) = self.gradient_field_impl::<PAR>(stencil)?;
         let mut magnitude = Array2::zeros((self.grid.ny, self.grid.nx));
@@ -1525,7 +1532,7 @@ impl PixelGrid {
     fn laplacian_field_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         let stencil = stencil.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
@@ -2068,7 +2075,7 @@ impl PixelGrid {
     pub fn laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         self.laplacian_field_impl::<false>(stencil)
     }
 
@@ -2079,7 +2086,7 @@ impl PixelGrid {
     pub fn par_laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         self.laplacian_field_impl::<true>(stencil)
     }
 
@@ -2088,7 +2095,7 @@ impl PixelGrid {
     ///
     /// # Arguments
     /// * `values` - 2D array to be converted
-    fn ndarray_to_complex_buffer(values: &Array2<f64>) -> Vec<Complex<f64>> {
+    fn ndarray_to_complex_buffer(values: &FieldArray2D) -> Vec<Complex<f64>> {
         values.iter().map(|&r| Complex::new(r, 0.0)).collect()
     }
 
@@ -2102,7 +2109,7 @@ impl PixelGrid {
         buffer: Vec<Complex<f64>>,
         ny: usize,
         nx: usize,
-    ) -> Array2<Complex<f64>> {
+    ) -> ComplexFieldArray2D {
         Array2::from_shape_vec((ny, nx), buffer).expect("buffer size mismatch")
     }
 
@@ -2115,7 +2122,7 @@ impl PixelGrid {
     }
 
     /// Compute 2D FFT (using phastft backend)
-    pub fn fft2d(&self) -> Result<Array2<Complex<f64>>> {
+    pub fn fft2d(&self) -> Result<ComplexFieldArray2D> {
         let nx = self.grid.nx;
         let ny = self.grid.ny;
 
@@ -2158,7 +2165,7 @@ impl PixelGrid {
     ///
     /// # Arguments
     /// * `arr` - complex ndarray to be inverse transformed
-    pub fn ifft2d(arr: &Array2<Complex<f64>>) -> Result<Array2<f64>> {
+    pub fn ifft2d(arr: &ComplexFieldArray2D) -> Result<FieldArray2D> {
         let nx = arr.ncols();
         let ny = arr.nrows();
 
@@ -2196,15 +2203,15 @@ impl PixelGrid {
         }
 
         let values_re: Vec<f64> = buffer.iter().map(|c| c.re).collect();
-        Ok(Array2::from_shape_vec((ny, nx), values_re)
-            .map_err(|e| LensForgeError::NumericalError(e.to_string()))?)
+        Array2::from_shape_vec((ny, nx), values_re)
+            .map_err(|e| LensForgeError::NumericalError(e.to_string()))
     }
 
     /// Compute FFT shift (move zero-frequency component to center)
     ///
     /// # Arguments
     /// * `arr` - complex array to be shifted
-    pub fn fftshift(arr: &Array2<Complex<f64>>) -> Array2<Complex<f64>> {
+    pub fn fftshift(arr: &ComplexFieldArray2D) -> ComplexFieldArray2D {
         let nx = arr.ncols();
         let ny = arr.nrows();
         let nx_half = nx / 2;
@@ -2228,11 +2235,11 @@ impl PixelGrid {
     ///
     /// # Arguments
     /// * `arr` - complex array to be unshifted
-    pub fn ifftshift(arr: &Array2<Complex<f64>>) -> Array2<Complex<f64>> {
+    pub fn ifftshift(arr: &ComplexFieldArray2D) -> ComplexFieldArray2D {
         let nx = arr.ncols();
         let ny = arr.nrows();
-        let nx_half = (nx + 1) / 2;
-        let ny_half = (ny + 1) / 2;
+        let nx_half = nx.div_ceil(2);
+        let ny_half = ny.div_ceil(2);
 
         let mut unshifted = Array2::zeros((ny, nx));
 
@@ -2256,7 +2263,7 @@ impl PixelGrid {
     fn fourier_symbols_fd1(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array1<Complex<f64>>, Array1<Complex<f64>>)> {
+    ) -> Result<FourierSymbols> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx, ky) = self.grid.wavenumbers();
         let dx = self.grid.dx;
@@ -2339,7 +2346,7 @@ impl PixelGrid {
     fn fourier_symbols_fd2(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array1<Complex<f64>>, Array1<Complex<f64>>)> {
+    ) -> Result<FourierSymbols> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx, ky) = self.grid.wavenumbers();
         let dx = self.grid.dx;
@@ -2454,7 +2461,7 @@ impl PixelGrid {
     pub fn gradient_spectral(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<(Array2<f64>, Array2<f64>)> {
+    ) -> Result<VectorField2D> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx_fd, ky_fd) = self.fourier_symbols_fd1(stencil)?;
         self.gradient_spectral_k(&kx_fd, &ky_fd)
@@ -2467,9 +2474,9 @@ impl PixelGrid {
     /// * `ky_fd` - pre-computed Fourier symbols (translation operators) along the y axis
     pub fn gradient_spectral_k(
         &self,
-        kx_fd: &Array1<Complex<f64>>,
-        ky_fd: &Array1<Complex<f64>>,
-    ) -> Result<(Array2<f64>, Array2<f64>)> {
+        kx_fd: &ComplexArray1D,
+        ky_fd: &ComplexArray1D,
+    ) -> Result<VectorField2D> {
         let mut dvdx_fft = self.fft2d()?;
         let mut dvdy_fft = dvdx_fft.clone();
 
@@ -2499,7 +2506,7 @@ impl PixelGrid {
     pub fn laplacian_spectral(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<FieldArray2D> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx_fd2, ky_fd2) = self.fourier_symbols_fd2(stencil)?;
         self.laplacian_spectral_k(&kx_fd2, &ky_fd2)
@@ -2514,9 +2521,9 @@ impl PixelGrid {
     /// * `ky_fd2` - pre-computed Fourier symbols (translation operators) along the x axis
     pub fn laplacian_spectral_k(
         &self,
-        kx_fd2: &Array1<Complex<f64>>,
-        ky_fd2: &Array1<Complex<f64>>,
-    ) -> Result<Array2<f64>> {
+        kx_fd2: &ComplexArray1D,
+        ky_fd2: &ComplexArray1D,
+    ) -> Result<FieldArray2D> {
         let mut fft_data = self.fft2d()?;
         for (j, mut row) in fft_data.axis_iter_mut(Axis(0)).enumerate() {
             let ky2 = ky_fd2[j];

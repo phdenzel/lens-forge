@@ -737,7 +737,7 @@ impl Grid2D {
                 "Coarsening factor must be positive".into(),
             ));
         }
-        if self.nx % factor != 0 || self.ny % factor != 0 {
+        if !self.nx.is_multiple_of(factor) || !self.ny.is_multiple_of(factor) {
             return Err(LensForgeError::InvalidGridDimensions(format!(
                 "Dimensions ({}, {}) not divisible by {}",
                 self.nx, self.ny, factor
