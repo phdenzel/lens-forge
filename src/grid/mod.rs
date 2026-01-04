@@ -3,6 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Grid structures for lens modelling
 
+pub type FieldArray2D = ndarray::Array2<f64>;
+pub type VectorField2D = (FieldArray2D, FieldArray2D);
+pub type ComplexArray1D = ndarray::Array1<num::complex::Complex<f64>>;
+pub type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
+pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
+
 mod point;
 mod grid2d;
 mod uniform;

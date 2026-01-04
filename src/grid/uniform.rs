@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Uniform grid with pixels
 
-use crate::grid::{Grid2D, Point2D};
+use crate::grid::{
+    ComplexArray1D, ComplexFieldArray2D, FieldArray2D, FourierSymbols, Grid2D, Point2D,
+    VectorField2D,
+};
 use crate::{LensForgeError, Result};
 use core::f64;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis, Zip, s};
@@ -14,13 +17,6 @@ use phastft::{
     planner::{Direction, Planner64},
 };
 use rayon::prelude::*;
-
-type FieldArray2D = ndarray::Array2<f64>;
-type VectorField2D = (FieldArray2D, FieldArray2D);
-type ComplexArray1D = ndarray::Array1<num::complex::Complex<f64>>;
-type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
-type FourierSymbols = (ComplexArray1D, ComplexArray1D);
-
 
 macro_rules! zip3_for_each {
     ($par:expr, $out:expr, $a:expr, $b:expr, $body:expr) => {{
