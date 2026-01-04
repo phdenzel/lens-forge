@@ -1,11 +1,11 @@
 [package]
-name = "lens_forge"
+name = "lens-forge"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-burn = { version = "0.19.1", features = ["wgpu", "train"] }
-burn-autodiff = "0.19.1"
+#burn = { version = "0.19.1", features = ["wgpu", "train"] }
+#burn-autodiff = "0.19.1"
 colorgrad = { version = "0.8.0", features = ["preset"] }
 image = "0.25.9"
 imageproc = "0.25.0"
