@@ -38,13 +38,13 @@ impl Grid2D {
     #[inline]
     pub fn new(nx: usize, ny: usize, extent_x: (f64, f64), extent_y: (f64, f64)) -> Result<Self> {
         if nx == 0 || ny == 0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Grid size must be strictly positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Grid size must be strictly positive",
             ));
         }
         if extent_x.0 >= extent_x.1 || extent_y.0 >= extent_y.1 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Grid extent minimum must be less than maximum".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Grid extent minimum must be less than maximum",
             ));
         }
 
@@ -65,8 +65,8 @@ impl Grid2D {
     /// * `radius` - Half the physical extent (grid spans from -radius to +radius)
     pub fn square(n: usize, radius: f64) -> Result<Self> {
         if radius <= 0.0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Radius must be positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Radius must be positive",
             ));
         }
         Self::new(n, n, (-radius, radius), (-radius, radius))
@@ -81,8 +81,8 @@ impl Grid2D {
     /// * `ry` - Half the physical extent in y (grid spans from -ry to +ry)
     pub fn rectangular(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
         if rx <= 0.0 || ry <= 0.0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Extents must be positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Extents must be positive",
             ));
         }
         Self::new(nx, ny, (-rx, rx), (-ry, ry))
@@ -100,8 +100,8 @@ impl Grid2D {
         resolution: f64,
     ) -> Result<Self> {
         if resolution <= 0.0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Resolution must be positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Resolution must be positive",
             ));
         }
         let nx = ((extent_x.1 - extent_x.0) * resolution).ceil() as usize;
@@ -712,8 +712,8 @@ impl Grid2D {
     #[inline]
     pub fn refine(&self, factor: usize) -> Result<Self> {
         if factor == 0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Refinement factor must be positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Refinement factor must be positive",
             ));
         }
         Ok(Self {
@@ -733,12 +733,12 @@ impl Grid2D {
     #[inline]
     pub fn coarsen(&self, factor: usize) -> Result<Self> {
         if factor == 0 {
-            return Err(LensForgeError::InvalidGridDimensions(
-                "Coarsening factor must be positive".into(),
+            return Err(LensForgeError::invalid_grid_dimension(
+                "Coarsening factor must be positive",
             ));
         }
         if !self.nx.is_multiple_of(factor) || !self.ny.is_multiple_of(factor) {
-            return Err(LensForgeError::InvalidGridDimensions(format!(
+            return Err(LensForgeError::invalid_grid_dimension(format!(
                 "Dimensions ({}, {}) not divisible by {}",
                 self.nx, self.ny, factor
             )));

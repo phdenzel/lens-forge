@@ -106,10 +106,10 @@ impl PixelGrid {
     /// * `values` - pixel value array
     pub fn from_values(grid: Grid2D, values: FieldArray2D) -> Result<Self> {
         if values.nrows() != grid.ny || values.ncols() != grid.nx {
-            return Err(LensForgeError::DimensionMismatch {
-                expected: format!("({}, {})", grid.ny, grid.nx),
-                got: format!("({}, {})", values.nrows(), values.ncols()),
-            });
+            return Err(LensForgeError::dimension_mismatch(
+                format!("({}, {})", grid.ny, grid.nx),
+                format!("({}, {})", values.nrows(), values.ncols()),
+            ));
         }
         Ok(Self { grid, values })
     }
@@ -121,13 +121,13 @@ impl PixelGrid {
     /// * `vec` - pixel value vector
     pub fn from_vec(grid: Grid2D, v: Vec<f64>) -> Result<Self> {
         if v.len() != grid.n_pixels() {
-            return Err(LensForgeError::DimensionMismatch {
-                expected: format!("{}", grid.n_pixels()),
-                got: format!("{}", v.len()),
-            });
+            return Err(LensForgeError::dimension_mismatch(
+                format!("{}", grid.n_pixels()),
+                format!("{}", v.len()),
+            ));
         }
         let values = Array2::from_shape_vec(grid.shape(), v)
-            .map_err(|e| LensForgeError::NumericalError(e.to_string()))?;
+            .map_err(|e| LensForgeError::numerical_error(e.to_string()))?;
         Ok(Self { grid, values })
     }
 
@@ -304,10 +304,10 @@ impl PixelGrid {
     /// * `other` - other pixel grid
     pub fn add(&self, other: &Self) -> Result<Self> {
         if !self.grid.same_geometry(&other.grid) {
-            return Err(LensForgeError::DimensionMismatch {
-                expected: format!("({}, {})", self.grid.ny, self.grid.nx),
-                got: format!("{}, {}", other.grid.ny, other.grid.nx),
-            });
+            return Err(LensForgeError::dimension_mismatch(
+                format!("({}, {})", self.grid.ny, self.grid.nx),
+                format!("{}, {}", other.grid.ny, other.grid.nx),
+            ));
         }
         Ok(Self {
             grid: self.grid,
@@ -321,10 +321,10 @@ impl PixelGrid {
     /// * `other` - other pixel grid
     pub fn sub(&self, other: &Self) -> Result<Self> {
         if !self.grid.same_geometry(&other.grid) {
-            return Err(LensForgeError::DimensionMismatch {
-                expected: format!("({}, {})", self.grid.ny, self.grid.nx),
-                got: format!("{}, {}", other.grid.ny, other.grid.nx),
-            });
+            return Err(LensForgeError::dimension_mismatch(
+                format!("({}, {})", self.grid.ny, self.grid.nx),
+                format!("{}, {}", other.grid.ny, other.grid.nx),
+            ));
         }
         Ok(Self {
             grid: self.grid,
@@ -338,10 +338,10 @@ impl PixelGrid {
     /// * `other` - other pixel grid
     pub fn mul(&self, other: &Self) -> Result<Self> {
         if !self.grid.same_geometry(&other.grid) {
-            return Err(LensForgeError::DimensionMismatch {
-                expected: format!("({}, {})", self.grid.ny, self.grid.nx),
-                got: format!("{}, {}", other.grid.ny, other.grid.nx),
-            });
+            return Err(LensForgeError::dimension_mismatch(
+                format!("({}, {})", self.grid.ny, self.grid.nx),
+                format!("{}, {}", other.grid.ny, other.grid.nx),
+            ));
         }
         Ok(Self {
             grid: self.grid,
@@ -2127,7 +2127,7 @@ impl PixelGrid {
         let ny = self.grid.ny;
 
         if !Self::is_base2(nx) || !Self::is_base2(ny) {
-            return Err(LensForgeError::InvalidGridDimensions(format!(
+            return Err(LensForgeError::invalid_grid_dimension(format!(
                 "FFT (phastft) requires power-of-two dimensions, got ({}, {})",
                 ny, nx
             )));
@@ -2170,7 +2170,7 @@ impl PixelGrid {
         let ny = arr.nrows();
 
         if !Self::is_base2(nx) || !Self::is_base2(ny) {
-            return Err(LensForgeError::InvalidGridDimensions(format!(
+            return Err(LensForgeError::invalid_grid_dimension(format!(
                 "IFFT (phastft) requires power-of-two dimensions, got ({}, {})",
                 ny, nx
             )));
@@ -2204,7 +2204,7 @@ impl PixelGrid {
 
         let values_re: Vec<f64> = buffer.iter().map(|c| c.re).collect();
         Array2::from_shape_vec((ny, nx), values_re)
-            .map_err(|e| LensForgeError::NumericalError(e.to_string()))
+            .map_err(|e| LensForgeError::numerical_error(e.to_string()))
     }
 
     /// Compute FFT shift (move zero-frequency component to center)
