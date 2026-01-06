@@ -25,6 +25,8 @@ pub enum LensForgeError {
     DimensionMismatch { expected: String, got: String},
     /// Invalid parameter provided
     InvalidParameter(String),
+    /// Invalid setting/option provided
+    InvalidOption(String),
     /// Computation error occurred
     NumericalError(String),
     /// Computation error occurred
@@ -45,6 +47,9 @@ impl fmt::Display for LensForgeError {
 	    }
 	    LensForgeError::InvalidParameter(msg) => {
 		write!(f, "Invalid parameter: {}", msg)
+	    }
+	    LensForgeError::InvalidOption(msg) => {
+		write!(f, "Invalid option: {}", msg)
 	    }
 	    LensForgeError::NumericalError(msg) => {
 		write!(f, "Numerical error: {}", msg)
@@ -76,6 +81,11 @@ impl LensForgeError {
     /// Create a new InvalidParameter error
     pub fn invalid_parameter(msg: impl Into<String>) -> Self {
         LensForgeError::InvalidParameter(msg.into())
+    }
+
+    /// Create a new InvalidOption error
+    pub fn invalid_option(msg: impl Into<String>) -> Self {
+        LensForgeError::InvalidOption(msg.into())
     }
 
     /// Create a new NumericalError
