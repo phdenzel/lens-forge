@@ -52,7 +52,7 @@ macro_rules! zip5_for_each {
 }
 
 /// A 2D pixel grid with associated values
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PixelGrid {
     /// The underlying grid geometry
     pub grid: Grid2D,

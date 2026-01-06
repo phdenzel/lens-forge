@@ -10,7 +10,7 @@ use ndarray::{Array1, Array2, Axis, Zip, parallel::prelude::*};
 /// A 2D grid for discretizing planes
 ///
 /// All coordinate arrays are computed lazily on demand.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Grid2D {
     /// Number of pixels in x direction
     pub nx: usize,
