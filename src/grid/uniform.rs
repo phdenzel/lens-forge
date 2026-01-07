@@ -165,9 +165,10 @@ impl PixelGrid {
     /// * `ry` - Half the physical extent in y (grid spans from -ry to +ry)
     /// * `f` - function mapping coordinates into values
     pub fn from_func_sq<F>(n: usize, radius: f64, f: F) -> Self
-    where F: Fn(f64, f64) -> f64,
+    where
+        F: Fn(f64, f64) -> f64,
     {
-	let grid = Grid2D::square(n, radius).unwrap();
+        let grid = Grid2D::square(n, radius).unwrap();
         let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(grid.x_at(i), grid.y_at(j)));
         Self { grid, values }
     }
@@ -181,9 +182,10 @@ impl PixelGrid {
     /// * `ry` - Half the physical extent in y (grid spans from -ry to +ry)
     /// * `f` - function mapping coordinates into values
     pub fn from_func_rect<F>(nx: usize, ny: usize, rx: f64, ry: f64, f: F) -> Self
-    where F: Fn(f64, f64) -> f64,
+    where
+        F: Fn(f64, f64) -> f64,
     {
-	let grid = Grid2D::rectangular(nx, ny, rx, ry).unwrap();
+        let grid = Grid2D::rectangular(nx, ny, rx, ry).unwrap();
         let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(grid.x_at(i), grid.y_at(j)));
         Self { grid, values }
     }
