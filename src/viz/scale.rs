@@ -1,0 +1,631 @@
+// SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
+// SPDX-FileNotice: Part of lens-forge
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Scaling transformations and mappings for rendering.
+use crate::{LensForgeError, Result};
+
+/// Scaling applied to map values for visualizations.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum RenderScale {
+    /// no scaling
+    #[default]
+    Linear,
+    /// Base-10 logarithmic scaling
+    Log10,
+    /// Symmetric log-like scaling with a linear threshold around zero.
+    SymLog {
+        /// Half-width of linear region around zero.
+        linthresh: f64,
+    },
+}
+
+/// Various scaling kernels and transformations
+///
+/// # Kernels
+/// Functions that scale values `v` and return `None` for non-mappable results;
+/// unwrap_or variants additionally return `fallback` values instead of `None`.
+/// * `apply_linear` / `apply_linear_or`
+/// * `apply_log10` / `apply_log10_or`
+/// * `apply_symlog` / `apply_symlog_or`
+/// * `revert_linear` / `revert_linear_or`
+/// * `revert_log10` / `revert_log10_or`
+/// * `revert_symlog` / `revert_symlog_or`
+impl RenderScale {
+    #[inline]
+    pub fn apply_linear(v: f64) -> Option<f64> {
+        if !v.is_finite() { None } else { Some(v) }
+    }
+    #[inline]
+    pub fn apply_linear_or(v: f64, fallback: f64) -> f64 {
+        RenderScale::apply_linear(v).unwrap_or(fallback)
+    }
+    #[inline]
+    pub fn revert_linear(s: f64) -> Option<f64> {
+        if !s.is_finite() { None } else { Some(s) }
+    }
+    #[inline]
+    pub fn revert_linear_or(s: f64, fallback: f64) -> f64 {
+        RenderScale::revert_linear(s).unwrap_or(fallback)
+    }
+    #[inline]
+    pub fn apply_log10(v: f64) -> Option<f64> {
+        if v > 0.0 && v.is_finite() {
+            Some(v.log10())
+        } else {
+            None
+        }
+    }
+    #[inline]
+    pub fn apply_log10_or(v: f64, fallback: f64) -> f64 {
+        RenderScale::apply_log10(v).unwrap_or(fallback)
+    }
+    #[inline]
+    pub fn revert_log10(s: f64) -> Option<f64> {
+        let v = 10.0_f64.powf(s);
+        if v.is_finite() { Some(v) } else { None }
+    }
+    #[inline]
+    pub fn revert_log10_or(s: f64, fallback: f64) -> f64 {
+        RenderScale::revert_log10(s).unwrap_or(fallback)
+    }
+    #[inline]
+    pub fn apply_symlog(v: f64, linthresh: f64) -> Option<f64> {
+        if !linthresh.is_finite() || linthresh <= 0.0 {
+            return None;
+        }
+        let vabs = v.abs();
+        if vabs <= linthresh {
+            RenderScale::apply_linear(v)
+        } else {
+            let sgn = v.signum();
+            let scaled = sgn * linthresh * (1.0 + (vabs / linthresh).log10());
+            if scaled.is_finite() {
+                Some(scaled)
+            } else {
+                None
+            }
+        }
+    }
+    #[inline]
+    pub fn apply_symlog_or(v: f64, linthresh: f64, fallback: f64) -> f64 {
+        RenderScale::apply_symlog(v, linthresh).unwrap_or(fallback)
+    }
+    #[inline]
+    pub fn revert_symlog(s: f64, linthresh: f64) -> Option<f64> {
+        if !linthresh.is_finite() || linthresh <= 0.0 {
+            return None;
+        }
+        let sabs = s.abs();
+        if sabs <= linthresh {
+            RenderScale::revert_linear(s)
+        } else {
+            let sgn = s.signum();
+            let exp = sabs / linthresh - 1.0;
+            let v = sgn * linthresh * 10.0_f64.powf(exp);
+            if v.is_finite() { Some(v) } else { None }
+        }
+    }
+    #[inline]
+    pub fn revert_symlog_or(s: f64, linthresh: f64, fallback: f64) -> f64 {
+        RenderScale::revert_symlog(s, linthresh).unwrap_or(fallback)
+    }
+
+    /// Apply the specified scaling and return `None` if result is invalid
+    ///
+    /// # Arguments
+    /// * `v` - value to scale
+    #[inline]
+    pub fn apply(&self, v: f64) -> Option<f64> {
+        if !v.is_finite() {
+            return None;
+        }
+        match *self {
+            RenderScale::Linear => RenderScale::apply_linear(v),
+            RenderScale::Log10 => RenderScale::apply_log10(v),
+            RenderScale::SymLog { linthresh } => RenderScale::apply_symlog(v, linthresh),
+        }
+    }
+
+    /// Safely apply going into failure mode for invalid values.
+    ///
+    /// # Arguments
+    /// * `v` - value to scale
+    #[inline]
+    #[must_use]
+    pub fn try_apply(&self, v: f64) -> Result<f64> {
+        if !v.is_finite() {
+            return Err(LensForgeError::numerical_error("Need valid, finite input."));
+        }
+        match *self {
+            RenderScale::Linear => Ok(RenderScale::apply_linear(v).unwrap()),
+            RenderScale::Log10 => {
+                if v <= 0.0 {
+                    Err(LensForgeError::numerical_error(
+                        "RenderScale::Log10 requires v > 0",
+                    ))
+                } else {
+                    Ok(RenderScale::apply_log10(v).unwrap())
+                }
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    return Err(LensForgeError::invalid_option(
+                        "RenderScale::SymLog requires finite linthresh > 0",
+                    ));
+                }
+                Ok(RenderScale::apply_symlog(v, linthresh).unwrap())
+            }
+        }
+    }
+
+    /// Apply the specified scaling with fallback
+    ///
+    /// # Arguments
+    /// * `v` - value to scale
+    /// * `fallback` - fallback value for invalid scaling results
+    #[inline]
+    pub fn apply_or(&self, v: f64, fallback: f64) -> f64 {
+        self.try_apply(v).unwrap_or(fallback)
+    }
+
+    /// Inverse of the specified scaling and return `None` if result is invalid
+    ///
+    /// # Arguments
+    /// * `s` - value to unscale
+    #[inline]
+    pub fn revert(&self, s: f64) -> Option<f64> {
+        if !s.is_finite() {
+            return None;
+        }
+        match *self {
+            RenderScale::Linear => RenderScale::revert_linear(s),
+            RenderScale::Log10 => RenderScale::revert_log10(s),
+            RenderScale::SymLog { linthresh } => RenderScale::revert_symlog(s, linthresh),
+        }
+    }
+
+    /// Safely apply going into failure mode for invalid values.
+    ///
+    /// # Arguments
+    /// * `s` - value to unscale
+    #[inline]
+    #[must_use]
+    pub fn try_revert(&self, s: f64) -> Result<f64> {
+        if !s.is_finite() {
+            return Err(LensForgeError::numerical_error("Need valid, finite input."));
+        }
+        match *self {
+            RenderScale::Linear => Ok(RenderScale::revert_linear(s).unwrap()),
+            RenderScale::Log10 => {
+                let v = RenderScale::revert_log10(s);
+                if v.is_none() {
+                    return Err(LensForgeError::numerical_error(
+                        "RenderScale::Log10 produced non-finite result.",
+                    ));
+                }
+                Ok(v.unwrap())
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    return Err(LensForgeError::invalid_option(
+                        "RenderScale::SymLog requires finite linthresh > 0",
+                    ));
+                }
+                Ok(RenderScale::revert_symlog(s, linthresh).unwrap())
+            }
+        }
+    }
+
+    /// Inverse of the specified scaling
+    ///
+    /// # Arguments
+    /// * `s` - value to unscale
+    /// * `fallback` - fallback value for invalid results
+    #[inline]
+    pub fn revert_or(&self, s: f64, fallback: f64) -> f64 {
+        self.try_revert(s).unwrap_or(fallback)
+    }
+}
+
+/* ============ Normalize ================================================== */
+/// Normalizer that maps values between specified range to [0, 1]
+#[derive(Clone, Copy, Debug)]
+pub struct Normalize {
+    /// Normalization range limits [`min`, `max`]
+    pub min: f64,
+    pub max: f64,
+    /// Whether to clamp values beyond normalization range
+    pub clamp: bool,
+    /// Numerical precision parameter
+    pub eps: f64,
+}
+
+impl Default for Normalize {
+    fn default() -> Self {
+        Self {
+            min: 0.0,
+            max: 1.0,
+            clamp: true,
+            eps: 1e-12,
+        }
+    }
+}
+
+impl Normalize {
+    /// Builder for setting `clamp` field
+    pub fn with_clamp(mut self, clamp: bool) -> Self {
+        self.clamp = clamp;
+        self
+    }
+    /// Builder for setting numerical stability `eps` field
+    pub fn with_eps(mut self, eps: f64) -> Self {
+        self.eps = eps;
+        self
+    }
+    /// Construct normalizer from limits `min` and `max`.
+    pub fn with_lims(mut self, min: f64, max: f64) -> Result<Self> {
+        if !min.is_finite() || !max.is_finite() {
+            return Err(LensForgeError::invalid_option("Limits must be finite"));
+        }
+        self.min = min;
+        self.max = max;
+        let range = self.range();
+        if range <= 0.0 {
+            return Err(LensForgeError::invalid_option(
+                "Normalization range must be > 0",
+            ));
+        }
+        Ok(self)
+    }
+    /// Construct normalizer from `min` and `range`.
+    pub fn from_range(min: f64, range: f64) -> Result<Self> {
+        let max = min + range;
+        Self::default().with_lims(min, max)
+    }
+    /// Getter for the normalization range
+    #[inline]
+    pub fn range(&self) -> f64 {
+        self.max - self.min
+    }
+    /// Getter for normalization range with numerical stability
+    #[inline]
+    pub fn range_eps(&self) -> f64 {
+        let range = self.range();
+        if range.abs() < self.eps {
+            self.eps
+        } else {
+            range
+        }
+    }
+    /// Clamp value `v` iff normalizer is configured to do so
+    #[inline]
+    pub fn clamp_or(&self, v: f64) -> f64 {
+        if self.clamp { v.clamp(0.0, 1.0) } else { v }
+    }
+
+    pub fn apply(&self, v: f64) -> f64 {
+        if !v.is_finite() {
+            return f64::NAN;
+        }
+        let range = self.range_eps();
+        let normalized = (v - self.min) / range;
+        self.clamp_or(normalized)
+    }
+
+    pub fn try_apply(&self, v: f64) -> Result<f64> {
+        if !v.is_finite() {
+            return Err(LensForgeError::numerical_error(
+                "Normalize::apply requires finite `v`",
+            ));
+        }
+        let normalized = self.apply(v);
+	println!("Normalized {}", normalized);
+        if !normalized.is_finite() {
+            return Err(LensForgeError::numerical_error(
+                "Normalize::apply returned non-finite result.",
+            ));
+        }
+        Ok(normalized)
+    }
+
+    pub fn revert(&self, n: f64) -> f64 {
+	if !n.is_finite() {
+	    return f64::NAN;
+	}
+	let range = self.range_eps();
+	n * range + self.min
+    }
+
+    pub fn try_revert(&self, n: f64) -> Result<f64> {
+	if !n.is_finite() {
+	    return Err(LensForgeError::numerical_error(
+                "Normalize::revert requires finite `n`",
+            ));
+	}
+	if self.clamp {
+	    return Err(LensForgeError::invalid_option(
+                "Normalize::revert is not possible when `clamp` is `true`",
+            ));
+	}
+	let v = self.revert(n);
+	if !v.is_finite() {
+	    return Err(LensForgeError::numerical_error(
+                "Normalize::revert returned non-finite result.",
+            ));
+	}
+	Ok(v)
+    }
+}
+
+/* ============ Unit tests ================================================= */
+#[cfg(test)]
+mod tests {
+    use super::{LensForgeError, Normalize, RenderScale};
+
+    fn approx(a: f64, b: f64, eps: f64) -> bool {
+        (a - b).abs() <= eps * (1.0 + a.abs().max(b.abs()))
+    }
+
+    /* ============ RenderScale tests ====================================== */
+    #[test]
+    fn linear_roundtrip() {
+        let s = RenderScale::Linear;
+        for &v in &[0.0, 1.0, -3.5, 1e6] {
+            let f = s.apply(v).unwrap();
+            let b = s.revert(f).unwrap();
+            assert!(approx(v, b, 1e-12));
+        }
+    }
+
+    #[test]
+    fn log10_validity() {
+        let s = RenderScale::Log10;
+        assert!(s.apply(-1.0).is_none());
+        assert!(s.apply(0.0).is_none());
+        assert!(s.apply(f64::NAN).is_none());
+    }
+
+    #[test]
+    fn log10_roundtrip() {
+        let s = RenderScale::Log10;
+        for &v in &[1e-6, 1.0, 10.0, 1e6] {
+            let f = s.apply(v).unwrap();
+            let b = s.revert(f).unwrap();
+            assert!(approx(v, b, 1e-12));
+        }
+    }
+
+    #[test]
+    fn symlog_continuity() {
+        let s = RenderScale::SymLog { linthresh: 2.0 };
+
+        // continuity at boundary
+        let f_pos = s.apply(2.0).unwrap();
+        let f_neg = s.apply(-2.0).unwrap();
+        assert!(approx(f_pos, 2.0, 1e-12));
+        assert!(approx(f_neg, -2.0, 1e-12));
+    }
+
+    #[test]
+    fn symlog_roundtrip() {
+        let s = RenderScale::SymLog { linthresh: 2.0 };
+
+        // roundtrip across ranges
+        for &v in &[-1000.0, -10.0, -2.0, -1.0, 0.0, 1.0, 2.0, 10.0, 1000.0] {
+            let f = s.apply(v).unwrap();
+            let b = s.revert(f).unwrap();
+            assert!(approx(v, b, 1e-10));
+        }
+    }
+
+    #[test]
+    fn linear_try_apply_revert_errors_on_non_finite() {
+        let s = RenderScale::Linear;
+        for &bad in &[f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(matches!(
+                s.try_apply(bad),
+                Err(LensForgeError::NumericalError(_))
+            ));
+            assert!(matches!(
+                s.try_revert(bad),
+                Err(LensForgeError::NumericalError(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn linear_fallbacks_work() {
+        let s = RenderScale::Linear;
+        let fb = 42.0;
+        assert_eq!(s.apply_or(f64::NAN, fb), fb);
+        assert_eq!(s.revert_or(f64::INFINITY, fb), fb);
+    }
+
+    #[test]
+    fn log10_try_apply_on_non_finite() {
+        let s = RenderScale::Log10;
+        // try_apply returns typed error
+        assert!(matches!(
+            s.try_apply(0.0),
+            Err(LensForgeError::NumericalError(_))
+        ));
+        assert!(matches!(
+            s.try_apply(-1.0),
+            Err(LensForgeError::NumericalError(_))
+        ));
+        // Non-finite input
+        assert!(matches!(
+            s.try_apply(f64::NAN),
+            Err(LensForgeError::NumericalError(_))
+        ));
+    }
+
+    #[test]
+    fn log10_revert_overflow_error() {
+        let s = RenderScale::Log10;
+        // 10^s overflows for sufficiently large s (e.g., > 309 on f64)
+        let big = 310.0;
+        assert!(matches!(
+            s.try_revert(big),
+            Err(LensForgeError::NumericalError(_))
+        ));
+        // Fallback path
+        let fb = 1.23;
+        assert_eq!(s.revert_or(big, fb), fb);
+    }
+
+    #[test]
+    fn symlog_threshold_validation() {
+        let s0 = RenderScale::SymLog { linthresh: 0.0 };
+        assert!(s0.apply(1.0).is_none());
+        assert!(matches!(
+            s0.try_apply(1.0),
+            Err(LensForgeError::InvalidOption(_))
+        ));
+        assert!(matches!(
+            s0.try_revert(1.0),
+            Err(LensForgeError::InvalidOption(_))
+        ));
+
+        let snan = RenderScale::SymLog {
+            linthresh: f64::NAN,
+        };
+        assert!(matches!(
+            snan.try_apply(1.0),
+            Err(LensForgeError::InvalidOption(_))
+        ));
+    }
+
+    #[test]
+    fn symlog_fallbacks_on_invalid_threshold() {
+        let s = RenderScale::SymLog { linthresh: 0.0 };
+        let fb = 7.7;
+        assert_eq!(s.apply_or(10.0, fb), fb);
+        assert_eq!(s.revert_or(10.0, fb), fb);
+    }
+
+    #[test]
+    fn render_scale_non_finite_inputs_rejected() {
+        let scales = [
+            RenderScale::Linear,
+            RenderScale::Log10,
+            RenderScale::SymLog { linthresh: 2.0 },
+        ];
+        for &scale in &scales {
+            for &bad in &[f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                assert!(scale.apply(bad).is_none());
+                assert!(matches!(
+                    scale.try_apply(bad),
+                    Err(LensForgeError::NumericalError(_))
+                ));
+                assert!(scale.revert(bad).is_none());
+                assert!(matches!(
+                    scale.try_revert(bad),
+                    Err(LensForgeError::NumericalError(_))
+                ));
+            }
+        }
+    }
+
+    /* ============ Normalize tests ======================================== */
+    #[test]
+    fn normalize_default_behavior() {
+        let n = Normalize::default();
+        // Default maps [0, 1] to [0, 1] with `clamp: true`
+        assert!(approx(n.apply(0.0), 0.0, 1e-12));
+        assert!(approx(n.apply(1.0), 1.0, 1e-12));
+        // Values outside range get clamped
+        assert!(approx(n.apply(-10.0), 0.0, 1e-12));
+        assert!(approx(n.apply(10.0), 1.0, 1e-12));
+    }
+
+    #[test]
+    fn normalize_with_lims_validation() {
+        // Finite, valid range
+        let n = Normalize::default().with_lims(10.0, 20.0).unwrap();
+        assert!(approx(n.range(), 10.0, 1e-12));
+
+        // Invalid: non-finite
+        assert!(Normalize::default().with_lims(f64::NAN, 1.0).is_err());
+        assert!(Normalize::default().with_lims(0.0, f64::INFINITY).is_err());
+
+        // Invalid: max <= min
+        assert!(Normalize::default().with_lims(5.0, 5.0).is_err());
+        assert!(Normalize::default().with_lims(5.0, 4.0).is_err());
+    }
+
+    #[test]
+    fn normalize_from_range_validation() {
+        let n = Normalize::from_range(-2.0, 4.0).unwrap();
+        assert!(approx(n.min, -2.0, 1e-12));
+        assert!(approx(n.max, 2.0, 1e-12));
+        assert!(approx(n.range(), 4.0, 1e-12));
+    }
+
+    #[test]
+    fn normalize_apply_unclamped() {
+        let n = Normalize::default()
+            .with_clamp(false)
+            .with_lims(-2.0, 2.0)
+            .unwrap();
+        // No clamping; values outside [-2, 2] map outside [0, 1]
+        assert!(approx(n.apply(-3.0), -0.25, 1e-12));
+        assert!(approx(n.apply(3.0), 1.25, 1e-12));
+        assert!(approx(n.apply(0.0), 0.5, 1e-12));
+    }
+
+    #[test]
+    fn normalize_eps_stability() {
+        // Create a near-zero range smaller than eps
+        let mut n = Normalize::default();
+        n.eps = 1e-9;
+        let n = n.with_lims(1.0, 1.0 + 5e-10).unwrap();
+        // range_eps returns eps when |range| < eps
+        assert!(approx(n.range_eps(), 1e-9, 1e-12));
+	assert!(approx(n.range(), 5e-10, 1e-12));
+        // Mapping uses eps in denominator
+	let u = n.try_apply(1.0 + 2.5e-10).unwrap();
+	assert!(approx(u, 0.25, 1e-6));
+    }
+
+    #[test]
+    fn normalize_nan_input_returns_nan() {
+        let n = Normalize::default().with_lims(10.0, 20.0).unwrap();
+        let u = n.apply(f64::NAN);
+        assert!(u.is_nan());
+    }
+
+    #[test]
+    fn normalize_builder_chain() {
+        // Builder chain with custom clamp and eps
+        let n = Normalize::default()
+            .with_clamp(false)
+            .with_eps(1e-6)
+            .with_lims(2.0, 6.0)
+            .unwrap();
+        assert!(!n.clamp);
+        assert!(approx(n.eps, 1e-6, 0.0));
+        assert!(approx(n.range(), 4.0, 1e-12));
+        assert!(approx(n.apply(4.0), 0.5, 1e-12));
+    }
+
+
+    /* ============ Chained scaling tests ================================== */
+    #[test]
+    fn normalize_then_scale() {
+        // Normalize an input to [0,1], then scale using SymLog for display coordinates.
+        let norm = Normalize::default().with_clamp(false).with_lims(0.0, 100.0).unwrap();
+        let scale = RenderScale::SymLog { linthresh: 0.2 };
+
+        // Data points: low, mid, high
+        for &v in &[0.0, 50.0, 100.0] {
+	    let u = scale.try_apply(v).unwrap();
+            let x = norm.try_apply(u).unwrap();
+            // Revert and renormalize back should give original u
+            let u_rev = norm.try_revert(x).unwrap();
+	    let v_rev = scale.try_revert(u_rev).unwrap();
+            assert!(approx(u, u_rev, 1e-12));
+	    assert!(approx(v, v_rev, 1e-12));
+        }
+    }
+}
