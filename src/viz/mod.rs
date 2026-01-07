@@ -2,6 +2,11 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod gradients;
-mod io;
+//mod colorize;
+pub mod io;
+pub mod render;
+pub mod scale;
 
-pub use io::get_gradient;
+pub use gradients::get_gradient;
+pub use render::{MeshField, RasterField, RasterizeParams, rasterize, rasterize_with};
+pub use scale::{Normalize, RenderScale};
