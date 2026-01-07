@@ -4,6 +4,26 @@
 //! Scaling transformations and mappings for rendering.
 use crate::{LensForgeError, Result};
 
+/// Compute automatic min/max from a value slice
+///
+/// # Arguments
+/// * `values` - value array slice
+pub fn auto_range(values: &[f64]) -> Option<(f64, f64)> {
+    let mut vmin = f64::INFINITY;
+    let mut vmax = f64::NEG_INFINITY;
+    for &v in values {
+	if v.is_finite() {
+	    vmin = vmin.min(v);
+	    vmax = vmax.max(v);
+	}
+    }
+    if vmin.is_finite() && vmax.is_finite() {
+	Some((vmin, vmax))
+    } else {
+	None
+    }
+}
+
 /// Scaling applied to map values for visualizations.
 #[derive(Clone, Copy, Debug, Default)]
 pub enum RenderScale {
