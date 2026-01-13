@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Scaling transformations and mappings for rendering.
 use crate::{LensForgeError, Result};
+use rayon::prelude::*;
 
 /// Compute automatic min/max from a value slice
 ///
@@ -12,15 +13,15 @@ pub fn auto_range(values: &[f64]) -> Option<(f64, f64)> {
     let mut vmin = f64::INFINITY;
     let mut vmax = f64::NEG_INFINITY;
     for &v in values {
-	if v.is_finite() {
-	    vmin = vmin.min(v);
-	    vmax = vmax.max(v);
-	}
+        if v.is_finite() {
+            vmin = vmin.min(v);
+            vmax = vmax.max(v);
+        }
     }
     if vmin.is_finite() && vmax.is_finite() {
-	Some((vmin, vmax))
+        Some((vmin, vmax))
     } else {
-	None
+        None
     }
 }
 
@@ -245,6 +246,165 @@ impl RenderScale {
     pub fn revert_or(&self, s: f64, fallback: f64) -> f64 {
         self.try_revert(s).unwrap_or(fallback)
     }
+
+    /// Apply scaling to an entire slice, writing results to output buffer.
+    ///
+    /// # Arguments
+    /// * `values` - input slice
+    /// * `output` - output buffer (must have same length as input)
+    /// * `fallback` - value to use for invalid inputs
+    pub fn apply_slice(&self, values: &[f64], output: &mut [f64], fallback: f64) {
+        assert_eq!(
+            values.len(),
+            output.len(),
+            "Input and output slices must have same length"
+        );
+
+        match *self {
+            RenderScale::Linear => {
+                for (v, out) in values.iter().zip(output.iter_mut()) {
+                    *out = if v.is_finite() { *v } else { fallback };
+                }
+            }
+            RenderScale::Log10 => {
+                for (v, out) in values.iter().zip(output.iter_mut()) {
+                    *out = if *v > 0.0 && v.is_finite() {
+                        v.log10()
+                    } else {
+                        fallback
+                    };
+                }
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    output.fill(fallback);
+                    return;
+                }
+                for (v, out) in values.iter().zip(output.iter_mut()) {
+                    *out = Self::apply_symlog_or(*v, linthresh, fallback);
+                }
+            }
+        }
+    }
+
+    /// Apply scaling to slice in parallel (using rayon backend).
+    ///
+    /// # Arguments
+    /// * `values` - input slice
+    /// * `output` - output buffer (must have same length as input)
+    /// * `fallback` - value to use for invalid inputs
+    pub fn par_apply_slice(&self, values: &[f64], output: &mut [f64], fallback: f64) {
+        assert_eq!(
+            values.len(),
+            output.len(),
+            "Input and output slices must have same length"
+        );
+
+        match *self {
+            RenderScale::Linear => {
+                values
+                    .par_iter()
+                    .zip(output.par_iter_mut())
+                    .for_each(|(v, out)| {
+                        *out = if v.is_finite() { *v } else { fallback };
+                    });
+            }
+            RenderScale::Log10 => {
+                values
+                    .par_iter()
+                    .zip(output.par_iter_mut())
+                    .for_each(|(v, out)| {
+                        *out = if *v > 0.0 && v.is_finite() {
+                            v.log10()
+                        } else {
+                            fallback
+                        };
+                    });
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    output.par_iter_mut().for_each(|out| *out = fallback);
+                    return;
+                }
+                values
+                    .par_iter()
+                    .zip(output.par_iter_mut())
+                    .for_each(|(v, out)| {
+                        *out = Self::apply_symlog_or(*v, linthresh, fallback);
+                    });
+            }
+        }
+    }
+
+    /// Apply scaling in-place to a mutable slice.
+    ///
+    /// # Arguments
+    /// * `values` - mutable slice to transform in-place
+    /// * `fallback` - value to use for invalid inputs
+    pub fn apply_slice_inplace(&self, values: &mut [f64], fallback: f64) {
+        match *self {
+            RenderScale::Linear => {
+                for v in values.iter_mut() {
+                    if !v.is_finite() {
+                        *v = fallback;
+                    }
+                }
+            }
+            RenderScale::Log10 => {
+                for v in values.iter_mut() {
+                    *v = if *v > 0.0 && v.is_finite() {
+                        v.log10()
+                    } else {
+                        fallback
+                    };
+                }
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    values.fill(fallback);
+                    return;
+                }
+                for v in values.iter_mut() {
+                    *v = Self::apply_symlog_or(*v, linthresh, fallback);
+                }
+            }
+        }
+    }
+
+    /// Apply scaling in-place to a mutable slice in parallel (using rayon backend).
+    ///
+    /// # Arguments
+    /// * `values` - mutable slice to transform in-place
+    /// * `fallback` - value to use for invalid inputs
+    pub fn par_apply_slice_inplace(&self, values: &mut [f64], fallback: f64) {
+        match *self {
+            RenderScale::Linear => {
+                values.par_iter_mut().for_each(|v| {
+                    if !v.is_finite() {
+                        *v = fallback;
+                    }
+                });
+            }
+            RenderScale::Log10 => {
+                values.par_iter_mut().for_each(|v| {
+                    *v = if *v > 0.0 && v.is_finite() {
+                        v.log10()
+                    } else {
+                        fallback
+                    };
+                });
+            }
+            RenderScale::SymLog { linthresh } => {
+                if !linthresh.is_finite() || linthresh <= 0.0 {
+                    values.par_iter_mut().for_each(|v| *v = fallback);
+                    return;
+                }
+                values.par_iter_mut().for_each(|v| {
+                    *v = Self::apply_symlog_or(*v, linthresh, fallback);
+                });
+            }
+        }
+    }
 }
 
 /* ============ Normalize ================================================== */
@@ -339,7 +499,7 @@ impl Normalize {
             ));
         }
         let normalized = self.apply(v);
-	println!("Normalized {}", normalized);
+        println!("Normalized {}", normalized);
         if !normalized.is_finite() {
             return Err(LensForgeError::numerical_error(
                 "Normalize::apply returned non-finite result.",
@@ -349,31 +509,153 @@ impl Normalize {
     }
 
     pub fn revert(&self, n: f64) -> f64 {
-	if !n.is_finite() {
-	    return f64::NAN;
-	}
-	let range = self.range_eps();
-	n * range + self.min
+        if !n.is_finite() {
+            return f64::NAN;
+        }
+        let range = self.range_eps();
+        n * range + self.min
     }
 
     pub fn try_revert(&self, n: f64) -> Result<f64> {
-	if !n.is_finite() {
-	    return Err(LensForgeError::numerical_error(
+        if !n.is_finite() {
+            return Err(LensForgeError::numerical_error(
                 "Normalize::revert requires finite `n`",
             ));
-	}
-	if self.clamp {
-	    return Err(LensForgeError::invalid_option(
+        }
+        if self.clamp {
+            return Err(LensForgeError::invalid_option(
                 "Normalize::revert is not possible when `clamp` is `true`",
             ));
-	}
-	let v = self.revert(n);
-	if !v.is_finite() {
-	    return Err(LensForgeError::numerical_error(
+        }
+        let v = self.revert(n);
+        if !v.is_finite() {
+            return Err(LensForgeError::numerical_error(
                 "Normalize::revert returned non-finite result.",
             ));
-	}
-	Ok(v)
+        }
+        Ok(v)
+    }
+
+    /// Normalize an entire slice, writing results to output buffer.
+    ///
+    /// # Arguments
+    /// * `values` - input slice
+    /// * `output` - output buffer (must have same length as input)
+    pub fn apply_slice(&self, values: &[f64], output: &mut [f64]) {
+        assert_eq!(values.len(), output.len());
+        let range = self.range_eps();
+        let inv_range = 1.0 / range;
+
+        if self.clamp {
+            for (v, out) in values.iter().zip(output.iter_mut()) {
+                if v.is_finite() {
+                    let normalized = (*v - self.min) * inv_range;
+                    *out = normalized.clamp(0.0, 1.0);
+                } else {
+                    *out = f64::NAN;
+                }
+            }
+        } else {
+            for (v, out) in values.iter().zip(output.iter_mut()) {
+                *out = if v.is_finite() {
+                    (*v - self.min) * inv_range
+                } else {
+                    f64::NAN
+                };
+            }
+        }
+    }
+
+    /// Normalize slice in parallel (using rayon backend).
+    ///
+    /// # Arguments
+    /// * `values` - input slice
+    /// * `output` - output buffer (must have same length as input)
+    pub fn par_apply_slice(&self, values: &[f64], output: &mut [f64]) {
+        assert_eq!(values.len(), output.len());
+        let range = self.range_eps();
+        let inv_range = 1.0 / range;
+
+        if self.clamp {
+            values
+                .par_iter()
+                .zip(output.par_iter_mut())
+                .for_each(|(v, out)| {
+                    if v.is_finite() {
+                        let normalized = (*v - self.min) * inv_range;
+                        *out = normalized.clamp(0.0, 1.0);
+                    } else {
+                        *out = f64::NAN;
+                    }
+                });
+        } else {
+            values
+                .par_iter()
+                .zip(output.par_iter_mut())
+                .for_each(|(v, out)| {
+                    *out = if v.is_finite() {
+                        (*v - self.min) * inv_range
+                    } else {
+                        f64::NAN
+                    };
+                });
+        }
+    }
+
+    /// Normalize in-place.
+    ///
+    /// # Arguments
+    /// * `values` - mutable slice to normalize in-place
+    pub fn apply_slice_inplace(&self, values: &mut [f64]) {
+        let range = self.range_eps();
+        let inv_range = 1.0 / range;
+
+        if self.clamp {
+            for v in values.iter_mut() {
+                if v.is_finite() {
+                    let normalized = (*v - self.min) * inv_range;
+                    *v = normalized.clamp(0.0, 1.0);
+                } else {
+                    *v = f64::NAN;
+                }
+            }
+        } else {
+            for v in values.iter_mut() {
+                *v = if v.is_finite() {
+                    (*v - self.min) * inv_range
+                } else {
+                    f64::NAN
+                };
+            }
+        }
+    }
+
+    /// Normalize in-place in parallel (using rayon backend).
+    ///
+    /// # Arguments
+    /// * `values` - mutable slice to normalize in-place
+    pub fn par_apply_slice_inplace(&self, values: &mut [f64]) {
+        let range = self.range_eps();
+        let inv_range = 1.0 / range;
+
+        if self.clamp {
+            values.par_iter_mut().for_each(|v| {
+                if v.is_finite() {
+                    let normalized = (*v - self.min) * inv_range;
+                    *v = normalized.clamp(0.0, 1.0);
+                } else {
+                    *v = f64::NAN;
+                }
+            });
+        } else {
+            values.par_iter_mut().for_each(|v| {
+                *v = if v.is_finite() {
+                    (*v - self.min) * inv_range
+                } else {
+                    f64::NAN
+                };
+            });
+        }
     }
 }
 
@@ -547,6 +829,114 @@ mod tests {
         }
     }
 
+    #[test]
+    fn slice_apply_linear() {
+        let scale = RenderScale::Linear;
+        let input = vec![1.0, 2.0, f64::NAN, 4.0, f64::INFINITY];
+        let mut output = vec![0.0; 5];
+        let fallback = -99.0;
+        scale.apply_slice(&input, &mut output, fallback);
+
+        assert!(approx(output[0], 1.0, 1e-12));
+        assert!(approx(output[1], 2.0, 1e-12));
+        assert!(approx(output[2], fallback, 1e-12));
+        assert!(approx(output[3], 4.0, 1e-12));
+        assert!(approx(output[4], fallback, 1e-12));
+    }
+
+    #[test]
+    fn slice_apply_log10() {
+        let scale = RenderScale::Log10;
+        let input = vec![1.0, 10.0, 100.0, -1.0, 0.0];
+        let mut output = vec![0.0; 5];
+        let fallback = -99.0;
+
+        scale.apply_slice(&input, &mut output, fallback);
+
+        assert!(approx(output[0], 0.0, 1e-12));
+        assert!(approx(output[1], 1.0, 1e-12));
+        assert!(approx(output[2], 2.0, 1e-12));
+        assert!(approx(output[3], fallback, 1e-12));
+        assert!(approx(output[4], fallback, 1e-12));
+    }
+
+    #[test]
+    fn slice_apply_symlog() {
+        let scale = RenderScale::SymLog { linthresh: 2.0 };
+        let input = vec![-10.0, -1.0, 0.0, 1.0, 10.0];
+        let mut output = vec![0.0; 5];
+        let fallback = -99.0;
+
+        scale.apply_slice(&input, &mut output, fallback);
+
+        // Values in linear region [-2, 2] should pass through
+        assert!(approx(output[2], 0.0, 1e-12));
+        assert!(approx(output[3], 1.0, 1e-12));
+
+        // Check symmetry
+        assert!(approx(output[0], -output[4], 1e-10));
+    }
+
+    #[test]
+    fn slice_apply_inplace() {
+        let scale = RenderScale::Log10;
+        let mut values = vec![1.0, 10.0, 100.0, -1.0];
+        let fallback = -99.0;
+
+        scale.apply_slice_inplace(&mut values, fallback);
+
+        assert!(approx(values[0], 0.0, 1e-12));
+        assert!(approx(values[1], 1.0, 1e-12));
+        assert!(approx(values[2], 2.0, 1e-12));
+        assert!(approx(values[3], fallback, 1e-12));
+    }
+
+    #[test]
+    fn slice_par_apply() {
+        let scale = RenderScale::Linear;
+        let input: Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let mut output_seq = vec![0.0; 1000];
+        let mut output_par = vec![0.0; 1000];
+        let fallback = 0.0;
+
+        scale.apply_slice(&input, &mut output_seq, fallback);
+        scale.par_apply_slice(&input, &mut output_par, fallback);
+
+        for i in 0..1000 {
+            assert!(approx(output_seq[i], output_par[i], 1e-12));
+        }
+    }
+
+    #[test]
+    fn slice_consistency_with_per_value() {
+        let scale = RenderScale::SymLog { linthresh: 2.0 };
+        let input: Vec<f64> = vec![-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0];
+        let mut output_slice = vec![0.0; input.len()];
+        let fallback = 0.0;
+
+        scale.apply_slice(&input, &mut output_slice, fallback);
+
+        for (i, &v) in input.iter().enumerate() {
+            let per_value = scale.apply_or(v, fallback);
+            assert!(
+                approx(output_slice[i], per_value, 1e-12),
+                "Mismatch at index {}: slice={}, per_value={}",
+                i,
+                output_slice[i],
+                per_value
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Input and output slices must have same length")]
+    fn slice_apply_panics_on_length_mismatch() {
+        let scale = RenderScale::Linear;
+        let input = vec![1.0, 2.0, 3.0];
+        let mut output = vec![0.0; 2];
+        scale.apply_slice(&input, &mut output, 0.0);
+    }
+
     /* ============ Normalize tests ======================================== */
     #[test]
     fn normalize_default_behavior() {
@@ -602,10 +992,10 @@ mod tests {
         let n = n.with_lims(1.0, 1.0 + 5e-10).unwrap();
         // range_eps returns eps when |range| < eps
         assert!(approx(n.range_eps(), 1e-9, 1e-12));
-	assert!(approx(n.range(), 5e-10, 1e-12));
+        assert!(approx(n.range(), 5e-10, 1e-12));
         // Mapping uses eps in denominator
-	let u = n.try_apply(1.0 + 2.5e-10).unwrap();
-	assert!(approx(u, 0.25, 1e-6));
+        let u = n.try_apply(1.0 + 2.5e-10).unwrap();
+        assert!(approx(u, 0.25, 1e-6));
     }
 
     #[test]
@@ -629,23 +1019,141 @@ mod tests {
         assert!(approx(n.apply(4.0), 0.5, 1e-12));
     }
 
+    #[test]
+    fn normalize_slice_apply() {
+        let norm = Normalize::default().with_lims(0.0, 100.0).unwrap();
+        let input = vec![0.0, 25.0, 50.0, 75.0, 100.0];
+        let mut output = vec![0.0; 5];
+
+        norm.apply_slice(&input, &mut output);
+
+        assert!(approx(output[0], 0.0, 1e-12));
+        assert!(approx(output[1], 0.25, 1e-12));
+        assert!(approx(output[2], 0.5, 1e-12));
+        assert!(approx(output[3], 0.75, 1e-12));
+        assert!(approx(output[4], 1.0, 1e-12));
+    }
+
+    #[test]
+    fn normalize_slice_with_clamping() {
+        let norm = Normalize::default()
+            .with_clamp(true)
+            .with_lims(0.0, 10.0)
+            .unwrap();
+        let input = vec![-5.0, 0.0, 5.0, 10.0, 15.0];
+        let mut output = vec![0.0; 5];
+
+        norm.apply_slice(&input, &mut output);
+
+        assert!(approx(output[0], 0.0, 1e-12)); // clamped
+        assert!(approx(output[1], 0.0, 1e-12));
+        assert!(approx(output[2], 0.5, 1e-12));
+        assert!(approx(output[3], 1.0, 1e-12));
+        assert!(approx(output[4], 1.0, 1e-12)); // clamped
+    }
+
+    #[test]
+    fn normalize_slice_without_clamping() {
+        let norm = Normalize::default()
+            .with_clamp(false)
+            .with_lims(0.0, 10.0)
+            .unwrap();
+        let input = vec![-5.0, 0.0, 5.0, 10.0, 15.0];
+        let mut output = vec![0.0; 5];
+
+        norm.apply_slice(&input, &mut output);
+
+        assert!(approx(output[0], -0.5, 1e-12)); // not clamped
+        assert!(approx(output[1], 0.0, 1e-12));
+        assert!(approx(output[2], 0.5, 1e-12));
+        assert!(approx(output[3], 1.0, 1e-12));
+        assert!(approx(output[4], 1.5, 1e-12)); // not clamped
+    }
+
+    #[test]
+    fn normalize_slice_inplace() {
+        let norm = Normalize::default().with_lims(0.0, 100.0).unwrap();
+        let mut values = vec![0.0, 50.0, 100.0];
+
+        norm.apply_slice_inplace(&mut values);
+
+        assert!(approx(values[0], 0.0, 1e-12));
+        assert!(approx(values[1], 0.5, 1e-12));
+        assert!(approx(values[2], 1.0, 1e-12));
+    }
+
+    #[test]
+    fn normalize_par_apply_slice() {
+        let norm = Normalize::default().with_lims(0.0, 1000.0).unwrap();
+        let input: Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let mut output_seq = vec![0.0; 1000];
+        let mut output_par = vec![0.0; 1000];
+
+        norm.apply_slice(&input, &mut output_seq);
+        norm.par_apply_slice(&input, &mut output_par);
+
+        for i in 0..1000 {
+            assert!(approx(output_seq[i], output_par[i], 1e-12));
+        }
+    }
+
+    #[test]
+    fn normalize_slice_consistency_with_per_value() {
+        let norm = Normalize::default()
+            .with_clamp(false)
+            .with_lims(-10.0, 10.0)
+            .unwrap();
+        let input: Vec<f64> = vec![-15.0, -10.0, -5.0, 0.0, 5.0, 10.0, 15.0];
+        let mut output_slice = vec![0.0; input.len()];
+
+        norm.apply_slice(&input, &mut output_slice);
+
+        for (i, &v) in input.iter().enumerate() {
+            let per_value = norm.apply(v);
+            assert!(
+                approx(output_slice[i], per_value, 1e-12),
+                "Mismatch at index {}: slice={}, per_value={}",
+                i,
+                output_slice[i],
+                per_value
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_slice_handles_nan() {
+        let norm = Normalize::default().with_lims(0.0, 10.0).unwrap();
+        let input = vec![0.0, f64::NAN, 5.0, f64::INFINITY, 10.0];
+        let mut output = vec![0.0; 5];
+
+        norm.apply_slice(&input, &mut output);
+
+        assert!(approx(output[0], 0.0, 1e-12));
+        assert!(output[1].is_nan());
+        assert!(approx(output[2], 0.5, 1e-12));
+        assert!(output[3].is_nan());
+        assert!(approx(output[4], 1.0, 1e-12));
+    }
 
     /* ============ Chained scaling tests ================================== */
     #[test]
     fn normalize_then_scale() {
         // Normalize an input to [0,1], then scale using SymLog for display coordinates.
-        let norm = Normalize::default().with_clamp(false).with_lims(0.0, 100.0).unwrap();
+        let norm = Normalize::default()
+            .with_clamp(false)
+            .with_lims(0.0, 100.0)
+            .unwrap();
         let scale = RenderScale::SymLog { linthresh: 0.2 };
 
         // Data points: low, mid, high
         for &v in &[0.0, 50.0, 100.0] {
-	    let u = scale.try_apply(v).unwrap();
+            let u = scale.try_apply(v).unwrap();
             let x = norm.try_apply(u).unwrap();
             // Revert and renormalize back should give original u
             let u_rev = norm.try_revert(x).unwrap();
-	    let v_rev = scale.try_revert(u_rev).unwrap();
+            let v_rev = scale.try_revert(u_rev).unwrap();
             assert!(approx(u, u_rev, 1e-12));
-	    assert!(approx(v, v_rev, 1e-12));
+            assert!(approx(v, v_rev, 1e-12));
         }
     }
 }
