@@ -106,6 +106,23 @@ impl RenderOptions {
     pub fn gradient(&self) -> Box<dyn Gradient> {
         get_gradient(&self.gradient_name)
     }
+
+    /// Validate common option invariants.
+    pub fn validate(&self) -> Result<()> {
+        if self.vmin >= self.vmax {
+            return Err(LensForgeError::invalid_option(
+                "It is required to have vmin < vmax"
+            ));
+        }
+        if let RenderScale::SymLog { linthresh } = self.scale {
+            if !linthresh.is_finite() || linthresh <= 0.0 {
+                return Err(LensForgeError::invalid_option(
+                    "SymLog linthresh must be finite and > 0"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// High-level: a thing we can render
@@ -119,12 +136,5 @@ pub enum RenderInput<'a> {
 /// # Arguments
 /// * `opt` - Shared rendering configuration
 pub fn validate_options(opt: &RenderOptions) -> Result<()> {
-    if let RenderScale::SymLog { linthresh } = opt.scale {
-        if !linthresh.is_finite() || linthresh <= 0.0 {
-            return Err(LensForgeError::invalid_option(
-                "SymLog linthresh must be finite and > 0",
-            ));
-        }
-    }
-    Ok(())
+    opt.validate()
 }
