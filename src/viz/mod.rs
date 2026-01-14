@@ -2,7 +2,7 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod gradients;
-//mod colorize;
+mod colorize;
 pub mod io;
 pub mod render;
 pub mod scale;
@@ -10,3 +10,6 @@ pub mod scale;
 pub use gradients::get_gradient;
 pub use render::{MeshField, RasterField, RasterizeParams, rasterize, rasterize_with};
 pub use scale::{Normalize, RenderScale, auto_range};
+
+
+const MIN_CHUNK: usize = 1024;
