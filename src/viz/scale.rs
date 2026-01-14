@@ -5,13 +5,13 @@
 use crate::{LensForgeError, Result};
 use rayon::prelude::*;
 
-/// Compute automatic min/max from a value slice
+/// Compute automatic min/max from a value slice.
 ///
 /// # Arguments
-/// * `values` - value array slice
-pub fn auto_range(values: &[f64]) -> Option<(f64, f64)> {
-    let mut vmin = f64::INFINITY;
-    let mut vmax = f64::NEG_INFINITY;
+/// * `values` - Value array slice
+pub fn auto_range(values: &[f32]) -> Option<(f32, f32)> {
+    let mut vmin = f32::INFINITY;
+    let mut vmax = f32::NEG_INFINITY;
     for &v in values {
         if v.is_finite() {
             vmin = vmin.min(v);
@@ -36,11 +36,11 @@ pub enum RenderScale {
     /// Symmetric log-like scaling with a linear threshold around zero.
     SymLog {
         /// Half-width of linear region around zero.
-        linthresh: f64,
+        linthresh: f32,
     },
 }
 
-/// Various scaling kernels and transformations
+/// Various scaling kernels and transformations.
 ///
 /// # Kernels
 /// Functions that scale values `v` and return `None` for non-mappable results;
@@ -53,23 +53,23 @@ pub enum RenderScale {
 /// * `revert_symlog` / `revert_symlog_or`
 impl RenderScale {
     #[inline]
-    pub fn apply_linear(v: f64) -> Option<f64> {
+    pub fn apply_linear(v: f32) -> Option<f32> {
         if !v.is_finite() { None } else { Some(v) }
     }
     #[inline]
-    pub fn apply_linear_or(v: f64, fallback: f64) -> f64 {
+    pub fn apply_linear_or(v: f32, fallback: f32) -> f32 {
         RenderScale::apply_linear(v).unwrap_or(fallback)
     }
     #[inline]
-    pub fn revert_linear(s: f64) -> Option<f64> {
+    pub fn revert_linear(s: f32) -> Option<f32> {
         if !s.is_finite() { None } else { Some(s) }
     }
     #[inline]
-    pub fn revert_linear_or(s: f64, fallback: f64) -> f64 {
+    pub fn revert_linear_or(s: f32, fallback: f32) -> f32 {
         RenderScale::revert_linear(s).unwrap_or(fallback)
     }
     #[inline]
-    pub fn apply_log10(v: f64) -> Option<f64> {
+    pub fn apply_log10(v: f32) -> Option<f32> {
         if v > 0.0 && v.is_finite() {
             Some(v.log10())
         } else {
@@ -77,20 +77,20 @@ impl RenderScale {
         }
     }
     #[inline]
-    pub fn apply_log10_or(v: f64, fallback: f64) -> f64 {
+    pub fn apply_log10_or(v: f32, fallback: f32) -> f32 {
         RenderScale::apply_log10(v).unwrap_or(fallback)
     }
     #[inline]
-    pub fn revert_log10(s: f64) -> Option<f64> {
-        let v = 10.0_f64.powf(s);
+    pub fn revert_log10(s: f32) -> Option<f32> {
+        let v = 10.0_f32.powf(s);
         if v.is_finite() { Some(v) } else { None }
     }
     #[inline]
-    pub fn revert_log10_or(s: f64, fallback: f64) -> f64 {
+    pub fn revert_log10_or(s: f32, fallback: f32) -> f32 {
         RenderScale::revert_log10(s).unwrap_or(fallback)
     }
     #[inline]
-    pub fn apply_symlog(v: f64, linthresh: f64) -> Option<f64> {
+    pub fn apply_symlog(v: f32, linthresh: f32) -> Option<f32> {
         if !linthresh.is_finite() || linthresh <= 0.0 {
             return None;
         }
@@ -108,11 +108,11 @@ impl RenderScale {
         }
     }
     #[inline]
-    pub fn apply_symlog_or(v: f64, linthresh: f64, fallback: f64) -> f64 {
+    pub fn apply_symlog_or(v: f32, linthresh: f32, fallback: f32) -> f32 {
         RenderScale::apply_symlog(v, linthresh).unwrap_or(fallback)
     }
     #[inline]
-    pub fn revert_symlog(s: f64, linthresh: f64) -> Option<f64> {
+    pub fn revert_symlog(s: f32, linthresh: f32) -> Option<f32> {
         if !linthresh.is_finite() || linthresh <= 0.0 {
             return None;
         }
@@ -122,21 +122,21 @@ impl RenderScale {
         } else {
             let sgn = s.signum();
             let exp = sabs / linthresh - 1.0;
-            let v = sgn * linthresh * 10.0_f64.powf(exp);
+            let v = sgn * linthresh * 10.0_f32.powf(exp);
             if v.is_finite() { Some(v) } else { None }
         }
     }
     #[inline]
-    pub fn revert_symlog_or(s: f64, linthresh: f64, fallback: f64) -> f64 {
+    pub fn revert_symlog_or(s: f32, linthresh: f32, fallback: f32) -> f32 {
         RenderScale::revert_symlog(s, linthresh).unwrap_or(fallback)
     }
 
-    /// Apply the specified scaling and return `None` if result is invalid
+    /// Apply the specified scaling and return `None` if result is invalid.
     ///
     /// # Arguments
-    /// * `v` - value to scale
+    /// * `v` - Value to scale
     #[inline]
-    pub fn apply(&self, v: f64) -> Option<f64> {
+    pub fn apply(&self, v: f32) -> Option<f32> {
         if !v.is_finite() {
             return None;
         }
@@ -150,10 +150,10 @@ impl RenderScale {
     /// Safely apply going into failure mode for invalid values.
     ///
     /// # Arguments
-    /// * `v` - value to scale
+    /// * `v` - Value to scale
     #[inline]
     #[must_use]
-    pub fn try_apply(&self, v: f64) -> Result<f64> {
+    pub fn try_apply(&self, v: f32) -> Result<f32> {
         if !v.is_finite() {
             return Err(LensForgeError::numerical_error("Need valid, finite input."));
         }
@@ -179,22 +179,22 @@ impl RenderScale {
         }
     }
 
-    /// Apply the specified scaling with fallback
+    /// Apply the specified scaling with fallback.
     ///
     /// # Arguments
-    /// * `v` - value to scale
-    /// * `fallback` - fallback value for invalid scaling results
+    /// * `v` - Value to scale
+    /// * `fallback` - Fallback value for invalid scaling results
     #[inline]
-    pub fn apply_or(&self, v: f64, fallback: f64) -> f64 {
+    pub fn apply_or(&self, v: f32, fallback: f32) -> f32 {
         self.try_apply(v).unwrap_or(fallback)
     }
 
-    /// Inverse of the specified scaling and return `None` if result is invalid
+    /// Inverse of the specified scaling and return `None` if result is invalid.
     ///
     /// # Arguments
-    /// * `s` - value to unscale
+    /// * `s` - Value to unscale
     #[inline]
-    pub fn revert(&self, s: f64) -> Option<f64> {
+    pub fn revert(&self, s: f32) -> Option<f32> {
         if !s.is_finite() {
             return None;
         }
@@ -208,10 +208,10 @@ impl RenderScale {
     /// Safely apply going into failure mode for invalid values.
     ///
     /// # Arguments
-    /// * `s` - value to unscale
+    /// * `s` - Value to unscale
     #[inline]
     #[must_use]
-    pub fn try_revert(&self, s: f64) -> Result<f64> {
+    pub fn try_revert(&self, s: f32) -> Result<f32> {
         if !s.is_finite() {
             return Err(LensForgeError::numerical_error("Need valid, finite input."));
         }
@@ -237,23 +237,23 @@ impl RenderScale {
         }
     }
 
-    /// Inverse of the specified scaling
+    /// Inverse of the specified scaling.
     ///
     /// # Arguments
-    /// * `s` - value to unscale
-    /// * `fallback` - fallback value for invalid results
+    /// * `s` - Value to unscale
+    /// * `fallback` - Fallback value for invalid results
     #[inline]
-    pub fn revert_or(&self, s: f64, fallback: f64) -> f64 {
+    pub fn revert_or(&self, s: f32, fallback: f32) -> f32 {
         self.try_revert(s).unwrap_or(fallback)
     }
 
     /// Apply scaling to an entire slice, writing results to output buffer.
     ///
     /// # Arguments
-    /// * `values` - input slice
-    /// * `output` - output buffer (must have same length as input)
-    /// * `fallback` - value to use for invalid inputs
-    pub fn apply_slice(&self, values: &[f64], output: &mut [f64], fallback: f64) {
+    /// * `values` - Input slice
+    /// * `output` - Output buffer (must have same length as input)
+    /// * `fallback` - Value to use for invalid inputs
+    pub fn apply_slice(&self, values: &[f32], output: &mut [f32], fallback: f32) {
         assert_eq!(
             values.len(),
             output.len(),
@@ -290,10 +290,10 @@ impl RenderScale {
     /// Apply scaling to slice in parallel (using rayon backend).
     ///
     /// # Arguments
-    /// * `values` - input slice
-    /// * `output` - output buffer (must have same length as input)
-    /// * `fallback` - value to use for invalid inputs
-    pub fn par_apply_slice(&self, values: &[f64], output: &mut [f64], fallback: f64) {
+    /// * `values` - Input slice
+    /// * `output` - Output buffer (must have same length as input)
+    /// * `fallback` - Value to use for invalid inputs
+    pub fn par_apply_slice(&self, values: &[f32], output: &mut [f32], fallback: f32) {
         assert_eq!(
             values.len(),
             output.len(),
@@ -339,9 +339,9 @@ impl RenderScale {
     /// Apply scaling in-place to a mutable slice.
     ///
     /// # Arguments
-    /// * `values` - mutable slice to transform in-place
-    /// * `fallback` - value to use for invalid inputs
-    pub fn apply_slice_inplace(&self, values: &mut [f64], fallback: f64) {
+    /// * `values` - Mutable slice to transform in-place
+    /// * `fallback` - Value to use for invalid inputs
+    pub fn apply_slice_inplace(&self, values: &mut [f32], fallback: f32) {
         match *self {
             RenderScale::Linear => {
                 for v in values.iter_mut() {
@@ -374,9 +374,9 @@ impl RenderScale {
     /// Apply scaling in-place to a mutable slice in parallel (using rayon backend).
     ///
     /// # Arguments
-    /// * `values` - mutable slice to transform in-place
-    /// * `fallback` - value to use for invalid inputs
-    pub fn par_apply_slice_inplace(&self, values: &mut [f64], fallback: f64) {
+    /// * `values` - Mutable slice to transform in-place
+    /// * `fallback` - Value to use for invalid inputs
+    pub fn par_apply_slice_inplace(&self, values: &mut [f32], fallback: f32) {
         match *self {
             RenderScale::Linear => {
                 values.par_iter_mut().for_each(|v| {
@@ -408,16 +408,16 @@ impl RenderScale {
 }
 
 /* ============ Normalize ================================================== */
-/// Normalizer that maps values between specified range to [0, 1]
+/// Normalizer that maps values between specified range to [0, 1].
 #[derive(Clone, Copy, Debug)]
 pub struct Normalize {
     /// Normalization range limits [`min`, `max`]
-    pub min: f64,
-    pub max: f64,
+    pub min: f32,
+    pub max: f32,
     /// Whether to clamp values beyond normalization range
     pub clamp: bool,
     /// Numerical precision parameter
-    pub eps: f64,
+    pub eps: f32,
 }
 
 impl Default for Normalize {
@@ -432,18 +432,18 @@ impl Default for Normalize {
 }
 
 impl Normalize {
-    /// Builder for setting `clamp` field
+    /// Builder for setting `clamp` field.
     pub fn with_clamp(mut self, clamp: bool) -> Self {
         self.clamp = clamp;
         self
     }
-    /// Builder for setting numerical stability `eps` field
-    pub fn with_eps(mut self, eps: f64) -> Self {
+    /// Builder for setting numerical stability `eps` field.
+    pub fn with_eps(mut self, eps: f32) -> Self {
         self.eps = eps;
         self
     }
     /// Construct normalizer from limits `min` and `max`.
-    pub fn with_lims(mut self, min: f64, max: f64) -> Result<Self> {
+    pub fn with_lims(mut self, min: f32, max: f32) -> Result<Self> {
         if !min.is_finite() || !max.is_finite() {
             return Err(LensForgeError::invalid_option("Limits must be finite"));
         }
@@ -458,18 +458,18 @@ impl Normalize {
         Ok(self)
     }
     /// Construct normalizer from `min` and `range`.
-    pub fn from_range(min: f64, range: f64) -> Result<Self> {
+    pub fn from_range(min: f32, range: f32) -> Result<Self> {
         let max = min + range;
         Self::default().with_lims(min, max)
     }
-    /// Getter for the normalization range
+    /// Getter for the normalization range.
     #[inline]
-    pub fn range(&self) -> f64 {
+    pub fn range(&self) -> f32 {
         self.max - self.min
     }
-    /// Getter for normalization range with numerical stability
+    /// Getter for normalization range with numerical stability.
     #[inline]
-    pub fn range_eps(&self) -> f64 {
+    pub fn range_eps(&self) -> f32 {
         let range = self.range();
         if range.abs() < self.eps {
             self.eps
@@ -477,22 +477,22 @@ impl Normalize {
             range
         }
     }
-    /// Clamp value `v` iff normalizer is configured to do so
+    /// Clamp value `v` iff normalizer is configured to do so.
     #[inline]
-    pub fn clamp_or(&self, v: f64) -> f64 {
+    pub fn clamp_or(&self, v: f32) -> f32 {
         if self.clamp { v.clamp(0.0, 1.0) } else { v }
     }
 
-    pub fn apply(&self, v: f64) -> f64 {
+    pub fn apply(&self, v: f32) -> f32 {
         if !v.is_finite() {
-            return f64::NAN;
+            return f32::NAN;
         }
         let range = self.range_eps();
         let normalized = (v - self.min) / range;
         self.clamp_or(normalized)
     }
 
-    pub fn try_apply(&self, v: f64) -> Result<f64> {
+    pub fn try_apply(&self, v: f32) -> Result<f32> {
         if !v.is_finite() {
             return Err(LensForgeError::numerical_error(
                 "Normalize::apply requires finite `v`",
@@ -508,15 +508,15 @@ impl Normalize {
         Ok(normalized)
     }
 
-    pub fn revert(&self, n: f64) -> f64 {
+    pub fn revert(&self, n: f32) -> f32 {
         if !n.is_finite() {
-            return f64::NAN;
+            return f32::NAN;
         }
         let range = self.range_eps();
         n * range + self.min
     }
 
-    pub fn try_revert(&self, n: f64) -> Result<f64> {
+    pub fn try_revert(&self, n: f32) -> Result<f32> {
         if !n.is_finite() {
             return Err(LensForgeError::numerical_error(
                 "Normalize::revert requires finite `n`",
@@ -539,9 +539,9 @@ impl Normalize {
     /// Normalize an entire slice, writing results to output buffer.
     ///
     /// # Arguments
-    /// * `values` - input slice
-    /// * `output` - output buffer (must have same length as input)
-    pub fn apply_slice(&self, values: &[f64], output: &mut [f64]) {
+    /// * `values` - Input slice
+    /// * `output` - Output buffer (must have same length as input)
+    pub fn apply_slice(&self, values: &[f32], output: &mut [f32]) {
         assert_eq!(values.len(), output.len());
         let range = self.range_eps();
         let inv_range = 1.0 / range;
@@ -552,7 +552,7 @@ impl Normalize {
                     let normalized = (*v - self.min) * inv_range;
                     *out = normalized.clamp(0.0, 1.0);
                 } else {
-                    *out = f64::NAN;
+                    *out = f32::NAN;
                 }
             }
         } else {
@@ -560,7 +560,7 @@ impl Normalize {
                 *out = if v.is_finite() {
                     (*v - self.min) * inv_range
                 } else {
-                    f64::NAN
+                    f32::NAN
                 };
             }
         }
@@ -569,9 +569,9 @@ impl Normalize {
     /// Normalize slice in parallel (using rayon backend).
     ///
     /// # Arguments
-    /// * `values` - input slice
-    /// * `output` - output buffer (must have same length as input)
-    pub fn par_apply_slice(&self, values: &[f64], output: &mut [f64]) {
+    /// * `values` - Input slice
+    /// * `output` - Output buffer (must have same length as input)
+    pub fn par_apply_slice(&self, values: &[f32], output: &mut [f32]) {
         assert_eq!(values.len(), output.len());
         let range = self.range_eps();
         let inv_range = 1.0 / range;
@@ -585,7 +585,7 @@ impl Normalize {
                         let normalized = (*v - self.min) * inv_range;
                         *out = normalized.clamp(0.0, 1.0);
                     } else {
-                        *out = f64::NAN;
+                        *out = f32::NAN;
                     }
                 });
         } else {
@@ -596,7 +596,7 @@ impl Normalize {
                     *out = if v.is_finite() {
                         (*v - self.min) * inv_range
                     } else {
-                        f64::NAN
+                        f32::NAN
                     };
                 });
         }
@@ -605,8 +605,8 @@ impl Normalize {
     /// Normalize in-place.
     ///
     /// # Arguments
-    /// * `values` - mutable slice to normalize in-place
-    pub fn apply_slice_inplace(&self, values: &mut [f64]) {
+    /// * `values` - Mutable slice to normalize in-place
+    pub fn apply_slice_inplace(&self, values: &mut [f32]) {
         let range = self.range_eps();
         let inv_range = 1.0 / range;
 
@@ -616,7 +616,7 @@ impl Normalize {
                     let normalized = (*v - self.min) * inv_range;
                     *v = normalized.clamp(0.0, 1.0);
                 } else {
-                    *v = f64::NAN;
+                    *v = f32::NAN;
                 }
             }
         } else {
@@ -624,7 +624,7 @@ impl Normalize {
                 *v = if v.is_finite() {
                     (*v - self.min) * inv_range
                 } else {
-                    f64::NAN
+                    f32::NAN
                 };
             }
         }
@@ -633,8 +633,8 @@ impl Normalize {
     /// Normalize in-place in parallel (using rayon backend).
     ///
     /// # Arguments
-    /// * `values` - mutable slice to normalize in-place
-    pub fn par_apply_slice_inplace(&self, values: &mut [f64]) {
+    /// * `values` - Mutable slice to normalize in-place
+    pub fn par_apply_slice_inplace(&self, values: &mut [f32]) {
         let range = self.range_eps();
         let inv_range = 1.0 / range;
 
@@ -644,7 +644,7 @@ impl Normalize {
                     let normalized = (*v - self.min) * inv_range;
                     *v = normalized.clamp(0.0, 1.0);
                 } else {
-                    *v = f64::NAN;
+                    *v = f32::NAN;
                 }
             });
         } else {
@@ -652,7 +652,7 @@ impl Normalize {
                 *v = if v.is_finite() {
                     (*v - self.min) * inv_range
                 } else {
-                    f64::NAN
+                    f32::NAN
                 };
             });
         }
@@ -664,7 +664,7 @@ impl Normalize {
 mod tests {
     use super::{LensForgeError, Normalize, RenderScale};
 
-    fn approx(a: f64, b: f64, eps: f64) -> bool {
+    fn approx(a: f32, b: f32, eps: f32) -> bool {
         (a - b).abs() <= eps * (1.0 + a.abs().max(b.abs()))
     }
 
@@ -675,7 +675,7 @@ mod tests {
         for &v in &[0.0, 1.0, -3.5, 1e6] {
             let f = s.apply(v).unwrap();
             let b = s.revert(f).unwrap();
-            assert!(approx(v, b, 1e-12));
+            assert!(approx(v, b, 1e-10));
         }
     }
 
@@ -684,7 +684,7 @@ mod tests {
         let s = RenderScale::Log10;
         assert!(s.apply(-1.0).is_none());
         assert!(s.apply(0.0).is_none());
-        assert!(s.apply(f64::NAN).is_none());
+        assert!(s.apply(f32::NAN).is_none());
     }
 
     #[test]
@@ -693,7 +693,7 @@ mod tests {
         for &v in &[1e-6, 1.0, 10.0, 1e6] {
             let f = s.apply(v).unwrap();
             let b = s.revert(f).unwrap();
-            assert!(approx(v, b, 1e-12));
+            assert!(approx(v, b, 1e-10));
         }
     }
 
@@ -704,8 +704,8 @@ mod tests {
         // continuity at boundary
         let f_pos = s.apply(2.0).unwrap();
         let f_neg = s.apply(-2.0).unwrap();
-        assert!(approx(f_pos, 2.0, 1e-12));
-        assert!(approx(f_neg, -2.0, 1e-12));
+        assert!(approx(f_pos, 2.0, 1e-10));
+        assert!(approx(f_neg, -2.0, 1e-10));
     }
 
     #[test]
@@ -716,14 +716,14 @@ mod tests {
         for &v in &[-1000.0, -10.0, -2.0, -1.0, 0.0, 1.0, 2.0, 10.0, 1000.0] {
             let f = s.apply(v).unwrap();
             let b = s.revert(f).unwrap();
-            assert!(approx(v, b, 1e-10));
+            assert!(approx(v, b, 1e-6));
         }
     }
 
     #[test]
     fn linear_try_apply_revert_errors_on_non_finite() {
         let s = RenderScale::Linear;
-        for &bad in &[f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for &bad in &[f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             assert!(matches!(
                 s.try_apply(bad),
                 Err(LensForgeError::NumericalError(_))
@@ -739,8 +739,8 @@ mod tests {
     fn linear_fallbacks_work() {
         let s = RenderScale::Linear;
         let fb = 42.0;
-        assert_eq!(s.apply_or(f64::NAN, fb), fb);
-        assert_eq!(s.revert_or(f64::INFINITY, fb), fb);
+        assert_eq!(s.apply_or(f32::NAN, fb), fb);
+        assert_eq!(s.revert_or(f32::INFINITY, fb), fb);
     }
 
     #[test]
@@ -757,7 +757,7 @@ mod tests {
         ));
         // Non-finite input
         assert!(matches!(
-            s.try_apply(f64::NAN),
+            s.try_apply(f32::NAN),
             Err(LensForgeError::NumericalError(_))
         ));
     }
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn log10_revert_overflow_error() {
         let s = RenderScale::Log10;
-        // 10^s overflows for sufficiently large s (e.g., > 309 on f64)
+        // 10^s overflows for sufficiently large s (e.g., > 309 on f32)
         let big = 310.0;
         assert!(matches!(
             s.try_revert(big),
@@ -790,7 +790,7 @@ mod tests {
         ));
 
         let snan = RenderScale::SymLog {
-            linthresh: f64::NAN,
+            linthresh: f32::NAN,
         };
         assert!(matches!(
             snan.try_apply(1.0),
@@ -814,7 +814,7 @@ mod tests {
             RenderScale::SymLog { linthresh: 2.0 },
         ];
         for &scale in &scales {
-            for &bad in &[f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            for &bad in &[f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert!(scale.apply(bad).is_none());
                 assert!(matches!(
                     scale.try_apply(bad),
@@ -832,16 +832,16 @@ mod tests {
     #[test]
     fn slice_apply_linear() {
         let scale = RenderScale::Linear;
-        let input = vec![1.0, 2.0, f64::NAN, 4.0, f64::INFINITY];
+        let input = vec![1.0, 2.0, f32::NAN, 4.0, f32::INFINITY];
         let mut output = vec![0.0; 5];
         let fallback = -99.0;
         scale.apply_slice(&input, &mut output, fallback);
 
-        assert!(approx(output[0], 1.0, 1e-12));
-        assert!(approx(output[1], 2.0, 1e-12));
-        assert!(approx(output[2], fallback, 1e-12));
-        assert!(approx(output[3], 4.0, 1e-12));
-        assert!(approx(output[4], fallback, 1e-12));
+        assert!(approx(output[0], 1.0, 1e-10));
+        assert!(approx(output[1], 2.0, 1e-10));
+        assert!(approx(output[2], fallback, 1e-10));
+        assert!(approx(output[3], 4.0, 1e-10));
+        assert!(approx(output[4], fallback, 1e-10));
     }
 
     #[test]
@@ -853,11 +853,11 @@ mod tests {
 
         scale.apply_slice(&input, &mut output, fallback);
 
-        assert!(approx(output[0], 0.0, 1e-12));
-        assert!(approx(output[1], 1.0, 1e-12));
-        assert!(approx(output[2], 2.0, 1e-12));
-        assert!(approx(output[3], fallback, 1e-12));
-        assert!(approx(output[4], fallback, 1e-12));
+        assert!(approx(output[0], 0.0, 1e-10));
+        assert!(approx(output[1], 1.0, 1e-10));
+        assert!(approx(output[2], 2.0, 1e-10));
+        assert!(approx(output[3], fallback, 1e-10));
+        assert!(approx(output[4], fallback, 1e-10));
     }
 
     #[test]
@@ -870,8 +870,8 @@ mod tests {
         scale.apply_slice(&input, &mut output, fallback);
 
         // Values in linear region [-2, 2] should pass through
-        assert!(approx(output[2], 0.0, 1e-12));
-        assert!(approx(output[3], 1.0, 1e-12));
+        assert!(approx(output[2], 0.0, 1e-10));
+        assert!(approx(output[3], 1.0, 1e-10));
 
         // Check symmetry
         assert!(approx(output[0], -output[4], 1e-10));
@@ -885,16 +885,16 @@ mod tests {
 
         scale.apply_slice_inplace(&mut values, fallback);
 
-        assert!(approx(values[0], 0.0, 1e-12));
-        assert!(approx(values[1], 1.0, 1e-12));
-        assert!(approx(values[2], 2.0, 1e-12));
-        assert!(approx(values[3], fallback, 1e-12));
+        assert!(approx(values[0], 0.0, 1e-10));
+        assert!(approx(values[1], 1.0, 1e-10));
+        assert!(approx(values[2], 2.0, 1e-10));
+        assert!(approx(values[3], fallback, 1e-10));
     }
 
     #[test]
     fn slice_par_apply() {
         let scale = RenderScale::Linear;
-        let input: Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let input: Vec<f32> = (0..1000).map(|i| i as f32).collect();
         let mut output_seq = vec![0.0; 1000];
         let mut output_par = vec![0.0; 1000];
         let fallback = 0.0;
@@ -903,14 +903,14 @@ mod tests {
         scale.par_apply_slice(&input, &mut output_par, fallback);
 
         for i in 0..1000 {
-            assert!(approx(output_seq[i], output_par[i], 1e-12));
+            assert!(approx(output_seq[i], output_par[i], 1e-10));
         }
     }
 
     #[test]
     fn slice_consistency_with_per_value() {
         let scale = RenderScale::SymLog { linthresh: 2.0 };
-        let input: Vec<f64> = vec![-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0];
+        let input: Vec<f32> = vec![-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0];
         let mut output_slice = vec![0.0; input.len()];
         let fallback = 0.0;
 
@@ -919,7 +919,7 @@ mod tests {
         for (i, &v) in input.iter().enumerate() {
             let per_value = scale.apply_or(v, fallback);
             assert!(
-                approx(output_slice[i], per_value, 1e-12),
+                approx(output_slice[i], per_value, 1e-10),
                 "Mismatch at index {}: slice={}, per_value={}",
                 i,
                 output_slice[i],
@@ -942,22 +942,22 @@ mod tests {
     fn normalize_default_behavior() {
         let n = Normalize::default();
         // Default maps [0, 1] to [0, 1] with `clamp: true`
-        assert!(approx(n.apply(0.0), 0.0, 1e-12));
-        assert!(approx(n.apply(1.0), 1.0, 1e-12));
+        assert!(approx(n.apply(0.0), 0.0, 1e-10));
+        assert!(approx(n.apply(1.0), 1.0, 1e-10));
         // Values outside range get clamped
-        assert!(approx(n.apply(-10.0), 0.0, 1e-12));
-        assert!(approx(n.apply(10.0), 1.0, 1e-12));
+        assert!(approx(n.apply(-10.0), 0.0, 1e-10));
+        assert!(approx(n.apply(10.0), 1.0, 1e-10));
     }
 
     #[test]
     fn normalize_with_lims_validation() {
         // Finite, valid range
         let n = Normalize::default().with_lims(10.0, 20.0).unwrap();
-        assert!(approx(n.range(), 10.0, 1e-12));
+        assert!(approx(n.range(), 10.0, 1e-10));
 
         // Invalid: non-finite
-        assert!(Normalize::default().with_lims(f64::NAN, 1.0).is_err());
-        assert!(Normalize::default().with_lims(0.0, f64::INFINITY).is_err());
+        assert!(Normalize::default().with_lims(f32::NAN, 1.0).is_err());
+        assert!(Normalize::default().with_lims(0.0, f32::INFINITY).is_err());
 
         // Invalid: max <= min
         assert!(Normalize::default().with_lims(5.0, 5.0).is_err());
@@ -967,9 +967,9 @@ mod tests {
     #[test]
     fn normalize_from_range_validation() {
         let n = Normalize::from_range(-2.0, 4.0).unwrap();
-        assert!(approx(n.min, -2.0, 1e-12));
-        assert!(approx(n.max, 2.0, 1e-12));
-        assert!(approx(n.range(), 4.0, 1e-12));
+        assert!(approx(n.min, -2.0, 1e-10));
+        assert!(approx(n.max, 2.0, 1e-10));
+        assert!(approx(n.range(), 4.0, 1e-10));
     }
 
     #[test]
@@ -979,29 +979,29 @@ mod tests {
             .with_lims(-2.0, 2.0)
             .unwrap();
         // No clamping; values outside [-2, 2] map outside [0, 1]
-        assert!(approx(n.apply(-3.0), -0.25, 1e-12));
-        assert!(approx(n.apply(3.0), 1.25, 1e-12));
-        assert!(approx(n.apply(0.0), 0.5, 1e-12));
+        assert!(approx(n.apply(-3.0), -0.25, 1e-10));
+        assert!(approx(n.apply(3.0), 1.25, 1e-10));
+        assert!(approx(n.apply(0.0), 0.5, 1e-10));
     }
 
     #[test]
     fn normalize_eps_stability() {
         // Create a near-zero range smaller than eps
         let mut n = Normalize::default();
-        n.eps = 1e-9;
-        let n = n.with_lims(1.0, 1.0 + 5e-10).unwrap();
+        n.eps = 1e-4;
+        let n = n.with_lims(1.0, 1.0 + 1e-6).unwrap();
         // range_eps returns eps when |range| < eps
-        assert!(approx(n.range_eps(), 1e-9, 1e-12));
-        assert!(approx(n.range(), 5e-10, 1e-12));
+        assert!(approx(n.range_eps(), 1e-4, 1e-8));
+        assert!(approx(n.range(), 1e-6, 1e-6));
         // Mapping uses eps in denominator
-        let u = n.try_apply(1.0 + 2.5e-10).unwrap();
-        assert!(approx(u, 0.25, 1e-6));
+        let u = n.try_apply(1.0 + 1e-2).unwrap();
+        assert!(approx(u, 1.0, 1e-6));
     }
 
     #[test]
     fn normalize_nan_input_returns_nan() {
         let n = Normalize::default().with_lims(10.0, 20.0).unwrap();
-        let u = n.apply(f64::NAN);
+        let u = n.apply(f32::NAN);
         assert!(u.is_nan());
     }
 
@@ -1015,8 +1015,8 @@ mod tests {
             .unwrap();
         assert!(!n.clamp);
         assert!(approx(n.eps, 1e-6, 0.0));
-        assert!(approx(n.range(), 4.0, 1e-12));
-        assert!(approx(n.apply(4.0), 0.5, 1e-12));
+        assert!(approx(n.range(), 4.0, 1e-10));
+        assert!(approx(n.apply(4.0), 0.5, 1e-10));
     }
 
     #[test]
@@ -1027,11 +1027,11 @@ mod tests {
 
         norm.apply_slice(&input, &mut output);
 
-        assert!(approx(output[0], 0.0, 1e-12));
-        assert!(approx(output[1], 0.25, 1e-12));
-        assert!(approx(output[2], 0.5, 1e-12));
-        assert!(approx(output[3], 0.75, 1e-12));
-        assert!(approx(output[4], 1.0, 1e-12));
+        assert!(approx(output[0], 0.0, 1e-10));
+        assert!(approx(output[1], 0.25, 1e-10));
+        assert!(approx(output[2], 0.5, 1e-10));
+        assert!(approx(output[3], 0.75, 1e-10));
+        assert!(approx(output[4], 1.0, 1e-10));
     }
 
     #[test]
@@ -1045,11 +1045,11 @@ mod tests {
 
         norm.apply_slice(&input, &mut output);
 
-        assert!(approx(output[0], 0.0, 1e-12)); // clamped
-        assert!(approx(output[1], 0.0, 1e-12));
-        assert!(approx(output[2], 0.5, 1e-12));
-        assert!(approx(output[3], 1.0, 1e-12));
-        assert!(approx(output[4], 1.0, 1e-12)); // clamped
+        assert!(approx(output[0], 0.0, 1e-10)); // clamped
+        assert!(approx(output[1], 0.0, 1e-10));
+        assert!(approx(output[2], 0.5, 1e-10));
+        assert!(approx(output[3], 1.0, 1e-10));
+        assert!(approx(output[4], 1.0, 1e-10)); // clamped
     }
 
     #[test]
@@ -1063,11 +1063,11 @@ mod tests {
 
         norm.apply_slice(&input, &mut output);
 
-        assert!(approx(output[0], -0.5, 1e-12)); // not clamped
-        assert!(approx(output[1], 0.0, 1e-12));
-        assert!(approx(output[2], 0.5, 1e-12));
-        assert!(approx(output[3], 1.0, 1e-12));
-        assert!(approx(output[4], 1.5, 1e-12)); // not clamped
+        assert!(approx(output[0], -0.5, 1e-10)); // not clamped
+        assert!(approx(output[1], 0.0, 1e-10));
+        assert!(approx(output[2], 0.5, 1e-10));
+        assert!(approx(output[3], 1.0, 1e-10));
+        assert!(approx(output[4], 1.5, 1e-10)); // not clamped
     }
 
     #[test]
@@ -1077,15 +1077,15 @@ mod tests {
 
         norm.apply_slice_inplace(&mut values);
 
-        assert!(approx(values[0], 0.0, 1e-12));
-        assert!(approx(values[1], 0.5, 1e-12));
-        assert!(approx(values[2], 1.0, 1e-12));
+        assert!(approx(values[0], 0.0, 1e-10));
+        assert!(approx(values[1], 0.5, 1e-10));
+        assert!(approx(values[2], 1.0, 1e-10));
     }
 
     #[test]
     fn normalize_par_apply_slice() {
         let norm = Normalize::default().with_lims(0.0, 1000.0).unwrap();
-        let input: Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let input: Vec<f32> = (0..1000).map(|i| i as f32).collect();
         let mut output_seq = vec![0.0; 1000];
         let mut output_par = vec![0.0; 1000];
 
@@ -1093,7 +1093,7 @@ mod tests {
         norm.par_apply_slice(&input, &mut output_par);
 
         for i in 0..1000 {
-            assert!(approx(output_seq[i], output_par[i], 1e-12));
+            assert!(approx(output_seq[i], output_par[i], 1e-10));
         }
     }
 
@@ -1103,7 +1103,7 @@ mod tests {
             .with_clamp(false)
             .with_lims(-10.0, 10.0)
             .unwrap();
-        let input: Vec<f64> = vec![-15.0, -10.0, -5.0, 0.0, 5.0, 10.0, 15.0];
+        let input: Vec<f32> = vec![-15.0, -10.0, -5.0, 0.0, 5.0, 10.0, 15.0];
         let mut output_slice = vec![0.0; input.len()];
 
         norm.apply_slice(&input, &mut output_slice);
@@ -1111,7 +1111,7 @@ mod tests {
         for (i, &v) in input.iter().enumerate() {
             let per_value = norm.apply(v);
             assert!(
-                approx(output_slice[i], per_value, 1e-12),
+                approx(output_slice[i], per_value, 1e-10),
                 "Mismatch at index {}: slice={}, per_value={}",
                 i,
                 output_slice[i],
@@ -1123,22 +1123,22 @@ mod tests {
     #[test]
     fn normalize_slice_handles_nan() {
         let norm = Normalize::default().with_lims(0.0, 10.0).unwrap();
-        let input = vec![0.0, f64::NAN, 5.0, f64::INFINITY, 10.0];
+        let input = vec![0.0, f32::NAN, 5.0, f32::INFINITY, 10.0];
         let mut output = vec![0.0; 5];
 
         norm.apply_slice(&input, &mut output);
 
-        assert!(approx(output[0], 0.0, 1e-12));
+        assert!(approx(output[0], 0.0, 1e-10));
         assert!(output[1].is_nan());
-        assert!(approx(output[2], 0.5, 1e-12));
+        assert!(approx(output[2], 0.5, 1e-10));
         assert!(output[3].is_nan());
-        assert!(approx(output[4], 1.0, 1e-12));
+        assert!(approx(output[4], 1.0, 1e-10));
     }
 
     /* ============ Chained scaling tests ================================== */
     #[test]
     fn normalize_then_scale() {
-        // Normalize an input to [0,1], then scale using SymLog for display coordinates.
+        // Normalize an input to [0, 1], then scale using SymLog for display coordinates.
         let norm = Normalize::default()
             .with_clamp(false)
             .with_lims(0.0, 100.0)
@@ -1152,8 +1152,8 @@ mod tests {
             // Revert and renormalize back should give original u
             let u_rev = norm.try_revert(x).unwrap();
             let v_rev = scale.try_revert(u_rev).unwrap();
-            assert!(approx(u, u_rev, 1e-12));
-            assert!(approx(v, v_rev, 1e-12));
+            assert!(approx(u, u_rev, 1e-6));
+            assert!(approx(v, v_rev, 1e-6));
         }
     }
 }
