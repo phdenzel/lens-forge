@@ -106,6 +106,12 @@ impl<'a> RasterField<'a> {
         &self.values
     }
 
+    /// A casted slice of the underlying buffer.
+    #[inline]
+    pub fn as_slice_f32(&self) -> Vec<f32> {
+        self.values.iter().map(|&v| v as f32).collect()
+    }
+
     /// Convert into an owned raster field (materializes a copy only if needed).
     #[inline]
     pub fn into_owned(self) -> RasterField<'static> {
@@ -128,7 +134,7 @@ impl<'a> RasterField<'a> {
                 ),
                 format!("{}", self.len()),
             ));
-        }
+        };
         Ok(())
     }
 
