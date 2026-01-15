@@ -51,8 +51,8 @@ pub struct RenderOptions {
     /// Value scaling applied prior to normalization
     pub scale: RenderScale,
     /// Explicit lower normalization bound (in scaled space)
-    pub vmin: Option<f64>,
-    pub vmax: Option<f64>,
+    pub vmin: Option<f32>,
+    pub vmax: Option<f32>,
     /// Clamp normalized values to `[0, 1]`
     pub clamp: bool,
     /// RGBA color used for invalid samples (NaN/inf, or log-invalid values)
