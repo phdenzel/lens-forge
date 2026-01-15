@@ -6,13 +6,15 @@
 //! Two complementary rendering strategies are provided:
 //! * **raster** high-performance path for uniform pixel rendering
 //! * **mesh** path for explicit rendering of adaptive and irregular (polygonal cell) grids
-mod mesh;
-mod raster;
+pub mod context;
+pub mod mesh;
+pub mod raster;
 use crate::viz::gradients::get_gradient;
 use crate::viz::scale::RenderScale;
 use crate::{LensForgeError, Result};
 use colorgrad::Gradient;
-pub use mesh::MeshField; //, texturize, texturize_with};
+use image::imageops::FilterType;
+pub use mesh::MeshField; //, texturize, texturize_with, validate_mesh};
 use mesh::ToMesh;
 use raster::ToRaster;
 pub use raster::{RasterField, RasterizeParams, rasterize, rasterize_with, validate_raster};
@@ -42,12 +44,10 @@ impl RenderBounds {
 /// Shared rendering configuration.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
-    /// Output width in pixels
+    /// Output width in pixels (if different from field, image is resized)
     pub width: NonZeroU32,
-    /// Output height in pixels
+    /// Output height in pixels (if different from field, image is resized)
     pub height: NonZeroU32,
-    /// Optional downsampling resolution
-    pub downsample_to: Option<(NonZeroU32, NonZeroU32)>,
     /// Value scaling applied prior to normalization
     pub scale: RenderScale,
     /// Explicit lower normalization bound (in scaled space)
@@ -57,16 +57,16 @@ pub struct RenderOptions {
     pub clamp: bool,
     /// RGBA color used for invalid samples (NaN/inf, or log-invalid values)
     pub invalid_rgba: [u8; 4],
+    /// Filter name for resampling (one of nearest, triangle, catmullrom, gaussian, lanczos3)
+    pub sampling_type: String,
     /// Whether to draw cell edges (only relevant for cell-based rendering)
     pub show_edges: bool,
     /// RGBA for cell edges, if `show_edges == true`
     pub edge_rgba: [u8; 4],
     /// Gradient used for color mapping of normalized values in `[0, 1]`
     pub gradient_name: String,
-    /// Optional; if `Some(n)`, draw a raster grid overlay every `n` pixels
-    pub grid_overlay_every: Option<u32>,
-    /// RGBA color for raster grid overlay lines
-    pub grid_overlay_rgba: [u8; 4],
+    /// Threshold for using parallel operations (number of pixels)
+    pub threshold_parallel: usize,
 }
 
 impl Default for RenderOptions {
@@ -74,17 +74,16 @@ impl Default for RenderOptions {
         Self {
             width: NonZeroU32::new(512).unwrap(),
             height: NonZeroU32::new(512).unwrap(),
-            downsample_to: None,
             scale: RenderScale::Linear,
             vmin: None,
             vmax: None,
             clamp: true,
             invalid_rgba: [0, 0, 0, 0],
+            sampling_type: "CatmullRom".to_string(),
             show_edges: false,
             edge_rgba: [255, 255, 255, 32],
             gradient_name: "viridis".to_string(),
-            grid_overlay_every: None,
-            grid_overlay_rgba: [255, 255, 255, 24],
+            threshold_parallel: 100_000,
         }
     }
 }
@@ -99,25 +98,32 @@ impl RenderOptions {
         self.height.get()
     }
     #[inline]
-    pub fn downsample_u32(&self) -> Option<(u32, u32)> {
-        self.downsample_to.map(|(w, h)| (w.get(), h.get()))
+    pub fn gradient(&self) -> Box<dyn Gradient + Send + Sync> {
+        get_gradient(&self.gradient_name)
     }
     #[inline]
-    pub fn gradient(&self) -> Box<dyn Gradient> {
-        get_gradient(&self.gradient_name)
+    pub fn filter(&self) -> Option<FilterType> {
+        match self.sampling_type.to_lowercase().as_str() {
+            "nearest" => Some(FilterType::Nearest),
+            "triangle" => Some(FilterType::Triangle),
+            "catmullrom" => Some(FilterType::CatmullRom),
+            "gaussian" => Some(FilterType::Gaussian),
+            "lanczos3" => Some(FilterType::Lanczos3),
+            _ => None,
+        }
     }
 
     /// Validate common option invariants.
     pub fn validate(&self) -> Result<()> {
         if self.vmin >= self.vmax {
             return Err(LensForgeError::invalid_option(
-                "It is required to have vmin < vmax"
+                "It is required to have vmin < vmax",
             ));
         }
         if let RenderScale::SymLog { linthresh } = self.scale {
             if !linthresh.is_finite() || linthresh <= 0.0 {
                 return Err(LensForgeError::invalid_option(
-                    "SymLog linthresh must be finite and > 0"
+                    "SymLog linthresh must be finite and > 0",
                 ));
             }
         }
