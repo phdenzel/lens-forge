@@ -450,7 +450,7 @@ impl Normalize {
         self.min = min;
         self.max = max;
         let range = self.range();
-        if range <= 0.0 {
+        if range < 0.0 {
             return Err(LensForgeError::invalid_option(
                 "Normalization range must be > 0",
             ));
@@ -959,8 +959,8 @@ mod tests {
         assert!(Normalize::default().with_lims(f32::NAN, 1.0).is_err());
         assert!(Normalize::default().with_lims(0.0, f32::INFINITY).is_err());
 
-        // Invalid: max <= min
-        assert!(Normalize::default().with_lims(5.0, 5.0).is_err());
+        // Invalid: max < min
+        assert!(Normalize::default().with_lims(5.0, 5.0).is_ok());
         assert!(Normalize::default().with_lims(5.0, 4.0).is_err());
     }
 

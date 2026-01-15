@@ -115,7 +115,7 @@ impl RenderOptions {
 
     /// Validate common option invariants.
     pub fn validate(&self) -> Result<()> {
-        if self.vmin >= self.vmax {
+        if self.vmin > self.vmax {
             return Err(LensForgeError::invalid_option(
                 "It is required to have vmin < vmax",
             ));
