@@ -131,7 +131,6 @@ impl RasterContext {
                 "vmin must be less than vmax",
             ));
         }
-        println!("{}, {}", vmin, vmax);
         Ok((vmin, vmax))
     }
 
