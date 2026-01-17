@@ -14,10 +14,10 @@
 //! * obscura
 //! * gaseous
 
-use std::env;
 use lens_forge::Result;
 use lens_forge::viz::get_gradient;
 use lens_forge::viz::view::view_image;
+use std::env;
 
 fn plot_colorbar(name: &str) -> Result<()> {
     let width = 1300.00;
@@ -31,9 +31,7 @@ fn plot_colorbar(name: &str) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let gradient_name = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "magma".to_string());
+    let gradient_name = env::args().nth(1).unwrap_or_else(|| "magma".to_string());
 
     println!("Displaying gradient: {}", gradient_name);
     plot_colorbar(&gradient_name)?;
