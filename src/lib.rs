@@ -7,7 +7,8 @@
 
 pub mod model;
 pub mod grid;
-// pub mod solver;
+pub mod model;
+pub mod solver;
 pub mod viz;
 
 use std::error::Error;
@@ -102,6 +103,19 @@ impl LensForgeError {
     pub fn convergence_error(iterations: usize) -> Self {
         LensForgeError::ConvergenceError { iterations }
     }
+}
+
+/// Outcome of an iterative solve (e.g. [`PixelGrid::poisson_cg`]).
+///
+/// [`PixelGrid::poisson_cg`]: crate::grid::PixelGrid::poisson_cg
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SolveInfo {
+    /// Iterations performed.
+    pub iterations: usize,
+    /// Final relative residual, `‖r‖ / ‖b‖`.
+    pub residual: f64,
+    /// Whether the tolerance was reached within the iteration budget.
+    pub converged: bool,
 }
 
 

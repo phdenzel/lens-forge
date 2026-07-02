@@ -5,9 +5,12 @@
 
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+/// A point in the 2D plane.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point2D {
+    /// x coordinate
     pub x: f64,
+    /// y coordinate
     pub y: f64,
 }
 
