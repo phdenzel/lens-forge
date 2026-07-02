@@ -4,8 +4,7 @@
 //! Spectral (FFT-based) transforms and differentiation for [`PixelGrid`].
 //!
 //! Split out of `uniform.rs`; these remain inherent `PixelGrid` methods.
-//! Finite-difference derivatives live in `diff.rs`. See
-//! `docs/lens-modelling-plan.md`.
+//! Finite-difference derivatives live in `diff.rs`.
 
 use super::diff::DerivativeStencil;
 use crate::grid::{

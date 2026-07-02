@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! # lens_forge
-//!
-//! A blazingly fast Rust-based gravitational lens modelling library.
+#![doc = include_str!("../README.md")]
+// Warn on any undocumented public API item so the docs stay complete as the
+// crate grows. Use `#[allow(missing_docs)]` locally for deliberate exceptions.
+#![warn(missing_docs)]
 
 pub mod model;
 pub mod grid;

@@ -4,8 +4,7 @@
 //! Finite-difference differentiation for [`PixelGrid`] (gradient, Laplacian).
 //!
 //! Split out of `uniform.rs`; these remain inherent `PixelGrid` methods.
-//! Spectral (FFT) derivatives live in `spectral.rs`. See
-//! `docs/lens-modelling-plan.md`.
+//! Spectral (FFT) derivatives live in `spectral.rs`.
 
 use crate::grid::{FieldArray2D, PixelGrid, Point2D, VectorField2D};
 use crate::Result;
