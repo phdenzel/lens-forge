@@ -34,15 +34,17 @@
             libxkbcommon
           ];
       in {
-        devShells.default = pkgs.mkShell ({
+        devShells.default = pkgs.mkShell (
+          {
             inherit buildInputs;
           }
           # LD_LIBRARY_PATH (and vulkan-loader) are Linux-only;
-	  # on macOS the dynamic loader/frameworks handle this.
+          # on macOS the dynamic loader/frameworks handle this.
           // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
             LD_LIBRARY_PATH =
               builtins.foldl' (a: b: "${a}:${b}/lib") "${pkgs.vulkan-loader}/lib" buildInputs;
-          });
+          }
+        );
       }
     );
 }
