@@ -6,7 +6,7 @@
 // crate grows. Use `#[allow(missing_docs)]` locally for deliberate exceptions.
 #![warn(missing_docs)]
 
-pub mod model;
+pub mod fastsum;
 pub mod grid;
 pub mod model;
 pub mod solver;
