@@ -9,7 +9,7 @@ pub mod scale;
 pub mod view;
 
 pub use gradients::get_gradient;
-pub use render::{MeshField, RasterField, RasterizeParams, rasterize, rasterize_with};
+pub use render::{MeshField, RasterField, RasterizeParams, rasterize, rasterize_with, texturize};
 pub use scale::{Normalize, RenderScale, auto_range};
 
 

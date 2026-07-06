@@ -14,7 +14,7 @@ use crate::viz::scale::RenderScale;
 use crate::{LensForgeError, Result};
 use colorgrad::Gradient;
 use image::imageops::FilterType;
-pub use mesh::MeshField; //, texturize, texturize_with, validate_mesh};
+pub use mesh::{MeshField, texturize};
 use mesh::ToMesh;
 use raster::ToRaster;
 pub use raster::{RasterField, RasterizeParams, rasterize, rasterize_with, validate_raster};

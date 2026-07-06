@@ -32,7 +32,7 @@
 //! let rf = rasterize_with(&adaptive_grid, &params)?;
 //! ```
 
-use crate::grid::PixelGrid;
+use crate::grid::{MeshGrid, PixelGrid, Point2D, ScalarField2D};
 use crate::viz::render::RenderBounds;
 use crate::{LensForgeError, Result};
 use std::borrow::Cow;
@@ -232,6 +232,8 @@ impl Default for RasterizeParams {
 }
 
 impl RasterizeParams {
+    /// Build params from pixel `width`/`height`, with default bounds (the field's
+    /// own extent) and nearest-neighbour sampling.
     pub fn from_dims(width: u32, height: u32) -> Result<Self> {
         let width = NonZeroU32::new(width)
             .ok_or_else(|| LensForgeError::invalid_option("Raster width must be > 0"))?;
@@ -248,6 +250,7 @@ impl RasterizeParams {
 
 /// Trait for (non-uniform) grids that can be rasterized given `RasterizeParams`.
 pub trait RasterizeToField {
+    /// Rasterize into a dense field using the given parameters.
     fn to_raster(&self, params: &RasterizeParams) -> Result<RasterField<'static>>;
 }
 
@@ -299,6 +302,60 @@ impl RasterizeToField for PixelGrid {
         // Ignore bounds/sampling for now
         let rf: RasterField = self.try_into()?;
         Ok(rf.into_owned())
+    }
+}
+
+/* ============ Mesh grids implementations ================================ */
+/// Aspect-preserving default raster dimensions with a 512px longer side.
+fn default_raster_dims(dx: f64, dy: f64) -> (NonZeroU32, NonZeroU32) {
+    const BASE: f64 = 512.0;
+    let (w, h) = if dx >= dy {
+        (BASE, (BASE * dy / dx).round())
+    } else {
+        ((BASE * dx / dy).round(), BASE)
+    };
+    let w = NonZeroU32::new((w as u32).max(1)).unwrap();
+    let h = NonZeroU32::new((h as u32).max(1)).unwrap();
+    (w, h)
+}
+
+/// Rasterize a `MeshGrid` by sampling the containing (nearest-site) cell value
+/// at each output pixel centre.
+impl RasterizeToField for MeshGrid {
+    fn to_raster(&self, params: &RasterizeParams) -> Result<RasterField<'static>> {
+        let w = params.width.get() as usize;
+        let h = params.height.get() as usize;
+        let (min, max) = match params.bounds {
+            Some(b) => (Point2D::new(b.min[0], b.min[1]), Point2D::new(b.max[0], b.max[1])),
+            None => self.bounds(),
+        };
+        let dx = (max.x - min.x) / w as f64;
+        let dy = (max.y - min.y) / h as f64;
+
+        let mut values = vec![0.0f64; w * h];
+        for j in 0..h {
+            let y = min.y + (j as f64 + 0.5) * dy; // row 0 = bottom, as for PixelGrid
+            let row = j * w;
+            for i in 0..w {
+                let x = min.x + (i as f64 + 0.5) * dx;
+                values[row + i] = self.sample(Point2D::new(x, y));
+            }
+        }
+        RasterField::from_vec(params.width, params.height, values)
+    }
+}
+
+/// Convert a `&MeshGrid` into a `RasterField` by nearest-cell sampling at a
+/// default, aspect-preserving resolution. For explicit control over resolution,
+/// bounds, or sampling, use [`rasterize_with`] with [`RasterizeParams`].
+impl<'a> TryFrom<&'a MeshGrid> for RasterField<'a> {
+    type Error = LensForgeError;
+
+    fn try_from(mesh: &'a MeshGrid) -> Result<Self> {
+        let (min, max) = mesh.bounds();
+        let (width, height) = default_raster_dims(max.x - min.x, max.y - min.y);
+        let params = RasterizeParams { width, height, bounds: None, sampling: RasterSampling::Nearest };
+        mesh.to_raster(&params)
     }
 }
 
@@ -594,5 +651,47 @@ mod tests {
                 assert_eq!(rf.as_slice()[idx], (x + y) as f64);
             }
         }
+    }
+
+    fn quadrant_mesh() -> MeshGrid {
+        // Sites at the four quadrant centres of the unit box, distinct values.
+        let sites = [
+            Point2D::new(0.25, 0.25),
+            Point2D::new(0.75, 0.25),
+            Point2D::new(0.75, 0.75),
+            Point2D::new(0.25, 0.75),
+        ];
+        MeshGrid::new(
+            &sites,
+            Point2D::new(0.0, 0.0),
+            Point2D::new(1.0, 1.0),
+            vec![1.0, 2.0, 3.0, 4.0],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn meshgrid_rasterizes_nearest_cell() {
+        let mesh = quadrant_mesh();
+        let params = RasterizeParams::from_dims(64, 64).unwrap();
+        let rf = rasterize_with(&mesh, &params).unwrap();
+        assert_eq!(rf.len_expected(), 64 * 64);
+        assert!(rf.is_valid());
+
+        // Corners map to the four quadrant values (row 0 = bottom).
+        assert_eq!(rf.get(0, 0), Some(1.0)); // bottom-left  -> site (0.25,0.25)
+        assert_eq!(rf.get(63, 0), Some(2.0)); // bottom-right -> site (0.75,0.25)
+        assert_eq!(rf.get(63, 63), Some(3.0)); // top-right   -> site (0.75,0.75)
+        assert_eq!(rf.get(0, 63), Some(4.0)); // top-left     -> site (0.25,0.75)
+    }
+
+    #[test]
+    fn meshgrid_tryfrom_uses_default_resolution() {
+        let mesh = quadrant_mesh();
+        let rf: RasterField = (&mesh).try_into().unwrap();
+        // Square domain -> square default raster of 512.
+        assert_eq!(rf.width.get(), 512);
+        assert_eq!(rf.height.get(), 512);
+        assert!(rf.is_valid());
     }
 }
