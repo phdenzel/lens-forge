@@ -55,6 +55,7 @@ pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
 mod adaptive;
 mod diff;
+mod field;
 mod grid2d;
 mod interp;
 mod mesh;
@@ -64,8 +65,10 @@ mod spectral;
 mod uniform;
 
 pub use diff::DerivativeStencil;
+pub use field::ScalarField2D;
 pub use grid2d::Grid2D;
 pub use interp::BilinearKernel;
+pub use mesh::MeshGrid;
 pub use point::Point2D;
 pub use poisson::PoissonConfig;
 pub use uniform::PixelGrid;
