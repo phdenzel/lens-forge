@@ -22,3 +22,15 @@ criterion = { version = "0.8.1", features = ["html_reports"] }
 [[bench]]
 name = "scale_bench"
 harness = false
+
+[[bench]]
+name = "fastsum_bench"
+harness = false
+
+[[bench]]
+name = "pixelgrid_bench"
+harness = false
+
+# Render LaTeX math on docs.rs (mirrors `./docs/build-docs.sh` for local builds).
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

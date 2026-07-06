@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Benchmarks for slice-based scaling and normalization operations
+//! Throughput benchmarks for the `viz` render-scaling and normalization ops.
+//!
+//! Compares four implementation strategies — per-value, slice, in-place, and
+//! Rayon-parallel — for [`RenderScale`] (linear/log10/symlog) and [`Normalize`]
+//! across array sizes from 100 to 100k, to guide which path the viewer should
+//! use at a given size. Uses simple deterministic input data (no rng).
 
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
@@ -9,16 +14,16 @@ use lens_forge::viz::scale::{Normalize, RenderScale};
 
 
 /* ============ Helper functions =========================================== */
-fn generate_test_data(size: usize) -> Vec<f64> {
-    (0..size).map(|i| (i as f64) * 0.01).collect()
+fn generate_test_data(size: usize) -> Vec<f32> {
+    (0..size).map(|i| (i as f32) * 0.01).collect()
 }
 
-fn generate_test_data_mixed(size: usize) -> Vec<f64> {
+fn generate_test_data_mixed(size: usize) -> Vec<f32> {
     (0..size)
         .map(|i| {
-            let v = (i as f64) * 0.01;
+            let v = (i as f32) * 0.01;
             if i % 100 == 0 {
-                f64::NAN
+                f32::NAN
             } else if i % 200 == 0 {
                 -v
             } else {
@@ -45,7 +50,7 @@ fn bench_render_scale_linear(c: &mut Criterion) {
         // Per-value approach
         group.bench_with_input(BenchmarkId::new("per_value", size), &size, |b, _| {
             b.iter(|| {
-                let result: Vec<f64> = data
+                let result: Vec<f32> = data
                     .iter()
                     .map(|&v| black_box(scale.apply_or(v, fallback)))
                     .collect();
@@ -109,7 +114,7 @@ fn bench_render_scale_log10(c: &mut Criterion) {
         // Per-value approach
         group.bench_with_input(BenchmarkId::new("per_value", size), &size, |b, _| {
             b.iter(|| {
-                let result: Vec<f64> = data
+                let result: Vec<f32> = data
                     .iter()
                     .map(|&v| black_box(scale.apply_or(v, fallback)))
                     .collect();
@@ -165,7 +170,7 @@ fn bench_render_scale_symlog(c: &mut Criterion) {
         // Per-value approach
         group.bench_with_input(BenchmarkId::new("per_value", size), &size, |b, _| {
             b.iter(|| {
-                let result: Vec<f64> = data
+                let result: Vec<f32> = data
                     .iter()
                     .map(|&v| black_box(scale.apply_or(v, fallback)))
                     .collect();
@@ -225,7 +230,7 @@ fn bench_normalize(c: &mut Criterion) {
         // Per-value approach
         group.bench_with_input(BenchmarkId::new("per_value", size), &size, |b, _| {
             b.iter(|| {
-                let result: Vec<f64> = data.iter().map(|&v| black_box(norm.apply(v))).collect();
+                let result: Vec<f32> = data.iter().map(|&v| black_box(norm.apply(v))).collect();
                 black_box(result);
             });
         });
@@ -288,7 +293,7 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
         // Per-value approach
         group.bench_with_input(BenchmarkId::new("per_value", size), &size, |b, _| {
             b.iter(|| {
-                let result: Vec<f64> = data.iter().map(|&v| black_box(norm.apply(v))).collect();
+                let result: Vec<f32> = data.iter().map(|&v| black_box(norm.apply(v))).collect();
                 black_box(result);
             });
         });
