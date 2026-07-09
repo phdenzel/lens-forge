@@ -40,7 +40,9 @@
 //! [`ComplexFieldArray2D`], and [`FourierSymbols`] name the `ndarray` types used
 //! for scalar/vector fields and their Fourier transforms.
 //!
-//! Adaptive (non-uniform) grids are planned but not yet implemented.
+//! The unstructured [`MeshGrid`] (a Voronoi tessellation) is the non-uniform
+//! counterpart to [`PixelGrid`] and is a work in progress; fully adaptive
+//! (moving-mesh) grids are planned but not yet implemented.
 
 /// A 2D scalar field sampled on a grid (row-major, indexed `[j, i]`).
 pub type FieldArray2D = ndarray::Array2<f64>;
@@ -54,22 +56,15 @@ pub type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
 pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
 mod adaptive;
-mod diff;
 mod field;
 mod grid2d;
-mod interp;
 mod mesh;
 mod point;
-mod poisson;
-mod spectral;
 mod uniform;
 
-pub use diff::DerivativeStencil;
 pub use field::ScalarField2D;
 pub use grid2d::Grid2D;
-pub use interp::BilinearKernel;
 pub use mesh::MeshGrid;
 pub use point::Point2D;
-pub use poisson::PoissonConfig;
-pub use uniform::PixelGrid;
+pub use uniform::{BilinearKernel, DerivativeStencil, PixelGrid, PoissonConfig};
 // pub use adaptive::AdaGrid;

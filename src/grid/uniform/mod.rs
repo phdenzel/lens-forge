@@ -1,7 +1,24 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Uniform grid with pixels
+//! Uniform (regular pixel) grid — the structured counterpart to
+//! [`MeshGrid`](crate::grid::MeshGrid).
+//!
+//! [`PixelGrid`] carries the grid geometry and its sampled field. Its operators
+//! live in sibling submodules, all inherent `PixelGrid` methods:
+//! * `diff` — finite-difference derivatives (gradient, Laplacian).
+//! * `spectral` — FFT transforms and `k`-space derivatives.
+//! * `poisson` — Poisson solvers ($\nabla^2 \psi = f$).
+//! * `interp` — [`BilinearKernel`] bilinear interpolation.
+
+mod diff;
+mod interp;
+mod poisson;
+mod spectral;
+
+pub use diff::DerivativeStencil;
+pub use interp::BilinearKernel;
+pub use poisson::PoissonConfig;
 
 use crate::grid::{FieldArray2D, Grid2D, Point2D};
 use crate::{LensForgeError, Result};
