@@ -7,42 +7,53 @@
 //! layers ([`crate::model`], [`crate::solver`]) build on. Everything is 2D and
 //! `f64`; arrays are row-major and indexed `[j, i]` (row = y, column = x).
 //!
-//! # Core types
+//! # Geometry primitives
 //!
 //! * [`Point2D`] — a point in the plane, with the vector arithmetic
 //!   (add/sub/scale, dot, norm, polar, bounding box, …) used throughout.
 //! * [`Grid2D`] — the coordinate geometry of a regular grid: pixel counts,
 //!   physical extents, and derived pixel sizes. Coordinate arrays (meshgrids,
 //!   radius maps) are computed lazily on demand. Holds no field data itself.
-//! * [`PixelGrid`] — a [`Grid2D`] paired with a [`FieldArray2D`] of samples,
-//!   i.e. an actual scalar field on the plane. This is the main workhorse:
-//!   constructors, element access, statistics, resampling, and interpolation.
-//! * [`BilinearKernel`] — precomputed indices and weights for bilinear
-//!   interpolation of a field at an arbitrary point (see
-//!   [`Grid2D::bilinear_interp`]).
 //!
-//! # Differentiation
+//! # Scalar fields
 //!
-//! [`PixelGrid`] gains derivative operators via inherent-`impl` blocks split
-//! across two submodules (both operate on the same type):
+//! [`ScalarField2D`] is the object-safe trait that unifies the field
+//! representations: cell count, per-cell value/centre/area, domain bounds, and
+//! pointwise [`sample`](ScalarField2D::sample), plus default aggregates (flux,
+//! sum, mean, min, max). Downstream code can accept `&dyn ScalarField2D` and
+//! treat either representation identically. Two implementations:
+//!
+//! * [`PixelGrid`] (module `uniform`) — a [`Grid2D`] paired with a
+//!   [`FieldArray2D`] of samples: a scalar field on a regular grid. The main
+//!   workhorse (constructors, element access, statistics, resampling,
+//!   interpolation) and the only fully-featured representation.
+//! * [`MeshGrid`] (module `mesh`) — the unstructured counterpart: one value per
+//!   cell of a Voronoi tessellation, with the geometry shared via `Arc` so
+//!   value-producing operations clone cheaply. A work in progress. Fully
+//!   adaptive (moving-mesh) grids are planned but not yet implemented.
+//!
+//! # Operators on [`PixelGrid`]
+//!
+//! [`PixelGrid`] gains operators from sibling submodules under `uniform`, all
+//! inherent `PixelGrid` methods:
 //!
 //! * **Finite differences** — [`PixelGrid::gradient`], [`PixelGrid::laplacian`],
 //!   and their field/parallel variants, with a selectable
 //!   [`DerivativeStencil`] (central 2nd/4th/6th order).
 //! * **Spectral (FFT)** — [`PixelGrid::fft2d`] / [`PixelGrid::ifft2d`] plus
 //!   `k`-space derivatives ([`PixelGrid::gradient_spectral`],
-//!   [`PixelGrid::laplacian_spectral`]). Well suited to the periodic Poisson
-//!   solves ($\nabla^2 \psi = 2\kappa$) of the pixelated lens.
+//!   [`PixelGrid::laplacian_spectral`]).
+//! * **Poisson** — [`PixelGrid::poisson_spectral`] / [`PixelGrid::poisson_cg`]
+//!   (configured via [`PoissonConfig`]) solve $\nabla^2 \psi = f$; passing
+//!   $f = 2\kappa$ recovers the lens potential of the pixelated lens.
+//! * **Interpolation** — [`BilinearKernel`], precomputed indices and weights for
+//!   bilinear sampling at an arbitrary point (see [`Grid2D::bilinear_interp`]).
 //!
 //! # Type aliases
 //!
 //! [`FieldArray2D`], [`VectorField2D`], [`ComplexArray1D`],
 //! [`ComplexFieldArray2D`], and [`FourierSymbols`] name the `ndarray` types used
 //! for scalar/vector fields and their Fourier transforms.
-//!
-//! The unstructured [`MeshGrid`] (a Voronoi tessellation) is the non-uniform
-//! counterpart to [`PixelGrid`] and is a work in progress; fully adaptive
-//! (moving-mesh) grids are planned but not yet implemented.
 
 /// A 2D scalar field sampled on a grid (row-major, indexed `[j, i]`).
 pub type FieldArray2D = ndarray::Array2<f64>;
