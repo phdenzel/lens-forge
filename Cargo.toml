@@ -2,6 +2,13 @@
 name = "lens-forge"
 version = "0.1.0"
 edition = "2024"
+description = "A blazingly fast Rust gravitational-lens modelling library (forward simulation and inverse reconstruction)."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/phdenzel/lens-forge"
+homepage = "https://github.com/phdenzel/lens-forge"
+readme = "README.md"
+keywords = ["lensing", "gravitational", "astrophysics", "cosmology", "simulation"]
+categories = ["science", "mathematics", "simulation"]
 
 [dependencies]
 colorgrad = { version = "0.8.0", features = ["preset"] }
