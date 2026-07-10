@@ -6,6 +6,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # lens-forge
 
+[![CI](https://github.com/phdenzel/lens-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/phdenzel/lens-forge/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/phdenzel/lens-forge/branch/main/graph/badge.svg)](https://codecov.io/gh/phdenzel/lens-forge)
+[![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://phdenzel.github.io/lens-forge/)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
+
 A blazingly fast Rust-based gravitational-lens modelling library.
 
 `lens-forge` targets **both** strong-lensing use cases:
