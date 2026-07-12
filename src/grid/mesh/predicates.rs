@@ -30,13 +30,11 @@ const INCIRCLE_BOUND: f64 = (10.0 + 96.0 * EPS) * EPS;
 /// right (clockwise), and `0` if the three points are collinear. Only the sign
 /// is meaningful.
 pub(crate) fn orient2d(a: Point2D, b: Point2D, c: Point2D) -> f64 {
-    let acx = a.x - c.x;
-    let bcx = b.x - c.x;
-    let acy = a.y - c.y;
-    let bcy = b.y - c.y;
+    let ac = a - c;
+    let bc = b - c;
 
-    let detleft = acx * bcy;
-    let detright = acy * bcx;
+    let detleft = ac.x * bc.y;
+    let detright = ac.y * bc.x;
     let det = detleft - detright;
 
     let errbound = ORIENT_BOUND * (detleft.abs() + detright.abs());
@@ -60,26 +58,23 @@ pub(crate) fn orient2d(a: Point2D, b: Point2D, c: Point2D) -> f64 {
 /// outside, and `0` if the four points are cocircular. Only the sign is
 /// meaningful.
 pub(crate) fn incircle(a: Point2D, b: Point2D, c: Point2D, d: Point2D) -> f64 {
-    let adx = a.x - d.x;
-    let ady = a.y - d.y;
-    let bdx = b.x - d.x;
-    let bdy = b.y - d.y;
-    let cdx = c.x - d.x;
-    let cdy = c.y - d.y;
+    let ad = a - d;
+    let bd = b - d;
+    let cd = c - d;
 
-    let bc = bdx * cdy - cdx * bdy;
-    let ca = cdx * ady - adx * cdy;
-    let ab = adx * bdy - bdx * ady;
+    let bc = bd.cross(&cd);
+    let ca = cd.cross(&ad);
+    let ab = ad.cross(&bd);
 
-    let alift = adx * adx + ady * ady;
-    let blift = bdx * bdx + bdy * bdy;
-    let clift = cdx * cdx + cdy * cdy;
+    let alift = ad.norm_squared();
+    let blift = bd.norm_squared();
+    let clift = cd.norm_squared();
 
     let det = alift * bc + blift * ca + clift * ab;
 
-    let permanent = (bdx.abs() * cdy.abs() + cdx.abs() * bdy.abs()) * alift
-        + (cdx.abs() * ady.abs() + adx.abs() * cdy.abs()) * blift
-        + (adx.abs() * bdy.abs() + bdx.abs() * ady.abs()) * clift;
+    let permanent = (bd.x.abs() * cd.y.abs() + cd.x.abs() * bd.y.abs()) * alift
+        + (cd.x.abs() * ad.y.abs() + ad.x.abs() * cd.y.abs()) * blift
+        + (ad.x.abs() * bd.y.abs() + bd.x.abs() * ad.y.abs()) * clift;
     let errbound = INCIRCLE_BOUND * permanent;
     if det.abs() > errbound {
         return det;
