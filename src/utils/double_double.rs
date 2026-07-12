@@ -39,6 +39,16 @@ pub(crate) fn dd_mul(a: Dd, b: Dd) -> Dd {
     fast_two_sum(p, e)
 }
 
+/// Exact square `a * a` as a double-double. Bit-identical to `dd_mul(a, a)` but
+/// exploits the symmetry of the cross term (`a.0*a.1 + a.1*a.0 == 2*a.0*a.1`,
+/// exactly) to save a multiply.
+#[inline]
+pub(crate) fn dd_sqr(a: Dd) -> Dd {
+    let (p, e) = two_product(a.0, a.0);
+    let e = e + 2.0 * (a.0 * a.1);
+    fast_two_sum(p, e)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +61,14 @@ mod tests {
         let prod = dd_mul(x, y);
         let expected = 2f64.powi(-52) * 2f64.powi(-52);
         assert!((prod.0 + prod.1 - expected).abs() <= expected * 1e-15);
+    }
+
+    /// `dd_sqr` is bit-identical to the general `dd_mul(a, a)`.
+    #[test]
+    fn dd_sqr_matches_dd_mul() {
+        for a in [dd_diff(3.0, 0.1), dd_diff(1.0 + 2f64.powi(-52), 1.0), dd_diff(-7.5, 2.25)] {
+            assert_eq!(dd_sqr(a), dd_mul(a, a));
+        }
     }
 
     /// `dd_add` then `dd_sub` of the same operand round-trips.

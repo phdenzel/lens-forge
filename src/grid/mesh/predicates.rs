@@ -12,7 +12,7 @@
 //! misclassify — the failure mode that otherwise corrupts the triangulation.
 
 use crate::grid::Point2D;
-use crate::utils::double_double::{dd_add, dd_diff, dd_mul, dd_sub};
+use crate::utils::double_double::{dd_add, dd_diff, dd_mul, dd_sqr, dd_sub};
 
 /// Machine epsilon for `f64` ($2^{-53}$).
 const EPS: f64 = 1.1102230246251565e-16;
@@ -92,9 +92,9 @@ pub(crate) fn incircle(a: Point2D, b: Point2D, c: Point2D, d: Point2D) -> f64 {
     let ca = dd_sub(dd_mul(cdx, ady), dd_mul(adx, cdy));
     let ab = dd_sub(dd_mul(adx, bdy), dd_mul(bdx, ady));
 
-    let alift = dd_add(dd_mul(adx, adx), dd_mul(ady, ady));
-    let blift = dd_add(dd_mul(bdx, bdx), dd_mul(bdy, bdy));
-    let clift = dd_add(dd_mul(cdx, cdx), dd_mul(cdy, cdy));
+    let alift = dd_add(dd_sqr(adx), dd_sqr(ady));
+    let blift = dd_add(dd_sqr(bdx), dd_sqr(bdy));
+    let clift = dd_add(dd_sqr(cdx), dd_sqr(cdy));
 
     let det = dd_add(dd_add(dd_mul(alift, bc), dd_mul(blift, ca)), dd_mul(clift, ab));
     det.0 + det.1
