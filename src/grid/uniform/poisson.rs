@@ -86,21 +86,6 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(&x, &y)| x * y).sum()
 }
 
-/// Apply $A = -\nabla^2$ into `out` (the operator CG solves against). Negated
-/// spacings fold the sign into [`apply_laplacian_5pt_symm`].
-#[inline]
-fn neg_laplacian(
-    u: &[f64],
-    nx: usize,
-    ny: usize,
-    inv_dx2: f64,
-    inv_dy2: f64,
-    bc: BoundaryCondition,
-    out: &mut [f64],
-) {
-    apply_laplacian_5pt_symm(u, nx, ny, -inv_dx2, -inv_dy2, bc, out);
-}
-
 /// Reshape a row-major buffer into a `(ny, nx)` field.
 #[inline]
 fn to_field(data: Vec<f64>, ny: usize, nx: usize) -> Result<FieldArray2D> {
@@ -205,7 +190,8 @@ impl PixelGrid {
         let mut converged = rs <= thresh;
 
         while iterations < cfg.max_iter && !converged {
-            neg_laplacian(&p, nx, ny, inv_dx2, inv_dy2, cfg.bc, &mut ap);
+            // ap = A p with A = -∇²: negated spacings fold the sign in.
+            apply_laplacian_5pt_symm(&p, nx, ny, -inv_dx2, -inv_dy2, cfg.bc, &mut ap);
             let alpha = rs / dot(&p, &ap);
             for k in 0..m {
                 x[k] += alpha * p[k];
