@@ -629,7 +629,7 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let lap_fd = pg.laplacian_field(DerivativeStencil::Central).unwrap();
+        let lap_fd = pg.laplacian_field(DerivativeStencil::Central, None).unwrap();
         let lap_spec = pg.laplacian_spectral(DerivativeStencil::Central).unwrap();
 
         let mut max_err: f64 = 0.0;
@@ -685,7 +685,7 @@ mod tests {
         let analytic = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
 
         let spec = pg.laplacian_spectral_exact().unwrap();
-        let fd = pg.laplacian_field(DerivativeStencil::Central).unwrap();
+        let fd = pg.laplacian_field(DerivativeStencil::Central, None).unwrap();
 
         let spec_err = max_abs_err(&spec, &analytic.values);
         let fd_err = max_abs_err(&fd, &analytic.values);

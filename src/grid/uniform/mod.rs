@@ -20,5 +20,5 @@ mod poisson;
 
 pub use pixelgrid::PixelGrid;
 pub use interp::BilinearKernel;
-pub use diff::DerivativeStencil;
+pub use diff::{BoundaryCondition, DerivativeStencil};
 pub use poisson::PoissonConfig;

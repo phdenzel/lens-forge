@@ -70,7 +70,7 @@ fn bench_laplacian(c: &mut Criterion) {
         group.throughput(Throughput::Elements((n * n) as u64));
         for (label, stencil) in STENCILS {
             group.bench_function(format!("fd-{label}"), |b| {
-                b.iter(|| black_box(pg.laplacian_field(black_box(stencil)).unwrap()));
+                b.iter(|| black_box(pg.laplacian_field(black_box(stencil), None).unwrap()));
             });
             group.bench_function(format!("spectral-{label}"), |b| {
                 b.iter(|| black_box(pg.laplacian_spectral(black_box(stencil)).unwrap()));

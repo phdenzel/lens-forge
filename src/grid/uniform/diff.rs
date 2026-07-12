@@ -2,9 +2,6 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Finite-difference differentiation for [`PixelGrid`] (gradient, Laplacian).
-//!
-//! Split out of `uniform.rs`; these remain inherent `PixelGrid` methods.
-//! Spectral (FFT) derivatives live in `spectral.rs`.
 
 use crate::grid::{FieldArray2D, PixelGrid, Point2D, VectorField2D};
 use crate::Result;
@@ -830,14 +827,85 @@ impl PixelGrid {
     /// * `i` - pixel grid index along x axis
     /// * `j` - pixel grid index along y axis
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `bc` - boundary condition (default: [`BoundaryCondition::Natural`]; defaults if `None`)
     #[inline]
     pub fn laplacian(
         &self,
         i: usize,
         j: usize,
         stencil: impl Into<Option<DerivativeStencil>>,
+        bc: impl Into<Option<BoundaryCondition>>,
     ) -> Result<f64> {
-        let stencil = stencil.into().unwrap_or_default();
+        Ok(self.laplacian_at(
+            i,
+            j,
+            stencil.into().unwrap_or_default(),
+            bc.into().unwrap_or_default(),
+        ))
+    }
+
+    /// Laplacian at a pixel (infallible core): `Natural` dispatches to
+    /// [`Self::laplacian_natural`], the ghost conditions to [`Self::laplacian_ghost`].
+    ///
+    /// # Arguments
+    /// * `i` - pixel grid index along x axis
+    /// * `j` - pixel grid index along y axis
+    /// * `stencil` - derivative stencil type
+    /// * `bc` - boundary condition
+    #[inline]
+    fn laplacian_at(
+        &self,
+        i: usize,
+        j: usize,
+        stencil: DerivativeStencil,
+        bc: BoundaryCondition,
+    ) -> f64 {
+        match bc {
+            BoundaryCondition::Natural => self.laplacian_natural(i, j, stencil),
+            _ => self.laplacian_ghost(i, j, stencil, bc),
+        }
+    }
+
+    /// Laplacian via ghost-cell substitution: the full-order stencil at every
+    /// pixel, out-of-domain samples resolved by [`ghost_index`].
+    ///
+    /// # Arguments
+    /// * `i` - pixel grid index along x axis
+    /// * `j` - pixel grid index along y axis
+    /// * `stencil` - derivative stencil type
+    /// * `bc` - ghost boundary condition (must not be [`BoundaryCondition::Natural`])
+    fn laplacian_ghost(
+        &self,
+        i: usize,
+        j: usize,
+        stencil: DerivativeStencil,
+        bc: BoundaryCondition,
+    ) -> f64 {
+        let nx = self.grid.nx;
+        let ny = self.grid.ny;
+        let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
+        let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
+        let sx = |o: isize| match ghost_index(i as isize + o, nx, bc) {
+            Some(k) => self.values[[j, k]],
+            None => 0.0,
+        };
+        let sy = |o: isize| match ghost_index(j as isize + o, ny, bc) {
+            Some(k) => self.values[[k, i]],
+            None => 0.0,
+        };
+        let (num_x, den_x) = stencil_second_deriv(stencil, sx);
+        let (num_y, den_y) = stencil_second_deriv(stencil, sy);
+        num_x / den_x * inv_dx2 + num_y / den_y * inv_dy2
+    }
+
+    /// Laplacian with one-sided edge fallbacks (the [`BoundaryCondition::Natural`]
+    /// operator): the interior stencil reduced in order near the boundary.
+    ///
+    /// # Arguments
+    /// * `i` - pixel grid index along x axis
+    /// * `j` - pixel grid index along y axis
+    /// * `stencil` - derivative stencil type
+    fn laplacian_natural(&self, i: usize, j: usize, stencil: DerivativeStencil) -> f64 {
         let nx = self.grid.nx;
         let ny = self.grid.ny;
         let dx2 = self.grid.dx * self.grid.dx;
@@ -939,12 +1007,12 @@ impl PixelGrid {
                 }
             }
             DerivativeStencil::Backward => {
-                if j + 2 < ny {
-                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
-                } else if j + 1 < ny && j > 0 {
-                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
-                } else if j > 1 {
+                if j >= 2 {
                     (v_ij - 2.0 * self.values[[j - 1, i]] + self.values[[j - 2, i]]) / dy2
+                } else if j > 0 && j + 1 < ny {
+                    (self.values[[j + 1, i]] - 2.0 * v_ij + self.values[[j - 1, i]]) / dy2
+                } else if j + 2 < ny {
+                    (self.values[[j + 2, i]] - 2.0 * self.values[[j + 1, i]] + v_ij) / dy2
                 } else {
                     0.0
                 }
@@ -983,7 +1051,7 @@ impl PixelGrid {
             }
         };
 
-        Ok(d2vdx2 + d2vdy2)
+        d2vdx2 + d2vdy2
     }
 
     /// Compute Laplacian at arbitrary point using interpolation
@@ -999,106 +1067,30 @@ impl PixelGrid {
         let stencil = stencil.into().unwrap_or_default();
         let dx = self.grid.dx;
         let dy = self.grid.dy;
-        let dx2 = dx * dx;
-        let dy2 = dy * dy;
-        let v_00 = self.interpolate(p);
-
-        let d2vdx2 = match stencil {
-            // 3-point
-            DerivativeStencil::Central => {
-                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                (v_px - 2.0 * v_00 + v_mx) / dx2
-            }
-            DerivativeStencil::Forward => {
-                let v_px = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let v_2px = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                (v_2px - 2.0 * v_px + v_00) / dx2
-            }
-            DerivativeStencil::Backward => {
-                let v_mx = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_2mx = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
-                (v_00 - 2.0 * v_mx + v_2mx) / dx2
-            }
-            DerivativeStencil::Central4 => {
-                // 5-point
-                let v_00 = self.interpolate(p);
-                let v_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let v_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                let v_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
-                (-v_p2 + 16.0 * v_p1 - 30.0 * v_00 + 16.0 * v_m1 - v_m2) / (12.0 * dx2)
-            }
-            DerivativeStencil::Central6 => {
-                // 7-point
-                let v_00 = self.interpolate(p);
-                let v_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let v_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                let v_p3 = self.interpolate(&Point2D::new(p.x + 3.0 * dx, p.y));
-                let v_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let v_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
-                let v_m3 = self.interpolate(&Point2D::new(p.x - 3.0 * dx, p.y));
-                (2.0 * v_p3 - 27.0 * v_p2 + 270.0 * v_p1 - 490.0 * v_00 + 270.0 * v_m1
-                    - 27.0 * v_m2
-                    + 2.0 * v_m3)
-                    / (180.0 * dx2)
-            }
-        };
-
-        let d2vdy2 = match stencil {
-            // 3-point
-            DerivativeStencil::Central => {
-                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                (v_py - 2.0 * v_00 + v_my) / dy2
-            }
-            DerivativeStencil::Forward => {
-                let v_py = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let v_2py = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                (v_2py - 2.0 * v_py + v_00) / dy2
-            }
-            DerivativeStencil::Backward => {
-                let v_my = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_2my = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
-                (v_00 - 2.0 * v_my + v_2my) / dy2
-            }
-            // 5-point
-            DerivativeStencil::Central4 => {
-                let v_00 = self.interpolate(p);
-                let v_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let v_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                let v_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
-                (-v_p2 + 16.0 * v_p1 - 30.0 * v_00 + 16.0 * v_m1 - v_m2) / (12.0 * dy2)
-            }
-            // 8-point
-            DerivativeStencil::Central6 => {
-                let v_00 = self.interpolate(p);
-                let v_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let v_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                let v_p3 = self.interpolate(&Point2D::new(p.x, p.y + 3.0 * dy));
-                let v_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let v_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
-                let v_m3 = self.interpolate(&Point2D::new(p.x, p.y - 3.0 * dy));
-                (2.0 * v_p3 - 27.0 * v_p2 + 270.0 * v_p1 - 490.0 * v_00 + 270.0 * v_m1
-                    - 27.0 * v_m2
-                    + 2.0 * v_m3)
-                    / (180.0 * dy2)
-            }
-        };
-
-        Ok(d2vdx2 + d2vdy2)
+        // Same 1-D second-derivative weights as the on-grid Laplacian; here the
+        // samples come from bilinear interpolation at offset points rather than
+        // array indices.
+        let (num_x, den_x) = stencil_second_deriv(stencil, |o| {
+            self.interpolate(&Point2D::new(p.x + o as f64 * dx, p.y))
+        });
+        let (num_y, den_y) = stencil_second_deriv(stencil, |o| {
+            self.interpolate(&Point2D::new(p.x, p.y + o as f64 * dy))
+        });
+        Ok(num_x / den_x / (dx * dx) + num_y / den_y / (dy * dy))
     }
 
     /// Base implementation to compute Laplacian fields (parallel or sequential)
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `bc` - boundary condition (default: [`BoundaryCondition::Natural`]; defaults if `None`)
     fn laplacian_field_impl<const PAR: bool>(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
+        bc: impl Into<Option<BoundaryCondition>>,
     ) -> Result<FieldArray2D> {
         let stencil = stencil.into().unwrap_or_default();
+        let bc = bc.into().unwrap_or_default();
         let nx = self.grid.nx;
         let ny = self.grid.ny;
         let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
@@ -1106,6 +1098,21 @@ impl PixelGrid {
 
         let mut laplace = Array2::zeros((ny, nx));
         if nx == 0 || ny == 0 {
+            return Ok(laplace);
+        }
+
+        // Ghost-cell boundary conditions are computed per-pixel via the shared
+        // order-generic path; the interior needs no ghosts so this stays exact,
+        // and the boundary bands simply read substituted neighbours. The
+        // `Natural` (one-sided fallback) operator keeps the vectorised paths below.
+        if bc != BoundaryCondition::Natural {
+            if PAR {
+                ndarray::Zip::indexed(&mut laplace)
+                    .par_for_each(|(j, i), o| *o = self.laplacian_ghost(i, j, stencil, bc));
+            } else {
+                ndarray::Zip::indexed(&mut laplace)
+                    .for_each(|(j, i), o| *o = self.laplacian_ghost(i, j, stencil, bc));
+            }
             return Ok(laplace);
         }
 
@@ -1637,24 +1644,29 @@ impl PixelGrid {
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `bc` - boundary condition (default: [`BoundaryCondition::Natural`]; defaults if `None`)
     pub fn laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
+        bc: impl Into<Option<BoundaryCondition>>,
     ) -> Result<FieldArray2D> {
-        self.laplacian_field_impl::<false>(stencil)
+        self.laplacian_field_impl::<false>(stencil, bc)
     }
 
     /// Compute Laplace field over the entire grid (in parallel)
     ///
     /// # Arguments
     /// * `stencil` - derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `bc` - boundary condition (default: [`BoundaryCondition::Natural`]; defaults if `None`)
     pub fn par_laplacian_field(
         &self,
         stencil: impl Into<Option<DerivativeStencil>>,
+        bc: impl Into<Option<BoundaryCondition>>,
     ) -> Result<FieldArray2D> {
-        self.laplacian_field_impl::<true>(stencil)
+        self.laplacian_field_impl::<true>(stencil, bc)
     }
 }
+
 
 /* ================ Derivative methods =============================== */
 /// Discrete derivative stencil type.
@@ -1680,6 +1692,101 @@ pub enum DerivativeStencil {
     /// * $\nabla f = (f_{i+3} - 9 f_{i+2} + 45 f_{i+1} - 45 f_{i-1} + 9 f_{i-2} - f_{i-3}) / (60 \Delta x)$
     /// * $\Delta f = (2 f_{i+3} - 27 f_{i+2} + 270 f_{i+1} - 490 f_i + 270 f_{i-1} - 27 f_{i-2} + 2 f_{i-3}) / (180 \Delta x^2)$
     Central6,
+}
+
+/// 1-D second derivative as `(numerator, denominator)` → `num / (den * spacing²)`.
+/// `s(o)` samples at offset `o` (ghost-resolved by the caller).
+#[inline]
+fn stencil_second_deriv(stencil: DerivativeStencil, s: impl Fn(isize) -> f64) -> (f64, f64) {
+    match stencil {
+        DerivativeStencil::Central => (s(-1) - 2.0 * s(0) + s(1), 1.0),
+        DerivativeStencil::Forward => (s(0) - 2.0 * s(1) + s(2), 1.0),
+        DerivativeStencil::Backward => (s(0) - 2.0 * s(-1) + s(-2), 1.0),
+        DerivativeStencil::Central4 => (
+            -s(-2) + 16.0 * s(-1) - 30.0 * s(0) + 16.0 * s(1) - s(2),
+            12.0,
+        ),
+        DerivativeStencil::Central6 => (
+            2.0 * s(-3) - 27.0 * s(-2) + 270.0 * s(-1) - 490.0 * s(0) + 270.0 * s(1)
+                - 27.0 * s(2)
+                + 2.0 * s(3),
+            180.0,
+        ),
+    }
+}
+
+/// Apply the 2nd-order 5-point Laplacian $\nabla^2 u$.
+/// Requires symmetric ghost boundary conditions.
+pub(crate) fn apply_laplacian_5pt_symm(
+    u: &[f64],
+    nx: usize,
+    ny: usize,
+    inv_dx2: f64,
+    inv_dy2: f64,
+    bc: BoundaryCondition,
+    out: &mut [f64],
+) {
+    debug_assert_ne!(
+        bc,
+        BoundaryCondition::Natural,
+        "apply_laplacian_5pt_symm requires a symmetric (ghost) boundary condition"
+    );
+    let sample = |k: Option<usize>, u: &[f64]| k.map_or(0.0, |k| u[k]);
+    for j in 0..ny {
+        let row = j * nx;
+        for i in 0..nx {
+            let c = u[row + i];
+            let xl = sample(ghost_index(i as isize - 1, nx, bc).map(|k| row + k), u);
+            let xr = sample(ghost_index(i as isize + 1, nx, bc).map(|k| row + k), u);
+            let yl = sample(ghost_index(j as isize - 1, ny, bc).map(|k| k * nx + i), u);
+            let yr = sample(ghost_index(j as isize + 1, ny, bc).map(|k| k * nx + i), u);
+            out[row + i] = (xl + xr - 2.0 * c) * inv_dx2 + (yl + yr - 2.0 * c) * inv_dy2;
+        }
+    }
+}
+
+/* ================ Boundary conditions ============================== */
+/// Edge handling for the discrete Laplacian, orthogonal to [`DerivativeStencil`]:
+/// what to do when a stencil neighbour falls outside the domain. The three ghost
+/// conditions keep the operator symmetric; `Natural` does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BoundaryCondition {
+    /// No ghost cells; one-sided/reduced-order stencils at the edge. Asymmetric. Default.
+    #[default]
+    Natural,
+    /// Wrap-around. Symmetric; singular (constants in the null space).
+    Periodic,
+    /// Ghost cells read as $0$. Symmetric, positive-definite.
+    Dirichlet,
+    /// Ghost cells mirror their neighbour (zero normal derivative). Symmetric; singular.
+    Neumann,
+}
+
+impl BoundaryCondition {
+    /// Whether constants lie in the null space (every condition but [`Dirichlet`](Self::Dirichlet)).
+    #[inline]
+    pub(crate) fn is_singular(self) -> bool {
+        !matches!(self, BoundaryCondition::Dirichlet)
+    }
+}
+
+/// Resolve a possibly out-of-range 1-D index under `bc`: wrap for `Periodic`,
+/// even reflection for `Neumann`, `None` when the ghost is $0$ (`Dirichlet`,
+/// `Natural`). Shared ghost semantics for the on-grid and flat-buffer Laplacians.
+#[inline]
+pub(crate) fn ghost_index(idx: isize, n: usize, bc: BoundaryCondition) -> Option<usize> {
+    let ni = n as isize;
+    if idx >= 0 && idx < ni {
+        return Some(idx as usize);
+    }
+    match bc {
+        BoundaryCondition::Periodic => Some(idx.rem_euclid(ni) as usize),
+        BoundaryCondition::Neumann => {
+            let reflected = if idx < 0 { -idx - 1 } else { 2 * ni - idx - 1 };
+            Some(reflected.clamp(0, ni - 1) as usize)
+        }
+        BoundaryCondition::Dirichlet | BoundaryCondition::Natural => None,
+    }
 }
 
 #[cfg(test)]
@@ -1724,7 +1831,7 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let lap = pg.laplacian(4, 4, DerivativeStencil::Central).unwrap();
+        let lap = pg.laplacian(4, 4, DerivativeStencil::Central, None).unwrap();
         assert!(approx_eq(lap, 4.0, 1e-12));
     }
 
@@ -1734,8 +1841,8 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let laplace = pg.laplacian_field(None).unwrap();
-        let par_laplace = pg.par_laplacian_field(None).unwrap();
+        let laplace = pg.laplacian_field(None, None).unwrap();
+        let par_laplace = pg.par_laplacian_field(None, None).unwrap();
 
         for j in 0..8 {
             for i in 0..8 {
@@ -1744,4 +1851,122 @@ mod tests {
         }
     }
 
+    #[test]
+    fn laplacian_interp_matches_on_grid() {
+        // At a pixel centre, interpolation returns the stored value, so the
+        // interpolated Laplacian must equal the on-grid (Natural) Laplacian for
+        // every stencil — a lock-in that the `stencil_second_deriv` reuse in
+        // `laplacian_interp` preserves the original per-order formulas.
+        let grid = Grid2D::square(16, 3.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (0.6 * x).sin() * (0.4 * y).cos() + 0.2 * x * y);
+        let (i, j) = (7, 9);
+        let p = grid.pixel_center(i, j);
+        for stencil in [
+            DerivativeStencil::Central,
+            DerivativeStencil::Forward,
+            DerivativeStencil::Backward,
+            DerivativeStencil::Central4,
+            DerivativeStencil::Central6,
+        ] {
+            let on_grid = pg.laplacian(i, j, stencil, None).unwrap();
+            let interp = pg.laplacian_interp(&p, stencil).unwrap();
+            assert!(
+                (on_grid - interp).abs() < 1e-9,
+                "stencil {stencil:?}: on-grid {on_grid} vs interp {interp}"
+            );
+        }
+    }
+
+    #[test]
+    fn ghost_index_rules() {
+        use BoundaryCondition::{Dirichlet, Neumann, Periodic};
+        // Periodic wraps around.
+        assert_eq!(ghost_index(-1, 4, Periodic), Some(3));
+        assert_eq!(ghost_index(4, 4, Periodic), Some(0));
+        assert_eq!(ghost_index(2, 4, Periodic), Some(2));
+        // Neumann reflects evenly about the boundary.
+        assert_eq!(ghost_index(-1, 4, Neumann), Some(0));
+        assert_eq!(ghost_index(-2, 4, Neumann), Some(1));
+        assert_eq!(ghost_index(4, 4, Neumann), Some(3));
+        assert_eq!(ghost_index(5, 4, Neumann), Some(2));
+        // Dirichlet reads out-of-domain as zero (None → caller substitutes 0).
+        assert_eq!(ghost_index(-1, 4, Dirichlet), None);
+        assert_eq!(ghost_index(4, 4, Dirichlet), None);
+        assert_eq!(ghost_index(1, 4, Dirichlet), Some(1));
+    }
+
+    #[test]
+    fn laplacian_field_periodic_matches_analytic() {
+        use std::f64::consts::PI;
+        // sin(x)cos(y) has period 2π; on the [-π,π) periodic grid its Laplacian is
+        // -2 sin(x)cos(y) *everywhere*, edges included — unlike the Natural
+        // one-sided fallback which loses order at the boundary.
+        let grid = Grid2D::square(64, PI).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
+        let expected = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
+        let lap = pg
+            .laplacian_field(DerivativeStencil::Central, BoundaryCondition::Periodic)
+            .unwrap();
+        let err = lap
+            .iter()
+            .zip(expected.values.iter())
+            .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+        assert!(err < 5e-3, "periodic laplacian err {err:e}");
+    }
+
+    #[test]
+    fn flat_kernel_matches_field_second_order() {
+        // The flat CG kernel and the Array2 field path share ghost_index, so they
+        // must agree exactly for every ghost boundary condition (2nd order).
+        let grid = Grid2D::square(16, 1.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (1.3 * x).sin() + (0.7 * y).cos() + x * y);
+        let nx = grid.nx;
+        let ny = grid.ny;
+        let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+        let inv_dy2 = 1.0 / (grid.dy * grid.dy);
+        let mut u = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                u[j * nx + i] = pg.values[[j, i]];
+            }
+        }
+        for bc in [
+            BoundaryCondition::Periodic,
+            BoundaryCondition::Dirichlet,
+            BoundaryCondition::Neumann,
+        ] {
+            let field = pg.laplacian_field(DerivativeStencil::Central, bc).unwrap();
+            let mut out = vec![0.0; nx * ny];
+            apply_laplacian_5pt_symm(&u, nx, ny, inv_dx2, inv_dy2, bc, &mut out);
+            for j in 0..ny {
+                for i in 0..nx {
+                    assert!(
+                        (out[j * nx + i] - field[[j, i]]).abs() < 1e-12,
+                        "bc {bc:?} mismatch at ({i},{j})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_field_and_point_agree_for_ghost_bcs() {
+        // The field path delegates to laplacian_ghost per pixel; sanity-check that
+        // the public point method reports the same values under a ghost BC.
+        let grid = Grid2D::square(12, 1.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (x * x - y).cos());
+        for stencil in [DerivativeStencil::Central, DerivativeStencil::Central4] {
+            let field = pg
+                .laplacian_field(stencil, BoundaryCondition::Neumann)
+                .unwrap();
+            for j in 0..grid.ny {
+                for i in 0..grid.nx {
+                    let point = pg
+                        .laplacian(i, j, stencil, BoundaryCondition::Neumann)
+                        .unwrap();
+                    assert!((field[[j, i]] - point).abs() < 1e-12);
+                }
+            }
+        }
+    }
 }
