@@ -13,13 +13,16 @@
 //!   generalises to non-periodic boundary conditions where the FFT does not
 //!   apply.
 //!
-//! The periodic Poisson problem is solvable only for a zero-mean source and its
-//! solution is unique up to an additive constant; both methods project the
-//! source to zero mean and return the zero-mean $\psi$.
+//! The periodic problem needs a zero-mean source and is unique up to a constant.
+//! [`PixelGrid::poisson_spectral`] always projects to zero mean;
+//! [`PixelGrid::poisson_cg`] takes a [`BoundaryCondition`] and projects only for
+//! the singular cases (`Periodic`, `Neumann`), returning the unique solution for
+//! `Dirichlet`.
 //!
 //! For lensing, pass $f = 2\kappa$ to recover the potential from the
 //! convergence $\kappa$.
 
+use super::diff::{apply_laplacian_5pt_symm, BoundaryCondition};
 use crate::grid::{FieldArray2D, PixelGrid};
 use crate::{LensForgeError, Result, SolveInfo};
 use ndarray::{Array2, Axis, Zip};
@@ -33,6 +36,9 @@ pub struct PoissonConfig {
     pub tol: f64,
     /// Maximum number of conjugate-gradient iterations.
     pub max_iter: usize,
+    /// Boundary condition for the discrete Laplacian. Must be symmetric;
+    /// `Natural` is rejected by [`PixelGrid::poisson_cg`].
+    pub bc: BoundaryCondition,
 }
 
 impl Default for PoissonConfig {
@@ -40,21 +46,37 @@ impl Default for PoissonConfig {
         Self {
             tol: 1e-8,
             max_iter: 10_000,
+            bc: BoundaryCondition::Periodic,
         }
     }
 }
 
 impl PoissonConfig {
     /// Set the relative residual tolerance.
+    ///
+    /// # Arguments
+    /// * `tol` - relative residual tolerance
     #[inline]
     pub fn with_tol(mut self, tol: f64) -> Self {
         self.tol = tol;
         self
     }
     /// Set the maximum iteration count.
+    ///
+    /// # Arguments
+    /// * `max_iter` - maximum number of CG iterations
     #[inline]
     pub fn with_max_iter(mut self, max_iter: usize) -> Self {
         self.max_iter = max_iter;
+        self
+    }
+    /// Set the boundary condition.
+    ///
+    /// # Arguments
+    /// * `bc` - boundary condition for the discrete Laplacian
+    #[inline]
+    pub fn with_bc(mut self, bc: BoundaryCondition) -> Self {
+        self.bc = bc;
         self
     }
 }
@@ -64,21 +86,26 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(&x, &y)| x * y).sum()
 }
 
-/// Apply `A = -∇²` (positive-semidefinite negative periodic 5-point Laplacian),
-/// writing `A·u` into `out`. Row-major, index `k = j*nx + i`.
-fn neg_laplacian(u: &[f64], nx: usize, ny: usize, inv_dx2: f64, inv_dy2: f64, out: &mut [f64]) {
-    for j in 0..ny {
-        let jm = (j + ny - 1) % ny;
-        let jp = (j + 1) % ny;
-        for i in 0..nx {
-            let im = (i + nx - 1) % nx;
-            let ip = (i + 1) % nx;
-            let c = u[j * nx + i];
-            let lap = (u[j * nx + im] + u[j * nx + ip] - 2.0 * c) * inv_dx2
-                + (u[jm * nx + i] + u[jp * nx + i] - 2.0 * c) * inv_dy2;
-            out[j * nx + i] = -lap;
-        }
-    }
+/// Apply $A = -\nabla^2$ into `out` (the operator CG solves against). Negated
+/// spacings fold the sign into [`apply_laplacian_5pt_symm`].
+#[inline]
+fn neg_laplacian(
+    u: &[f64],
+    nx: usize,
+    ny: usize,
+    inv_dx2: f64,
+    inv_dy2: f64,
+    bc: BoundaryCondition,
+    out: &mut [f64],
+) {
+    apply_laplacian_5pt_symm(u, nx, ny, -inv_dx2, -inv_dy2, bc, out);
+}
+
+/// Reshape a row-major buffer into a `(ny, nx)` field.
+#[inline]
+fn to_field(data: Vec<f64>, ny: usize, nx: usize) -> Result<FieldArray2D> {
+    Array2::from_shape_vec((ny, nx), data)
+        .map_err(|e| LensForgeError::computation_error(e.to_string()))
 }
 
 impl PixelGrid {
@@ -108,36 +135,50 @@ impl PixelGrid {
         Self::ifft2d(&fhat)
     }
 
-    /// Solve $\nabla^2 \psi = f$ on a periodic domain by conjugate gradient on
-    /// the 5-point Laplacian, taking this grid's field as the source $f$.
+    /// Solve $\nabla^2 \psi = f$ by conjugate gradient on the 5-point Laplacian,
+    /// taking this grid's field as the source $f$.
     ///
-    /// The system $A\psi = b$ is solved with $A = -\nabla^2$ (symmetric
-    /// positive-definite on the zero-mean subspace) and $b = -(f - \bar f)$; the
-    /// source is projected to zero mean so the periodic problem is solvable, and
-    /// the returned $\psi$ is zero-mean. Returns the solution together with a
+    /// Solves $A\psi = b$ with $A = -\nabla^2$ under [`PoissonConfig::bc`]. The
+    /// singular cases (`Periodic`, `Neumann`) project the source to zero mean and
+    /// return a zero-mean $\psi$; `Dirichlet` returns the unique solution.
+    /// `Natural` is asymmetric and rejected. Returns the solution with a
     /// [`SolveInfo`] (iterations, residual, convergence flag).
     ///
-    /// Slower than [`Self::poisson_spectral`] for the periodic case, but the
-    /// iterative structure generalises to non-periodic boundary conditions.
+    /// Slower than [`Self::poisson_spectral`], but generalises to non-periodic BCs.
+    ///
+    /// # Arguments
+    /// * `cfg` - solver configuration (tolerance, iterations, BC; defaults if `None`)
     pub fn poisson_cg(
         &self,
         cfg: impl Into<Option<PoissonConfig>>,
     ) -> Result<(FieldArray2D, SolveInfo)> {
         let cfg = cfg.into().unwrap_or_default();
+        if cfg.bc == BoundaryCondition::Natural {
+            return Err(LensForgeError::computation_error(
+                "poisson_cg requires a symmetric boundary condition (Periodic, Dirichlet, or \
+                 Neumann); Natural is not supported"
+                    .to_string(),
+            ));
+        }
         let nx = self.grid.nx;
         let ny = self.grid.ny;
         let m = nx * ny;
         let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
         let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
 
-        // Source in row-major order, projected to zero mean.
+        // Source in row-major order. Singular BCs need a zero-mean source for the
+        // problem to be solvable; Dirichlet is non-singular so it is left as-is.
         let mut f = vec![0.0f64; m];
         for j in 0..ny {
             for i in 0..nx {
                 f[j * nx + i] = self.values[[j, i]];
             }
         }
-        let mean = f.iter().sum::<f64>() / m as f64;
+        let mean = if cfg.bc.is_singular() {
+            f.iter().sum::<f64>() / m as f64
+        } else {
+            0.0
+        };
         // A x = b with A = -∇², b = -(f - mean).
         let b: Vec<f64> = f.iter().map(|&v| -(v - mean)).collect();
         let bnorm2 = dot(&b, &b);
@@ -164,7 +205,7 @@ impl PixelGrid {
         let mut converged = rs <= thresh;
 
         while iterations < cfg.max_iter && !converged {
-            neg_laplacian(&p, nx, ny, inv_dx2, inv_dy2, &mut ap);
+            neg_laplacian(&p, nx, ny, inv_dx2, inv_dy2, cfg.bc, &mut ap);
             let alpha = rs / dot(&p, &ap);
             for k in 0..m {
                 x[k] += alpha * p[k];
@@ -192,13 +233,6 @@ impl PixelGrid {
         };
         Ok((psi, info))
     }
-}
-
-/// Reshape a row-major buffer into a `(ny, nx)` field.
-#[inline]
-fn to_field(data: Vec<f64>, ny: usize, nx: usize) -> Result<FieldArray2D> {
-    Array2::from_shape_vec((ny, nx), data)
-        .map_err(|e| LensForgeError::computation_error(e.to_string()))
 }
 
 #[cfg(test)]
@@ -262,5 +296,84 @@ mod tests {
         let (pa, _) = a.poisson_cg(cfg).unwrap();
         let (pb, _) = b.poisson_cg(cfg).unwrap();
         assert!(max_abs_err(&pa, &pb) < 1e-9);
+    }
+
+    /// Build the discrete source `f = ∇²ψ` for a chosen `psi` under `bc`, so a
+    /// solve of `∇²ψ = f` should return `psi` (the operator is its own forward
+    /// map — a round-trip consistency check independent of any analytic edge
+    /// mismatch).
+    fn source_from_potential(
+        grid: Grid2D,
+        psi: &[f64],
+        bc: BoundaryCondition,
+    ) -> PixelGrid {
+        let nx = grid.nx;
+        let ny = grid.ny;
+        let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+        let inv_dy2 = 1.0 / (grid.dy * grid.dy);
+        let mut f = vec![0.0; nx * ny];
+        apply_laplacian_5pt_symm(psi, nx, ny, inv_dx2, inv_dy2, bc, &mut f);
+        PixelGrid::from_values(grid, to_field(f, ny, nx).unwrap()).unwrap()
+    }
+
+    fn row_major(pg: &PixelGrid) -> Vec<f64> {
+        let nx = pg.grid.nx;
+        let ny = pg.grid.ny;
+        let mut v = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                v[j * nx + i] = pg.values[[j, i]];
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn poisson_cg_rejects_natural_bc() {
+        // Natural (one-sided) is asymmetric, so CG must refuse it.
+        let grid = Grid2D::square(8, PI).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
+        let cfg = PoissonConfig::default().with_bc(BoundaryCondition::Natural);
+        assert!(pg.poisson_cg(cfg).is_err());
+    }
+
+    #[test]
+    fn poisson_cg_dirichlet_recovers_solution() {
+        // Dirichlet is SPD → unique solution, recovered exactly (no projection).
+        let grid = Grid2D::square(24, PI).unwrap();
+        let psi = row_major(&PixelGrid::from_func(grid, |x, y| x.sin() * (2.0 * y).sin()));
+        let src = source_from_potential(grid, &psi, BoundaryCondition::Dirichlet);
+
+        let cfg = PoissonConfig::default()
+            .with_bc(BoundaryCondition::Dirichlet)
+            .with_tol(1e-12);
+        let (sol, info) = src.poisson_cg(cfg).unwrap();
+        assert!(info.converged, "CG did not converge: {info:?}");
+        let expected = to_field(psi, grid.ny, grid.nx).unwrap();
+        let err = max_abs_err(&sol, &expected);
+        assert!(err < 1e-8, "dirichlet err {err:e}");
+    }
+
+    #[test]
+    fn poisson_cg_neumann_recovers_up_to_constant() {
+        // Neumann is singular (constants in the null space): recover ψ up to an
+        // additive constant, so compare the zero-mean parts.
+        let grid = Grid2D::square(24, PI).unwrap();
+        let psi = row_major(&PixelGrid::from_func(grid, |x, y| x.cos() * y.cos()));
+        let src = source_from_potential(grid, &psi, BoundaryCondition::Neumann);
+
+        let cfg = PoissonConfig::default()
+            .with_bc(BoundaryCondition::Neumann)
+            .with_tol(1e-12);
+        let (sol, info) = src.poisson_cg(cfg).unwrap();
+        assert!(info.converged, "CG did not converge: {info:?}");
+
+        let psi_arr = to_field(psi, grid.ny, grid.nx).unwrap();
+        let sol_mean = sol.mean().unwrap();
+        let psi_mean = psi_arr.mean().unwrap();
+        let err = Zip::from(&sol).and(&psi_arr).fold(0.0_f64, |m, &a, &b| {
+            m.max(((a - sol_mean) - (b - psi_mean)).abs())
+        });
+        assert!(err < 1e-8, "neumann err {err:e}");
     }
 }
