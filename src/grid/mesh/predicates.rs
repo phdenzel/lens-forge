@@ -12,69 +12,14 @@
 //! misclassify — the failure mode that otherwise corrupts the triangulation.
 
 use crate::grid::Point2D;
+use crate::utils::double_double::{dd_add, dd_diff, dd_mul, dd_sub};
 
 /// Machine epsilon for `f64` ($2^{-53}$).
 const EPS: f64 = 1.1102230246251565e-16;
-/// Relative error bound for the 2×2 orientation determinant (Shewchuk).
+/// Relative error bound for the 2x2 orientation determinant (Shewchuk).
 const ORIENT_BOUND: f64 = (3.0 + 16.0 * EPS) * EPS;
 /// Relative error bound for the in-circle determinant (Shewchuk).
 const INCIRCLE_BOUND: f64 = (10.0 + 96.0 * EPS) * EPS;
-
-/* ============ Error-free transformations ================================= */
-
-/// Exact sum: returns `(s, e)` with `s = fl(a + b)` and `a + b = s + e`.
-#[inline]
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-    let s = a + b;
-    let bv = s - a;
-    let e = (a - (s - bv)) + (b - bv);
-    (s, e)
-}
-
-/// Exact sum when `|a| >= |b|` (Dekker): `a + b = s + e`.
-#[inline]
-fn fast_two_sum(a: f64, b: f64) -> (f64, f64) {
-    let s = a + b;
-    let e = b - (s - a);
-    (s, e)
-}
-
-/// Exact product via FMA: returns `(p, e)` with `p = fl(a * b)` and `a*b = p+e`.
-#[inline]
-fn two_product(a: f64, b: f64) -> (f64, f64) {
-    let p = a * b;
-    let e = a.mul_add(b, -p);
-    (p, e)
-}
-
-/* ============ Double-double arithmetic (value = hi + lo) ================== */
-
-type Dd = (f64, f64);
-
-/// Exact difference `a - b` as a double-double.
-#[inline]
-fn dd_diff(a: f64, b: f64) -> Dd {
-    two_sum(a, -b)
-}
-
-#[inline]
-fn dd_add(a: Dd, b: Dd) -> Dd {
-    let (s, e) = two_sum(a.0, b.0);
-    let e = e + (a.1 + b.1);
-    fast_two_sum(s, e)
-}
-
-#[inline]
-fn dd_sub(a: Dd, b: Dd) -> Dd {
-    dd_add(a, (-b.0, -b.1))
-}
-
-#[inline]
-fn dd_mul(a: Dd, b: Dd) -> Dd {
-    let (p, e) = two_product(a.0, b.0);
-    let e = e + (a.0 * b.1 + a.1 * b.0);
-    fast_two_sum(p, e)
-}
 
 /* ============ Predicates ================================================= */
 

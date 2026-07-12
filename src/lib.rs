@@ -10,6 +10,7 @@ pub mod fastsum;
 pub mod grid;
 pub mod model;
 pub mod solver;
+pub(crate) mod utils;
 pub mod viz;
 
 use std::error::Error;
