@@ -332,13 +332,25 @@ impl RasterizeToField for MeshGrid {
         let dx = (max.x - min.x) / w as f64;
         let dy = (max.y - min.y) / h as f64;
 
+        // Point location by warm-started walk (see `MeshGrid::cell_of_walk`):
+        // each pixel seeds its walk with the previous pixel's cell, each row with
+        // the previous row's first cell. Consecutive pixels share or neighbour a
+        // cell, so each walk is ~O(1) — far cheaper than a cold k-d tree query
+        // per pixel over the whole scan. The first pixel is located cold to seed.
         let mut values = vec![0.0f64; w * h];
+        let mut row_seed = self.cell_of(Point2D::new(min.x + 0.5 * dx, min.y + 0.5 * dy));
         for j in 0..h {
             let y = min.y + (j as f64 + 0.5) * dy; // row 0 = bottom, as for PixelGrid
             let row = j * w;
+            let mut hint = row_seed;
             for i in 0..w {
                 let x = min.x + (i as f64 + 0.5) * dx;
-                values[row + i] = self.sample(Point2D::new(x, y));
+                let cell = self.cell_of_walk(Point2D::new(x, y), hint);
+                if i == 0 {
+                    row_seed = cell; // seed the next row from this row's start
+                }
+                hint = cell;
+                values[row + i] = self.value(cell);
             }
         }
         RasterField::from_vec(params.width, params.height, values)

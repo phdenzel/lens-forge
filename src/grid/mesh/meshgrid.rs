@@ -209,6 +209,25 @@ impl ScalarField2D for MeshGrid {
         // Piecewise-constant: value of the containing (nearest-site) cell.
         self.values[self.mesh.cell_of(p)]
     }
+
+    fn sample_batch(&self, points: &[Point2D]) -> Vec<f64> {
+        // Locate by warm-started walk: the first point cold (k-d tree), then each
+        // subsequent point seeded with the previous result. ~O(1) per query when
+        // `points` are spatially coherent (a raster scan, a path); still exact for
+        // any order, but scattered inputs are better served point-wise by
+        // `sample`/`cell_of` (an unconditional O(log n) k-d tree query).
+        let mut out = Vec::with_capacity(points.len());
+        let mut hint = None;
+        for &p in points {
+            let cell = match hint {
+                None => self.mesh.cell_of(p),
+                Some(h) => self.mesh.cell_of_walk(p, h),
+            };
+            hint = Some(cell);
+            out.push(self.values[cell]);
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -246,6 +265,29 @@ mod tests {
         // A point deep in the lower-left quadrant is nearest to site 0.
         assert_eq!(m.sample(p(0.1, 0.1)), m.value(0));
         assert_eq!(m.sample(p(0.9, 0.9)), m.value(2));
+    }
+
+    #[test]
+    fn sample_batch_matches_pointwise_sample() {
+        // The warm-started batch override must agree with the cold, point-wise
+        // path for every point, coherent or not.
+        struct Lcg(u64);
+        impl Lcg {
+            fn f(&mut self) -> f64 {
+                self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                (self.0 >> 11) as f64 / (1u64 << 53) as f64
+            }
+        }
+        let mut rng = Lcg(0xBA7C4);
+        let sites: Vec<Point2D> = (0..120).map(|_| p(rng.f(), rng.f())).collect();
+        let values: Vec<f64> = (0..sites.len()).map(|i| i as f64).collect();
+        let m = MeshGrid::new(&sites, p(0.0, 0.0), p(1.0, 1.0), values).unwrap();
+
+        let pts: Vec<Point2D> = (0..500).map(|_| p(rng.f(), rng.f())).collect();
+        let batch = m.sample_batch(&pts);
+        for (k, &q) in pts.iter().enumerate() {
+            assert_eq!(batch[k], m.sample(q), "point {k} {q:?}");
+        }
     }
 
     #[test]
