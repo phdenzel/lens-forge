@@ -241,10 +241,10 @@ impl Point2D {
         }
     }
 
-    /// Rotate around a center point
+    /// Rotate around a centre point
     ///
     /// # Arguments
-    /// * `center` - rotation center
+    /// * `center` - rotation centre
     /// * `angle` - rotation angle
     #[inline]
     pub fn rotate_around(&self, center: &Self, angle: f64) -> Self {

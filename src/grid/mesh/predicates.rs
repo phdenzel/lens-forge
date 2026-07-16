@@ -23,7 +23,7 @@ const INCIRCLE_BOUND: f64 = (10.0 + 96.0 * EPS) * EPS;
 
 /* ============ Predicates ================================================= */
 
-/// Orientation of `c` relative to the directed line `a → b`.
+/// Orientation of `c` relative to the directed line `a→b`.
 ///
 /// Returns a value with the sign of the signed area of triangle `(a, b, c)`:
 /// `> 0` if `c` lies to the left (counter-clockwise winding), `< 0` to the

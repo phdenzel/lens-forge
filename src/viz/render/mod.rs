@@ -55,7 +55,7 @@ pub struct RenderOptions {
     pub vmax: Option<f32>,
     /// Clamp normalized values to `[0, 1]`
     pub clamp: bool,
-    /// RGBA color used for invalid samples (NaN/inf, or log-invalid values)
+    /// RGBA colour used for invalid samples (NaN/inf, or log-invalid values)
     pub invalid_rgba: [u8; 4],
     /// Filter name for resampling (one of nearest, triangle, catmullrom, gaussian, lanczos3)
     pub sampling_type: String,
@@ -63,7 +63,7 @@ pub struct RenderOptions {
     pub show_edges: bool,
     /// RGBA for cell edges, if `show_edges == true`
     pub edge_rgba: [u8; 4],
-    /// Gradient used for color mapping of normalized values in `[0, 1]`
+    /// Gradient used for colour mapping of normalized values in `[0, 1]`
     pub gradient_name: String,
     /// Threshold for using parallel operations (number of pixels)
     pub threshold_parallel: usize,

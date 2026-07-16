@@ -13,7 +13,7 @@ use crate::grid::{PixelGrid, Point2D};
 /// A scalar field sampled at discrete cells over a 2D domain.
 ///
 /// A "cell" is a pixel for a regular grid or a Voronoi cell for a mesh; it has a
-/// value, a representative center, and an area. Implementors provide the sampled
+/// value, a representative centre, and an area. Implementors provide the sampled
 /// data and pointwise evaluation; aggregate quantities have default definitions.
 pub trait ScalarField2D {
     /// Number of cells.
@@ -27,7 +27,7 @@ pub trait ScalarField2D {
     /// Value stored at cell `i`.
     fn value_at(&self, i: usize) -> f64;
 
-    /// Representative point of cell `i` (pixel center / Voronoi site).
+    /// Representative point of cell `i` (pixel centre / Voronoi site).
     fn center(&self, i: usize) -> Point2D;
 
     /// Area of cell `i` (pixel area / Voronoi cell area).

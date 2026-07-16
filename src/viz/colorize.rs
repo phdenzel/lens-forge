@@ -29,7 +29,7 @@ fn map_to_rgba(t: f32, gradient: &dyn Gradient) -> [u8; 4] {
 /// # Arguments
 /// * `v` - Normalized value between [0, 1]
 /// * `gradient` - Color gradient to use for mapping
-/// * `invalid_rgba` - Optional fallback color for non-finite values
+/// * `invalid_rgba` - Optional fallback colour for non-finite values
 #[inline(always)]
 fn map_to_rgba_or(v: f32, gradient: &dyn Gradient, invalid_rgba: Option<[u8; 4]>) -> [u8; 4] {
     let fallback = invalid_rgba.unwrap_or([0_u8, 0_u8, 0_u8, 0_u8]);
@@ -41,7 +41,7 @@ fn map_to_rgba_or(v: f32, gradient: &dyn Gradient, invalid_rgba: Option<[u8; 4]>
     }
 }
 
-/// Map a value slice to a given RGBA color buffer using gradient.
+/// Map a value slice to a given RGBA colour buffer using gradient.
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
@@ -59,12 +59,12 @@ pub fn map_to_rgba_inplace(values: &[f32], gradient: &dyn Gradient, output: &mut
     }
 }
 
-/// Safely map a value slice to a given RGBA color buffer using gradient.
+/// Safely map a value slice to a given RGBA colour buffer using gradient.
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
 /// * `gradient` - Color gradient to use for mapping
-/// * `invalid_rgba` - Optional fallback color for non-finite values
+/// * `invalid_rgba` - Optional fallback colour for non-finite values
 /// * `output` - Output buffer slice
 #[inline]
 pub fn map_to_rgba_inplace_or(
@@ -83,7 +83,7 @@ pub fn map_to_rgba_inplace_or(
     }
 }
 
-/// Map a value slice to a new RGBA color buffer using gradient.
+/// Map a value slice to a new RGBA colour buffer using gradient.
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
@@ -93,12 +93,12 @@ pub fn map_to_rgba_slice(values: &[f32], gradient: &dyn Gradient) -> Vec<[u8; 4]
     values.iter().map(|&v| map_to_rgba(v, gradient)).collect()
 }
 
-/// Map a value slice to a new RGBA color buffer using gradient.
+/// Map a value slice to a new RGBA colour buffer using gradient.
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values
 /// * `gradient` - Color gradient to use for mapping
-/// * `invalid_rgba` - Optional fallback color for non-finite values
+/// * `invalid_rgba` - Optional fallback colour for non-finite values
 #[inline]
 pub fn map_to_rgba_slice_or(
     values: &[f32],
@@ -111,7 +111,7 @@ pub fn map_to_rgba_slice_or(
         .collect()
 }
 
-/// Map a value slice to a given RGBA color buffer using gradient in parallel (using rayon backend).
+/// Map a value slice to a given RGBA colour buffer using gradient in parallel (using rayon backend).
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
@@ -139,7 +139,7 @@ pub fn par_map_to_rgba_inplace(
         });
 }
 
-/// Map a value slice to a given RGBA color buffer using gradient in parallel (using rayon backend).
+/// Map a value slice to a given RGBA colour buffer using gradient in parallel (using rayon backend).
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
@@ -168,7 +168,7 @@ pub fn par_map_to_rgba_inplace_or(
         });
 }
 
-/// Map a value slice to a new RGBA color buffer using gradient in parallel (using rayon backend).
+/// Map a value slice to a new RGBA colour buffer using gradient in parallel (using rayon backend).
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values between [0, 1]
@@ -184,12 +184,12 @@ pub fn par_map_to_rgba_slice(
         .collect()
 }
 
-/// Map a value slice to a new RGBA color buffer using gradient in parallel (using rayon backend).
+/// Map a value slice to a new RGBA colour buffer using gradient in parallel (using rayon backend).
 ///
 /// # Arguments
 /// * `values` - Slice of normalized values
 /// * `gradient` - Color gradient to use for mapping
-/// * `invalid_rgba` - Optional fallback color for non-finite values
+/// * `invalid_rgba` - Optional fallback colour for non-finite values
 #[inline]
 pub fn par_map_to_rgba_slice_or(
     values: &[f32],

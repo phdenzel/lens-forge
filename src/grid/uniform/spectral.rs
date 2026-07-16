@@ -137,7 +137,7 @@ impl PixelGrid {
             .map_err(|e| LensForgeError::numerical_error(e.to_string()))
     }
 
-    /// Compute FFT shift (move zero-frequency component to center)
+    /// Compute FFT shift (move zero-frequency component to centre)
     ///
     /// # Arguments
     /// * `arr` - complex array to be shifted

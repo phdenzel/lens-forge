@@ -193,7 +193,7 @@ impl ToRaster for RasterField<'_> {
 /// Sampling modes used when rasterizing non-uniform grids.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RasterSampling {
-    /// Nearest-neighbor sampling (fast, good for quick inspection).
+    /// Nearest-neighbour sampling (fast, good for quick inspection).
     Nearest,
     /// Bilinear sampling (smoother, slightly more expensive).
     Bilinear,
@@ -405,7 +405,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     /* ============ Mock data structures =================================== */
-    /// Simple mock that implements `ToRaster` for testing borrowing behavior.
+    /// Simple mock that implements `ToRaster` for testing borrowing behaviour.
     struct MockRaster {
         w: NonZeroU32,
         h: NonZeroU32,

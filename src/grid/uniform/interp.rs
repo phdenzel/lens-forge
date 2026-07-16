@@ -108,7 +108,7 @@ mod tests {
     fn test_bilinear_interp_at_center() {
         let grid = Grid2D::new(4, 4, (0.0, 4.0), (0.0, 4.0)).unwrap();
 
-        // Point at pixel center
+        // Point at pixel centre
         let w = grid.bilinear_interp(&Point2D::new(0.5, 0.5)).unwrap();
         assert!(approx_eq(w.w00, 1.0));
         assert!(approx_eq(w.w10 + w.w01 + w.w11, 0.0));

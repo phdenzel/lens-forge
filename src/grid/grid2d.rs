@@ -59,7 +59,7 @@ impl Grid2D {
         })
     }
 
-    /// Create a square grid centered at the origin
+    /// Create a square grid centred at the origin
     ///
     /// # Arguments
     /// * `n` - Number of pixels in each direction
@@ -73,7 +73,7 @@ impl Grid2D {
         Self::new(n, n, (-radius, radius), (-radius, radius))
     }
 
-    /// Create a rectangular grid centered at the origin
+    /// Create a rectangular grid centred at the origin
     ///
     /// # Arguments
     /// * `nx` - Number of pixels in the x direction
@@ -141,7 +141,7 @@ impl Grid2D {
         self.ny as f64 * self.dy
     }
 
-    /// Grid center
+    /// Grid centre
     #[inline]
     pub fn center(&self) -> Point2D {
         Point2D::new(self.x0 + self.width() * 0.5, self.y0 + self.height() * 0.5)
@@ -210,7 +210,7 @@ impl Grid2D {
     }
 
     /* ============ Coordinates ============================================ */
-    /// Get x-coordinate of pixel center
+    /// Get x-coordinate of pixel centre
     ///
     /// # Arguments
     /// * `i` - index along x axis
@@ -219,7 +219,7 @@ impl Grid2D {
         self.x0 + (i as f64 + 0.5) * self.dx
     }
 
-    /// Get y-coordinate of pixel center
+    /// Get y-coordinate of pixel centre
     ///
     /// # Arguments
     /// * `j` - index along y axis
@@ -228,7 +228,7 @@ impl Grid2D {
         self.y0 + (j as f64 + 0.5) * self.dy
     }
 
-    /// Get pixel center coordinates
+    /// Get pixel centre coordinates
     ///
     /// # Arguments
     /// * `i` - index along x axis
@@ -282,7 +282,7 @@ impl Grid2D {
         }
     }
 
-    /// Convert point to fractional pixel coordinates (relative to centers)
+    /// Convert point to fractional pixel coordinates (relative to centres)
     ///
     /// # Arguments
     /// * `p` - point to be mapped
@@ -342,13 +342,13 @@ impl Grid2D {
         (idx % self.nx, idx / self.nx)
     }
 
-    /// Create 1D array of x coordinates for pixel centers
+    /// Create 1D array of x coordinates for pixel centres
     #[inline]
     pub fn x_coords(&self) -> Array1<f64> {
         Array1::from_shape_fn(self.nx, |i| self.x_at(i))
     }
 
-    /// Create 1D array of y coordinates for pixel centers
+    /// Create 1D array of y coordinates for pixel centres
     #[inline]
     pub fn y_coords(&self) -> Array1<f64> {
         Array1::from_shape_fn(self.ny, |j| self.y_at(j))
@@ -424,7 +424,7 @@ impl Grid2D {
     /// Compute squared radial distance meshgrid
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn meshgrid_r2(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
         let cx = c.x;
@@ -453,7 +453,7 @@ impl Grid2D {
     /// Compute radial distance meshgrid
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn meshgrid_r(&self, center: Option<Point2D>) -> Array2<f64> {
         self.meshgrid_r2(center).mapv(f64::sqrt)
     }
@@ -461,7 +461,7 @@ impl Grid2D {
     /// Compute angular meshgrid with theta = atan2(y - cy, x - cx)
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn meshgrid_theta(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
         let cx = c.x;
@@ -477,7 +477,7 @@ impl Grid2D {
     /// Compute polar coordinate meshgrids (r, theta)
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn meshgrid_polar(&self, center: Option<Point2D>) -> (Array2<f64>, Array2<f64>) {
         let c = center.unwrap_or_else(|| self.center());
 
@@ -549,7 +549,7 @@ impl Grid2D {
     /// Compute squared radial distance meshgrid in parallel (using rayon backend)
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn par_meshgrid_r2(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
         let dx2: Array1<f64> = Array1::from_shape_fn(self.nx, |i| {
@@ -575,12 +575,12 @@ impl Grid2D {
     /// Compute radial distance meshgrid in parallel (using rayon backend)
     ///
     /// # Arguments
-    /// * `center` - Optional reference point (default: grid center)
+    /// * `center` - Optional reference point (default: grid centre)
     pub fn par_meshgrid_r(&self, center: Option<Point2D>) -> Array2<f64> {
         self.par_meshgrid_r2(center).mapv(f64::sqrt)
     }
 
-    /// Apply a function to each pixel center coordinate
+    /// Apply a function to each pixel centre coordinate
     ///
     /// # Arguments
     /// * `f` - function to be applied to each grid coordinate
@@ -608,7 +608,7 @@ impl Grid2D {
         self.map_centers(|x, y| f(&Point2D::new(x, y)))
     }
 
-    /// Apply a function to each pixel center coordinate in parallel (using rayon backend)
+    /// Apply a function to each pixel centre coordinate in parallel (using rayon backend)
     ///
     /// # Arguments
     /// * `f` - function to be applied to each grid coordinate
@@ -636,7 +636,7 @@ impl Grid2D {
         (0..self.ny).flat_map(move |j| (0..self.nx).map(move |i| (i, j)))
     }
 
-    /// Iterate over pixel centers
+    /// Iterate over pixel centres
     #[inline]
     pub fn iter_centers(&self) -> impl Iterator<Item = Point2D> + '_ {
         self.iter_pixels().map(|(i, j)| self.pixel_center(i, j))
@@ -651,7 +651,7 @@ impl Grid2D {
         })
     }
 
-    /// Iterate over neighbor indices (E, W, S, N) from given position
+    /// Iterate over neighbour indices (E, W, S, N) from given position
     ///
     /// # Arguments
     /// * `i` - index at x axis
@@ -676,7 +676,7 @@ impl Grid2D {
         .flatten()
     }
 
-    /// Iterate over neighbor indices (SW, S, SE, W, E, NW, N, NE) from given position
+    /// Iterate over neighbour indices (SW, S, SE, W, E, NW, N, NE) from given position
     ///
     /// # Arguments
     /// * `i` - index at x axis

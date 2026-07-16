@@ -10,7 +10,7 @@
 //!   Exact for band-limited periodic data; the fast default.
 //! * [`PixelGrid::poisson_cg`] — conjugate gradient on the 5-point Laplacian,
 //!   $O(N)$ memory with iterative sweeps. Slower here, but the route that
-//!   generalises to non-periodic boundary conditions where the FFT does not
+//!   generalizes to non-periodic boundary conditions where the FFT does not
 //!   apply.
 //!
 //! The periodic problem needs a zero-mean source and is unique up to a constant.
@@ -129,7 +129,7 @@ impl PixelGrid {
     /// `Natural` is asymmetric and rejected. Returns the solution with a
     /// [`SolveInfo`] (iterations, residual, convergence flag).
     ///
-    /// Slower than [`Self::poisson_spectral`], but generalises to non-periodic BCs.
+    /// Slower than [`Self::poisson_spectral`], but generalizes to non-periodic BCs.
     ///
     /// # Arguments
     /// * `cfg` - solver configuration (tolerance, iterations, BC; defaults if `None`)

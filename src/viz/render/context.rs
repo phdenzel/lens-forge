@@ -21,7 +21,7 @@ use image::imageops::{FilterType, resize};
 pub struct RasterContext {
     /// Buffer for values transformations (scaling/normalization)
     stage_buffer: Vec<f32>,
-    /// Buffer for colors (RGBA as [u8; 4])
+    /// Buffer for colours (RGBA as [u8; 4])
     color_buffer: Vec<[u8; 4]>,
 }
 

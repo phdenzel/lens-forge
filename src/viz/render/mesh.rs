@@ -214,7 +214,7 @@ impl ToMesh for MeshGrid {
 /// Render a polygonal mesh to an RGBA image by filling each cell with the
 /// colour of its value.
 ///
-/// This is the faithful visualisation for Voronoi / irregular grids: cell
+/// This is the faithful visualization for Voronoi / irregular grids: cell
 /// boundaries stay crisp at any resolution (unlike sampling the field onto a
 /// pixel raster). The value pipeline — scale → normalize → colormap — matches
 /// the raster path, so a `MeshGrid` and its rasterization colour-map identically.
