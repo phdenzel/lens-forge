@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn grid_points_are_delaunay() {
         // A regular grid is maximally degenerate (collinear rows, cocircular
-        // quads); exercises the on-edge 2→4 split path exactly.
+        // quads), stressing the exact orientation and in-circle predicates.
         let mut pts = Vec::new();
         for j in 0..8 {
             for i in 0..8 {
