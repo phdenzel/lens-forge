@@ -96,6 +96,40 @@ impl VoronoiMesh {
     pub fn cell_of(&self, p: Point2D) -> usize {
         self.kdtree.nearest(p)
     }
+
+    /// Index of the cell containing `q`, found by a warm-started greedy walk on
+    /// the Voronoi adjacency: step to the nearest neighbouring site until none is
+    /// closer. Exact — a cell is the intersection of its neighbours' bisector
+    /// half-planes, so a local distance minimum is the containing cell — and
+    /// terminating, since each step strictly decreases the distance to `q`.
+    ///
+    /// # Arguments
+    /// * `q` - the query point to locate.
+    /// * `hint` - cell to start the walk from; the previous result for
+    ///   spatially-coherent queries (a raster scan) keeps each walk ~`O(1)`,
+    ///   versus the `O(log n)` cold descent of [`cell_of`](Self::cell_of).
+    ///
+    /// Returns the index of the containing (nearest-site) cell.
+    pub fn cell_of_walk(&self, q: Point2D, hint: usize) -> usize {
+        let mut cur = hint;
+        let mut cur_d2 = self.sites[cur].distance_squared(&q);
+        loop {
+            let mut best = cur;
+            let mut best_d2 = cur_d2;
+            for &t in &self.neighbors[cur] {
+                let d2 = self.sites[t].distance_squared(&q);
+                if d2 < best_d2 {
+                    best = t;
+                    best_d2 = d2;
+                }
+            }
+            if best == cur {
+                return cur;
+            }
+            cur = best;
+            cur_d2 = best_d2;
+        }
+    }
 }
 
 /// Delaunay 1-ring neighbours per site, deduplicated. Small point counts (which
@@ -254,6 +288,24 @@ mod tests {
         for (s, list) in m.neighbors.iter().enumerate() {
             for &t in list {
                 assert!(m.neighbors[t].contains(&s), "adjacency not symmetric: {s}-{t}");
+            }
+        }
+    }
+
+    #[test]
+    fn walk_matches_kdtree_from_any_hint() {
+        // The greedy walk must land on the same cell as the exact k-d tree query,
+        // regardless of the starting hint — including a deliberately bad one.
+        let mut rng = Lcg(0xC0FFEE);
+        let sites: Vec<Point2D> = (0..300).map(|_| p(rng.f(), rng.f())).collect();
+        let (min, max) = unit();
+        let m = VoronoiMesh::new(&sites, min, max).unwrap();
+        for _ in 0..2000 {
+            let q = p(rng.f(), rng.f());
+            let want = m.cell_of(q);
+            // Warm hint (previous-ish) and a worst-case far hint both converge.
+            for hint in [want, 0, sites.len() - 1, (rng.f() * sites.len() as f64) as usize] {
+                assert_eq!(m.cell_of_walk(q, hint), want, "hint {hint}, q {q:?}");
             }
         }
     }
