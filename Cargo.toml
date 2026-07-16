@@ -38,6 +38,10 @@ harness = false
 name = "pixelgrid_bench"
 harness = false
 
+[[bench]]
+name = "meshgrid_locate"
+harness = false
+
 # Render LaTeX math on docs.rs (mirrors `./docs/build-docs.sh` for local builds).
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]
