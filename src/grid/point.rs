@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Basic 2D point type
 
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A point in the 2D plane.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -423,6 +423,19 @@ impl Point2D {
         [self.x, self.y]
     }
 
+    /// Component along a coordinate axis (`0` → `x`, `1` → `y`), the by-value
+    /// counterpart of indexing (`self[axis]`).
+    ///
+    /// # Arguments
+    /// * `axis` - coordinate axis, either `0` or `1`
+    ///
+    /// # Panics
+    /// Panics if `axis` is neither `0` nor `1`.
+    #[inline]
+    pub fn coord(&self, axis: usize) -> f64 {
+        self[axis]
+    }
+
     /// Create from array [x, y]
     ///
     /// # Arguments
@@ -773,6 +786,22 @@ impl Neg for Point2D {
         Self {
             x: -self.x,
             y: -self.y,
+        }
+    }
+}
+
+/// Index by coordinate axis (`0` → `x`, `1` → `y`).
+///
+/// # Panics
+/// Panics if `axis` is neither `0` nor `1`.
+impl Index<usize> for Point2D {
+    type Output = f64;
+    #[inline]
+    fn index(&self, axis: usize) -> &f64 {
+        match axis {
+            0 => &self.x,
+            1 => &self.y,
+            _ => panic!("Point2D index out of bounds: axis {axis} (must be 0 or 1)"),
         }
     }
 }
@@ -1483,6 +1512,22 @@ mod tests {
         let tup = p.to_tuple();
         assert_eq!(tup, (3.0, 4.0));
         assert_eq!(Point2D::from_tuple(tup), p);
+    }
+
+    #[test]
+    fn test_axis_access() {
+        let p = Point2D::new(3.0, 4.0);
+        // Indexing and `coord` agree and select x/y by axis.
+        assert_eq!(p[0], 3.0);
+        assert_eq!(p[1], 4.0);
+        assert_eq!(p.coord(0), p[0]);
+        assert_eq!(p.coord(1), p[1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn test_axis_out_of_range_panics() {
+        let _ = Point2D::new(3.0, 4.0)[2];
     }
 
     #[test]

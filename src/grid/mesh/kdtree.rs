@@ -25,11 +25,6 @@ pub(crate) struct KdTree {
     root: usize,
 }
 
-#[inline]
-fn coord(p: Point2D, axis: usize) -> f64 {
-    if axis == 0 { p.x } else { p.y }
-}
-
 impl KdTree {
     /// Build a k-d tree over `pts`.
     pub(crate) fn new(pts: &[Point2D]) -> Self {
@@ -59,7 +54,7 @@ impl KdTree {
             *best = n.point;
         }
         let axis = depth % 2;
-        let diff = coord(q, axis) - coord(pt, axis);
+        let diff = q[axis] - pt[axis];
         let (near, far) = if diff < 0.0 { (n.left, n.right) } else { (n.right, n.left) };
         self.search(near, q, depth + 1, best, best_d2);
         if diff * diff < *best_d2 {
@@ -77,8 +72,8 @@ fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>
     let axis = depth % 2;
     let mid = idx.len() / 2;
     idx.select_nth_unstable_by(mid, |&a, &b| {
-        coord(pts[a], axis)
-            .partial_cmp(&coord(pts[b], axis))
+        pts[a][axis]
+            .partial_cmp(&pts[b][axis])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     let point = idx[mid];
