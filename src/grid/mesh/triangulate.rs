@@ -707,4 +707,50 @@ mod tests {
         assert_delaunay(&pts, &t);
         assert_neighbor_symmetry(&t);
     }
+
+    #[test]
+    fn point_exactly_on_edge_triggers_split() {
+        // The last point lies exactly on the interior edge (0,0)-(2,0), so it is
+        // located as `Edge` and inserted via the on-edge (2→4) split rather than
+        // the interior 1→3 fan.
+        let pts = [
+            p(0.0, 0.0),
+            p(2.0, 0.0),
+            p(1.0, 2.0),
+            p(1.0, 0.0), // collinear with and between the first two
+        ];
+        let t = triangulate(&pts);
+        assert_delaunay(&pts, &t);
+        assert_neighbor_symmetry(&t);
+        // The on-edge point was inserted (used as a vertex), not skipped.
+        assert!(t.triangles.iter().any(|tri| tri.contains(&3)), "on-edge point missing");
+    }
+
+    #[test]
+    fn points_on_all_three_edges() {
+        // A midpoint on each edge of the seed triangle, so the on-edge split is
+        // reached for edges in different slots of the located triangle.
+        let pts = [
+            p(0.0, 0.0),
+            p(4.0, 0.0),
+            p(0.0, 4.0),
+            p(2.0, 0.0), // on edge (0,0)-(4,0)
+            p(0.0, 2.0), // on edge (0,0)-(0,4)
+            p(2.0, 2.0), // on edge (4,0)-(0,4)
+        ];
+        let t = triangulate(&pts);
+        assert_delaunay(&pts, &t);
+        assert_neighbor_symmetry(&t);
+        for v in 3..6 {
+            assert!(t.triangles.iter().any(|tri| tri.contains(&v)), "point {v} missing");
+        }
+    }
+
+    #[test]
+    fn fewer_than_three_points_is_empty() {
+        for pts in [&[][..], &[p(0.0, 0.0)][..], &[p(0.0, 0.0), p(1.0, 1.0)][..]] {
+            let t = triangulate(pts);
+            assert!(t.triangles.is_empty() && t.neighbors.is_empty());
+        }
+    }
 }
