@@ -30,13 +30,6 @@ fn coord(p: Point2D, axis: usize) -> f64 {
     if axis == 0 { p.x } else { p.y }
 }
 
-#[inline]
-fn dist2(a: Point2D, b: Point2D) -> f64 {
-    let dx = a.x - b.x;
-    let dy = a.y - b.y;
-    dx * dx + dy * dy
-}
-
 impl KdTree {
     /// Build a k-d tree over `pts`.
     pub(crate) fn new(pts: &[Point2D]) -> Self {
@@ -60,7 +53,7 @@ impl KdTree {
         }
         let n = &self.nodes[node];
         let pt = self.pts[n.point];
-        let d2 = dist2(pt, q);
+        let d2 = pt.distance_squared(&q);
         if d2 < *best_d2 {
             *best_d2 = d2;
             *best = n.point;
@@ -118,7 +111,9 @@ mod tests {
 
     fn brute(pts: &[Point2D], q: Point2D) -> usize {
         (0..pts.len())
-            .min_by(|&a, &b| dist2(pts[a], q).partial_cmp(&dist2(pts[b], q)).unwrap())
+            .min_by(|&a, &b| {
+                pts[a].distance_squared(&q).partial_cmp(&pts[b].distance_squared(&q)).unwrap()
+            })
             .unwrap()
     }
 
@@ -134,7 +129,7 @@ mod tests {
             // Ties are possible in principle but vanishingly unlikely for random
             // points; compare by distance to be safe.
             assert!(
-                (dist2(pts[got], q) - dist2(pts[want], q)).abs() < 1e-15,
+                (pts[got].distance_squared(&q) - pts[want].distance_squared(&q)).abs() < 1e-15,
                 "kd {got} vs brute {want}"
             );
         }
