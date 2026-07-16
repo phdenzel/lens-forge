@@ -1215,6 +1215,15 @@ mod tests {
         assert!(approx_eq(mid.angle(), FRAC_PI_4));
     }
 
+    #[test]
+    fn test_slerp_nearly_parallel() {
+        // Near-zero angle between the vectors falls back to plain lerp.
+        let p1 = Point2D::new(1.0, 0.0);
+        let p2 = Point2D::new(1.0, 1e-12);
+        let out = p1.slerp(&p2, 0.5).unwrap();
+        assert!(out.approx_eq(&p1.lerp(&p2, 0.5), EPSILON));
+    }
+
     /* ============ Test point projections ================================= */
     #[test]
     fn test_project_onto() {
@@ -1223,6 +1232,14 @@ mod tests {
 
         let proj = v.project_onto(&onto);
         assert!(proj.approx_eq(&Point2D::new(3.0, 0.0), EPSILON));
+    }
+
+    #[test]
+    fn test_project_onto_zero_vector() {
+        // Projecting onto a zero-length vector yields the origin.
+        let v = Point2D::new(3.0, 4.0);
+        let zero = Point2D::new(0.0, 0.0);
+        assert_eq!(v.project_onto(&zero), Point2D::origin());
     }
 
     #[test]
@@ -1323,6 +1340,54 @@ mod tests {
         let mut p = Point2D::new(4.0, 6.0);
         p /= 2.0;
         assert_eq!(p, Point2D::new(2.0, 3.0));
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        let p = Point2D::new(1.0, 2.0);
+        assert_eq!(p + 3.0, Point2D::new(4.0, 5.0)); // Point2D + f64
+        assert_eq!(3.0 + p, Point2D::new(4.0, 5.0)); // f64 + Point2D
+    }
+
+    #[test]
+    fn test_add_assign_scalar() {
+        let mut p = Point2D::new(1.0, 2.0);
+        p += 3.0;
+        assert_eq!(p, Point2D::new(4.0, 5.0));
+    }
+
+    #[test]
+    fn test_sub_scalar() {
+        let p = Point2D::new(5.0, 7.0);
+        assert_eq!(p - 2.0, Point2D::new(3.0, 5.0)); // Point2D - f64
+        assert_eq!(10.0 - p, Point2D::new(5.0, 3.0)); // f64 - Point2D
+    }
+
+    #[test]
+    fn test_sub_assign_scalar() {
+        let mut p = Point2D::new(5.0, 7.0);
+        p -= 2.0;
+        assert_eq!(p, Point2D::new(3.0, 5.0));
+    }
+
+    #[test]
+    fn test_mul_assign_componentwise() {
+        let mut p = Point2D::new(2.0, 3.0);
+        p *= Point2D::new(4.0, 5.0);
+        assert_eq!(p, Point2D::new(8.0, 15.0));
+    }
+
+    #[test]
+    fn test_scalar_div_point() {
+        // f64 / Point2D divides component-wise.
+        assert_eq!(12.0 / Point2D::new(2.0, 4.0), Point2D::new(6.0, 3.0));
+    }
+
+    #[test]
+    fn test_div_assign_componentwise() {
+        let mut p = Point2D::new(8.0, 15.0);
+        p /= Point2D::new(2.0, 3.0);
+        assert_eq!(p, Point2D::new(4.0, 5.0));
     }
 
     #[test]
@@ -1458,6 +1523,18 @@ mod tests {
         let (u, v, w) = p.barycentric(&v0, &v1, &v2);
 
         assert!(approx_eq(u + v + w, 1.0));
+    }
+
+    #[test]
+    fn test_barycentric_degenerate() {
+        // A degenerate (collinear) triangle has zero area, so the weights fall
+        // back to equal thirds.
+        let v0 = Point2D::new(0.0, 0.0);
+        let v1 = Point2D::new(1.0, 0.0);
+        let v2 = Point2D::new(2.0, 0.0); // collinear with v0, v1
+        let (u, v, w) = Point2D::new(1.0, 1.0).barycentric(&v0, &v1, &v2);
+        let third = 1.0 / 3.0;
+        assert!(approx_eq(u, third) && approx_eq(v, third) && approx_eq(w, third));
     }
 
     /* ============ Test validation checks ================================= */
