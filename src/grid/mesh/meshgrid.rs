@@ -129,6 +129,22 @@ impl MeshGrid {
         self.mesh.cell_of(p)
     }
 
+    /// Index of the cell containing `p`, via a warm-started greedy walk seeded at
+    /// `hint`.
+    ///
+    /// Exact and equal to [`cell_of`](Self::cell_of), but ~`O(1)` per query when
+    /// `hint` is the previous result for spatially-coherent queries (a raster
+    /// scan, a batch of nearby points).
+    ///
+    /// # Arguments
+    /// * `p` - the query point to locate.
+    /// * `hint` - cell to start the walk from (any valid cell index).
+    ///
+    /// Returns the index of the containing (nearest-site) cell.
+    pub fn cell_of_walk(&self, p: Point2D, hint: usize) -> usize {
+        self.mesh.cell_of_walk(p, hint)
+    }
+
     /// Total covered area (equals the domain area).
     pub fn total_area(&self) -> f64 {
         self.mesh.total_area()
