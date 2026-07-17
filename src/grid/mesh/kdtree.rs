@@ -10,8 +10,8 @@
 
 use crate::grid::Point2D;
 
-/// A node in the flat arena. Child links are `None` for absent subtrees; a
-/// `u32` index keeps the node compact (indexing into `nodes`/`pts`).
+/// A node in the flat arena backing the tree; child links are `None` for an
+/// absent subtree.
 struct Node {
     point: usize,
     left: Option<u32>,
@@ -26,7 +26,13 @@ pub(crate) struct KdTree {
 }
 
 impl KdTree {
-    /// Build a k-d tree over `pts`.
+    /// Build a balanced k-d tree over a fixed set of points.
+    ///
+    /// # Arguments
+    /// * `pts` - the points to index; their positions in the slice become the
+    ///   indices returned by [`nearest`](Self::nearest).
+    ///
+    /// Returns the built tree, ready for nearest-neighbour queries.
     pub(crate) fn new(pts: &[Point2D]) -> Self {
         let mut idx: Vec<usize> = (0..pts.len()).collect();
         let mut nodes = Vec::with_capacity(pts.len());
@@ -34,8 +40,12 @@ impl KdTree {
         Self { pts: pts.to_vec(), nodes, root }
     }
 
-    /// Index of the point nearest to `q` (the containing Voronoi cell), or `None`
-    /// for an empty tree.
+    /// Index of the point nearest to `q` — the Voronoi cell containing it.
+    ///
+    /// # Arguments
+    /// * `q` - the query point to locate.
+    ///
+    /// Returns the index of the nearest point, or `None` for an empty tree.
     pub(crate) fn nearest(&self, q: Point2D) -> Option<usize> {
         let mut best: Option<usize> = None;
         let mut best_d2 = f64::INFINITY;
@@ -71,9 +81,16 @@ impl KdTree {
     }
 }
 
-/// Recursively build a balanced subtree over `idx`, splitting on the median
-/// along the axis chosen by `depth`. Returns the node index of the subtree root,
-/// or `None` for an empty slice.
+/// Recursively build a balanced subtree by splitting `idx` at its median along
+/// the axis chosen by `depth`.
+///
+/// # Arguments
+/// * `idx` - indices into `pts` for this subtree; reordered in place.
+/// * `pts` - the backing points, read only.
+/// * `depth` - current tree depth; selects the split axis (`depth % 2`).
+/// * `nodes` - the arena that built nodes are appended to.
+///
+/// Returns the arena index of the subtree root, or `None` for an empty slice.
 fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>) -> Option<u32> {
     if idx.is_empty() {
         return None;
