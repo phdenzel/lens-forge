@@ -10,19 +10,19 @@
 
 use crate::grid::Point2D;
 
-const NONE: usize = usize::MAX;
-
+/// A node in the flat arena. Child links are `None` for absent subtrees; a
+/// `u32` index keeps the node compact (indexing into `nodes`/`pts`).
 struct Node {
     point: usize,
-    left: usize,
-    right: usize,
+    left: Option<u32>,
+    right: Option<u32>,
 }
 
 /// A balanced 2D k-d tree over a fixed set of points.
 pub(crate) struct KdTree {
     pts: Vec<Point2D>,
     nodes: Vec<Node>,
-    root: usize,
+    root: Option<u32>,
 }
 
 impl KdTree {
@@ -45,16 +45,16 @@ impl KdTree {
 
     fn search(
         &self,
-        node: usize,
+        node: Option<u32>,
         q: Point2D,
         depth: usize,
         best: &mut Option<usize>,
         best_d2: &mut f64,
     ) {
-        if node == NONE {
+        let Some(node) = node else {
             return;
-        }
-        let n = &self.nodes[node];
+        };
+        let n = &self.nodes[node as usize];
         let pt = self.pts[n.point];
         let d2 = pt.distance_squared(&q);
         if d2 < *best_d2 {
@@ -72,10 +72,11 @@ impl KdTree {
 }
 
 /// Recursively build a balanced subtree over `idx`, splitting on the median
-/// along the axis chosen by `depth`. Returns the node index of the subtree root.
-fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>) -> usize {
+/// along the axis chosen by `depth`. Returns the node index of the subtree root,
+/// or `None` for an empty slice.
+fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>) -> Option<u32> {
     if idx.is_empty() {
-        return NONE;
+        return None;
     }
     let axis = depth % 2;
     let mid = idx.len() / 2;
@@ -85,16 +86,16 @@ fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     let point = idx[mid];
-    let node_id = nodes.len();
-    nodes.push(Node { point, left: NONE, right: NONE });
+    let node_id = nodes.len() as u32;
+    nodes.push(Node { point, left: None, right: None });
 
     let (left, rest) = idx.split_at_mut(mid);
     let right = &mut rest[1..];
     let l = build(left, pts, depth + 1, nodes);
     let r = build(right, pts, depth + 1, nodes);
-    nodes[node_id].left = l;
-    nodes[node_id].right = r;
-    node_id
+    nodes[node_id as usize].left = l;
+    nodes[node_id as usize].right = r;
+    Some(node_id)
 }
 
 #[cfg(test)]
