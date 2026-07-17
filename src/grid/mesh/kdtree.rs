@@ -34,15 +34,23 @@ impl KdTree {
         Self { pts: pts.to_vec(), nodes, root }
     }
 
-    /// Index of the point nearest to `q` (the containing Voronoi cell).
-    pub(crate) fn nearest(&self, q: Point2D) -> usize {
-        let mut best = NONE;
+    /// Index of the point nearest to `q` (the containing Voronoi cell), or `None`
+    /// for an empty tree.
+    pub(crate) fn nearest(&self, q: Point2D) -> Option<usize> {
+        let mut best: Option<usize> = None;
         let mut best_d2 = f64::INFINITY;
         self.search(self.root, q, 0, &mut best, &mut best_d2);
         best
     }
 
-    fn search(&self, node: usize, q: Point2D, depth: usize, best: &mut usize, best_d2: &mut f64) {
+    fn search(
+        &self,
+        node: usize,
+        q: Point2D,
+        depth: usize,
+        best: &mut Option<usize>,
+        best_d2: &mut f64,
+    ) {
         if node == NONE {
             return;
         }
@@ -51,7 +59,7 @@ impl KdTree {
         let d2 = pt.distance_squared(&q);
         if d2 < *best_d2 {
             *best_d2 = d2;
-            *best = n.point;
+            *best = Some(n.point);
         }
         let axis = depth % 2;
         let diff = q[axis] - pt[axis];
@@ -119,7 +127,7 @@ mod tests {
         let tree = KdTree::new(&pts);
         for _ in 0..500 {
             let q = Point2D::new(rng.f(), rng.f());
-            let got = tree.nearest(q);
+            let got = tree.nearest(q).unwrap();
             let want = brute(&pts, q);
             // Ties are possible in principle but vanishingly unlikely for random
             // points; compare by distance to be safe.
@@ -134,6 +142,6 @@ mod tests {
     fn single_point() {
         let pts = [Point2D::new(3.0, 4.0)];
         let tree = KdTree::new(&pts);
-        assert_eq!(tree.nearest(Point2D::new(0.0, 0.0)), 0);
+        assert_eq!(tree.nearest(Point2D::new(0.0, 0.0)), Some(0));
     }
 }

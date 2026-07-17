@@ -94,7 +94,7 @@ impl VoronoiMesh {
     /// Index of the cell containing `p` — the nearest site, by definition of a
     /// Voronoi tessellation.
     pub fn cell_of(&self, p: Point2D) -> usize {
-        self.kdtree.nearest(p)
+        self.kdtree.nearest(p).expect("VoronoiMesh always has at least one site")
     }
 
     /// Index of the cell containing `q`, found by a warm-started greedy walk on
