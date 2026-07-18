@@ -39,7 +39,7 @@ pub(crate) struct VoronoiMesh {
     /// Delaunay 1-ring neighbours per site (== Voronoi adjacency).
     pub neighbors: Vec<Vec<usize>>,
     /// Spatial index over the sites for `O(log n)` point location.
-    kdtree: KdTree,
+    kdtree: KdTree<Point2D>,
 }
 
 impl VoronoiMesh {

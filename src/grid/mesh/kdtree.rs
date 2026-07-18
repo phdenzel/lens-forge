@@ -9,74 +9,117 @@
 //! queries.
 
 use crate::grid::Point2D;
+use std::ops::Index;
 
-/// A node in the flat arena backing the tree; child links are `None` for an
-/// absent subtree.
+/// Point the [`KdTree`] can index: fixed dimension and squared-distance metric.
+pub(crate) trait KdPoint: Copy + Index<usize, Output = f64> {
+    /// Number of coordinate axes (the tree cycles splits over these).
+    const DIM: usize;
+
+    /// Squared Euclidean distance to `other` (no square root).
+    ///
+    /// # Arguments
+    /// * `other` - the point to measure against.
+    fn distance_squared(&self, other: &Self) -> f64;
+}
+
+impl KdPoint for Point2D {
+    const DIM: usize = 2;
+
+    #[inline]
+    fn distance_squared(&self, other: &Self) -> f64 {
+        Point2D::distance_squared(self, other)
+    }
+}
+
+/// Node in the tree; children (`left`/`right`) are `None` for an absent subtree
 struct Node {
-    point: usize,
+    /// Index into [`KdTree::pts`] of the point stored at this node.
+    index: usize,
+    /// Arena index of the left child (points below the split), or `None`.
     left: Option<u32>,
+    /// Arena index of the right child (points above the split), or `None`.
     right: Option<u32>,
 }
 
-/// A balanced 2D k-d tree over a fixed set of points.
-pub(crate) struct KdTree {
-    pts: Vec<Point2D>,
+/// A balanced k-d tree over a fixed set of points
+pub(crate) struct KdTree<P: KdPoint> {
+    /// The indexed points, kept in their original insertion order.
+    pts: Vec<P>,
+    /// Arena of tree nodes; children reference entries here by index.
     nodes: Vec<Node>,
+    /// Arena index of the root node, or `None` for an empty tree.
     root: Option<u32>,
 }
 
-impl KdTree {
-    /// Build a balanced k-d tree over a fixed set of points.
+impl<P: KdPoint> KdTree<P> {
+    /// Build a balanced k-d tree over a fixed set of points
     ///
     /// # Arguments
     /// * `pts` - the points to index; their positions in the slice become the
     ///   indices returned by [`nearest`](Self::nearest).
     ///
     /// Returns the built tree, ready for nearest-neighbour queries.
-    pub(crate) fn new(pts: &[Point2D]) -> Self {
+    pub(crate) fn new(pts: &[P]) -> Self {
         let mut idx: Vec<usize> = (0..pts.len()).collect();
         let mut nodes = Vec::with_capacity(pts.len());
         let root = build(&mut idx, pts, 0, &mut nodes);
-        Self { pts: pts.to_vec(), nodes, root }
+        Self {
+            pts: pts.to_vec(),
+            nodes,
+            root,
+        }
     }
 
-    /// Index of the point nearest to `q` — the Voronoi cell containing it.
+    /// Index of the point nearest to the query point `q`.
     ///
     /// # Arguments
     /// * `q` - the query point to locate.
     ///
     /// Returns the index of the nearest point, or `None` for an empty tree.
-    pub(crate) fn nearest(&self, q: Point2D) -> Option<usize> {
+    pub(crate) fn nearest(&self, q: P) -> Option<usize> {
         let mut best: Option<usize> = None;
-        let mut best_d2 = f64::INFINITY;
-        self.search(self.root, q, 0, &mut best, &mut best_d2);
+        let mut dist_sq = f64::INFINITY;
+        self.search(self.root, q, 0, &mut best, &mut dist_sq);
         best
     }
 
+    /// Recursively refine the nearest-point search over the subtree at `node`.
+    ///
+    /// # Arguments
+    /// * `node` - root of the subtree to search (`None` ends the branch).
+    /// * `q` - the query point.
+    /// * `depth` - current tree depth; selects the split axis (`depth % DIM`).
+    /// * `best` - index of the closest point found so far, updated in place.
+    /// * `dist2` - squared distance to `best`, updated in place.
     fn search(
         &self,
         node: Option<u32>,
-        q: Point2D,
+        q: P,
         depth: usize,
         best: &mut Option<usize>,
-        best_d2: &mut f64,
+        dist2: &mut f64,
     ) {
         let Some(node) = node else {
             return;
         };
         let n = &self.nodes[node as usize];
-        let pt = self.pts[n.point];
+        let pt = self.pts[n.index];
         let d2 = pt.distance_squared(&q);
-        if d2 < *best_d2 {
-            *best_d2 = d2;
-            *best = Some(n.point);
+        if d2 < *dist2 {
+            *dist2 = d2;
+            *best = Some(n.index);
         }
-        let axis = depth % 2;
+        let axis = depth % P::DIM;
         let diff = q[axis] - pt[axis];
-        let (near, far) = if diff < 0.0 { (n.left, n.right) } else { (n.right, n.left) };
-        self.search(near, q, depth + 1, best, best_d2);
-        if diff * diff < *best_d2 {
-            self.search(far, q, depth + 1, best, best_d2);
+        let (near, far) = if diff < 0.0 {
+            (n.left, n.right)
+        } else {
+            (n.right, n.left)
+        };
+        self.search(near, q, depth + 1, best, dist2);
+        if diff * diff < *dist2 {
+            self.search(far, q, depth + 1, best, dist2);
         }
     }
 }
@@ -87,15 +130,20 @@ impl KdTree {
 /// # Arguments
 /// * `idx` - indices into `pts` for this subtree; reordered in place.
 /// * `pts` - the backing points, read only.
-/// * `depth` - current tree depth; selects the split axis (`depth % 2`).
+/// * `depth` - current tree depth; selects the split axis (`depth % DIM`).
 /// * `nodes` - the arena that built nodes are appended to.
 ///
 /// Returns the arena index of the subtree root, or `None` for an empty slice.
-fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>) -> Option<u32> {
+fn build<P: KdPoint>(
+    idx: &mut [usize],
+    pts: &[P],
+    depth: usize,
+    nodes: &mut Vec<Node>,
+) -> Option<u32> {
     if idx.is_empty() {
         return None;
     }
-    let axis = depth % 2;
+    let axis = depth % P::DIM;
     let mid = idx.len() / 2;
     idx.select_nth_unstable_by(mid, |&a, &b| {
         pts[a][axis]
@@ -104,7 +152,11 @@ fn build(idx: &mut [usize], pts: &[Point2D], depth: usize, nodes: &mut Vec<Node>
     });
     let point = idx[mid];
     let node_id = nodes.len() as u32;
-    nodes.push(Node { point, left: None, right: None });
+    nodes.push(Node {
+        index: point,
+        left: None,
+        right: None,
+    });
 
     let (left, rest) = idx.split_at_mut(mid);
     let right = &mut rest[1..];
@@ -133,7 +185,10 @@ mod tests {
     fn brute(pts: &[Point2D], q: Point2D) -> usize {
         (0..pts.len())
             .min_by(|&a, &b| {
-                pts[a].distance_squared(&q).partial_cmp(&pts[b].distance_squared(&q)).unwrap()
+                pts[a]
+                    .distance_squared(&q)
+                    .partial_cmp(&pts[b].distance_squared(&q))
+                    .unwrap()
             })
             .unwrap()
     }
