@@ -11,10 +11,11 @@
 //!
 //! * [`Point2D`] — a point in the plane, with the vector arithmetic
 //!   (add/sub/scale, dot, norm, polar, bounding box, …) used throughout.
-//! * [`Grid2D`] — the coordinate geometry of a regular grid: pixel counts,
-//!   physical extents, and derived pixel sizes. Coordinate arrays (coordinate
-//!   matrices, radius maps) are computed lazily on demand. Holds no field data
-//!   itself.
+//! * [`Grid2D`] (module `uniform`) — the coordinate geometry of a regular grid:
+//!   pixel counts, physical extents, and derived pixel sizes. Coordinate arrays
+//!   (coordinate matrices, radius maps) are computed lazily on demand. Holds no
+//!   field data itself; it backs [`PixelGrid`], the structured analogue of the
+//!   mesh's `VoronoiMesh`.
 //!
 //! # Scalar fields
 //!
@@ -69,16 +70,14 @@ pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
 mod point;
 mod field;
-mod grid2d;
 mod uniform;
 mod adaptive;
 mod mesh;
 
 pub use point::Point2D;
 pub use field::ScalarField2D;
-pub use grid2d::Grid2D;
 pub use uniform::{
-    BilinearKernel, BoundaryCondition, DerivativeStencil, PixelGrid, PoissonConfig,
+    BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, PoissonConfig,
 };
 // pub use adaptive::AdaGrid;
 pub use mesh::MeshGrid;
