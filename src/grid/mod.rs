@@ -12,8 +12,9 @@
 //! * [`Point2D`] — a point in the plane, with the vector arithmetic
 //!   (add/sub/scale, dot, norm, polar, bounding box, …) used throughout.
 //! * [`Grid2D`] — the coordinate geometry of a regular grid: pixel counts,
-//!   physical extents, and derived pixel sizes. Coordinate arrays (meshgrids,
-//!   radius maps) are computed lazily on demand. Holds no field data itself.
+//!   physical extents, and derived pixel sizes. Coordinate arrays (coordinate
+//!   matrices, radius maps) are computed lazily on demand. Holds no field data
+//!   itself.
 //!
 //! # Scalar fields
 //!
