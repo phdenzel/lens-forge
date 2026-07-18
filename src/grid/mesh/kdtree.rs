@@ -103,6 +103,7 @@ impl<P: KdPoint> KdTree<P> {
         let Some(node) = node else {
             return;
         };
+	// Measure distance from query point to node
         let n = &self.nodes[node as usize];
         let pt = self.pts[n.index];
         let d2 = pt.distance_squared(&q);
@@ -110,6 +111,7 @@ impl<P: KdPoint> KdTree<P> {
             *dist2 = d2;
             *best = Some(n.index);
         }
+	// Search nearest branch
         let axis = depth % P::DIM;
         let diff = q[axis] - pt[axis];
         let (near, far) = if diff < 0.0 {
@@ -118,6 +120,7 @@ impl<P: KdPoint> KdTree<P> {
             (n.right, n.left)
         };
         self.search(near, q, depth + 1, best, dist2);
+	// Search far branch in case split plane is closer
         if diff * diff < *dist2 {
             self.search(far, q, depth + 1, best, dist2);
         }
@@ -143,6 +146,7 @@ fn build<P: KdPoint>(
     if idx.is_empty() {
         return None;
     }
+    // Reorder point index `idx` at midpoint
     let axis = depth % P::DIM;
     let mid = idx.len() / 2;
     idx.select_nth_unstable_by(mid, |&a, &b| {
@@ -150,6 +154,7 @@ fn build<P: KdPoint>(
             .partial_cmp(&pts[b][axis])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    // Add mid-point node
     let point = idx[mid];
     let node_id = nodes.len() as u32;
     nodes.push(Node {
@@ -157,9 +162,9 @@ fn build<P: KdPoint>(
         left: None,
         right: None,
     });
-
+    // Divide and build subtrees (left and right)
     let (left, rest) = idx.split_at_mut(mid);
-    let right = &mut rest[1..];
+    let right = &mut rest[1..]; // leave out mid-point
     let l = build(left, pts, depth + 1, nodes);
     let r = build(right, pts, depth + 1, nodes);
     nodes[node_id as usize].left = l;
