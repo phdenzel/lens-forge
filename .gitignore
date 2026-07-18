@@ -1,1 +1,4 @@
 /target
+
+# Design/reference docs kept on disk but not tracked
+docs/*.md
