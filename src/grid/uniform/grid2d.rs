@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Basic 2D grid type
 
-use crate::grid::Point2D;
+use crate::grid::{BBox, Point2D};
 use crate::{LensForgeError, Result};
 use ndarray::{Array1, Array2, Axis, Zip, parallel::prelude::*};
 
@@ -16,13 +16,8 @@ pub struct Grid2D {
     pub nx: usize,
     /// Number of pixels in y direction
     pub ny: usize,
-    /// Grid origin (bottom-left corner)
-    x0: f64,
-    y0: f64,
-    /// Pixel size in x direction (precomputed)
-    pub dx: f64,
-    /// Pixel size in y direction (precomputed)
-    pub dy: f64,
+    /// Physical domain (lower-left = `min`, upper-right = `max`).
+    pub bbox: BBox,
 }
 
 impl Grid2D {
@@ -31,32 +26,24 @@ impl Grid2D {
     /// # Arguments
     /// * `nx` - Number of pixels in the x direction
     /// * `ny` - Number of pixels in the y direction
-    /// * `extent_x` - Physical extent in x as (x_min, x_max)
-    /// * `extent_y` - Physical extent in y as (y_min, y_max)
+    /// * `bbox` - Physical domain of the grid
     ///
     /// # Errors
-    /// Returns an error if dimensions are zero or extents are invalid
+    /// Returns an error if dimensions are zero or the domain is degenerate
     #[inline]
-    pub fn new(nx: usize, ny: usize, extent_x: (f64, f64), extent_y: (f64, f64)) -> Result<Self> {
+    pub fn new(nx: usize, ny: usize, bbox: BBox) -> Result<Self> {
         if nx == 0 || ny == 0 {
             return Err(LensForgeError::invalid_grid_dimension(
                 "Grid size must be strictly positive",
             ));
         }
-        if extent_x.0 >= extent_x.1 || extent_y.0 >= extent_y.1 {
+        if !bbox.is_positive() {
             return Err(LensForgeError::invalid_grid_dimension(
                 "Grid extent minimum must be less than maximum",
             ));
         }
 
-        Ok(Self {
-            nx,
-            ny,
-            x0: extent_x.0,
-            y0: extent_y.0,
-            dx: (extent_x.1 - extent_x.0) / nx as f64,
-            dy: (extent_y.1 - extent_y.0) / ny as f64,
-        })
+        Ok(Self { nx, ny, bbox })
     }
 
     /// Create a square grid centred at the origin
@@ -70,7 +57,7 @@ impl Grid2D {
                 "Radius must be positive",
             ));
         }
-        Self::new(n, n, (-radius, radius), (-radius, radius))
+        Self::new(n, n, BBox::from_lims(-radius, radius, -radius, radius))
     }
 
     /// Create a rectangular grid centred at the origin
@@ -86,7 +73,7 @@ impl Grid2D {
                 "Extents must be positive",
             ));
         }
-        Self::new(nx, ny, (-rx, rx), (-ry, ry))
+        Self::new(nx, ny, BBox::from_lims(-rx, rx, -ry, ry))
     }
 
     /// Create a grid with given physical extent and resolution
@@ -113,38 +100,54 @@ impl Grid2D {
         if ny < 1 {
             eprintln!("Warning: calculated non-positive grid size in y, setting to 1.");
         }
-        Self::new(nx.max(1), ny.max(1), extent_x, extent_y)
+        Self::new(
+            nx.max(1),
+            ny.max(1),
+            BBox::from_lims(extent_x.0, extent_x.1, extent_y.0, extent_y.1),
+        )
     }
 
     /* ============ Grid attributes ======================================== */
     /// Get x extent as tuple
     #[inline]
     pub fn extent_x(&self) -> (f64, f64) {
-        (self.x0, self.x0 + self.nx as f64 * self.dx)
+        self.bbox.extent_x()
     }
 
     /// Get y extent as tuple
     #[inline]
     pub fn extent_y(&self) -> (f64, f64) {
-        (self.y0, self.y0 + self.ny as f64 * self.dy)
+        self.bbox.extent_y()
+    }
+
+    /// Pixel size in x direction (`= bbox.width() / nx`)
+    #[inline]
+    pub fn dx(&self) -> f64 {
+        self.bbox.width() / self.nx as f64
+    }
+
+    /// Pixel size in y direction (`= bbox.height() / ny`)
+    #[inline]
+    pub fn dy(&self) -> f64 {
+        self.bbox.height() / self.ny as f64
     }
 
     /// Grid width
     #[inline]
     pub fn width(&self) -> f64 {
-        self.nx as f64 * self.dx
+        self.bbox.width()
     }
 
     /// Grid height
     #[inline]
     pub fn height(&self) -> f64 {
-        self.ny as f64 * self.dy
+        self.bbox.height()
     }
 
     /// Grid centre
     #[inline]
     pub fn center(&self) -> Point2D {
-        Point2D::new(self.x0 + self.width() * 0.5, self.y0 + self.height() * 0.5)
+        self.bbox.center()
     }
 
     /// Aspect ratio (width / height)
@@ -162,7 +165,7 @@ impl Grid2D {
     /// Pixel area
     #[inline(always)]
     pub fn pixel_area(&self) -> f64 {
-        self.dx * self.dy
+        self.dx() * self.dy()
     }
 
     /// Total grid area
@@ -216,7 +219,7 @@ impl Grid2D {
     /// * `i` - index along x axis
     #[inline(always)]
     pub fn x_at(&self, i: usize) -> f64 {
-        self.x0 + (i as f64 + 0.5) * self.dx
+        self.bbox.min.x + (i as f64 + 0.5) * self.dx()
     }
 
     /// Get y-coordinate of pixel centre
@@ -225,7 +228,7 @@ impl Grid2D {
     /// * `j` - index along y axis
     #[inline(always)]
     pub fn y_at(&self, j: usize) -> f64 {
-        self.y0 + (j as f64 + 0.5) * self.dy
+        self.bbox.min.y + (j as f64 + 0.5) * self.dy()
     }
 
     /// Get pixel centre coordinates
@@ -244,7 +247,7 @@ impl Grid2D {
     /// * `i` - index along x axis
     #[inline(always)]
     pub fn x_corner_at(&self, i: usize) -> f64 {
-        self.x0 + i as f64 * self.dx
+        self.bbox.min.x + i as f64 * self.dx()
     }
 
     /// Get y-coordinate of pixel corner
@@ -253,7 +256,7 @@ impl Grid2D {
     /// * `j` - index along y axis
     #[inline(always)]
     pub fn y_corner_at(&self, j: usize) -> f64 {
-        self.y0 + j as f64 * self.dy
+        self.bbox.min.y + j as f64 * self.dy()
     }
 
     /// Get pixel corner (bottom-left)
@@ -272,8 +275,8 @@ impl Grid2D {
     /// * `p` - point to be mapped
     #[inline(always)]
     pub fn point_to_pixel(&self, p: &Point2D) -> Option<(usize, usize)> {
-        let fi = (p.x - self.x0) / self.dx;
-        let fj = (p.y - self.y0) / self.dy;
+        let fi = (p.x - self.bbox.min.x) / self.dx();
+        let fj = (p.y - self.bbox.min.y) / self.dy();
 
         if fi >= 0.0 && fi < self.nx as f64 && fj >= 0.0 && fj < self.ny as f64 {
             Some((fi as usize, fj as usize))
@@ -289,8 +292,8 @@ impl Grid2D {
     #[inline(always)]
     pub fn relative_to(&self, p: &Point2D) -> (f64, f64) {
         (
-            (p.x - self.x0) / self.dx - 0.5,
-            (p.y - self.y0) / self.dy - 0.5,
+            (p.x - self.bbox.min.x) / self.dx() - 0.5,
+            (p.y - self.bbox.min.y) / self.dy() - 0.5,
         )
     }
 
@@ -300,7 +303,7 @@ impl Grid2D {
     /// * `p` - point to be mapped
     #[inline(always)]
     pub fn relative_to_corner(&self, p: &Point2D) -> (f64, f64) {
-        ((p.x - self.x0) / self.dx, (p.y - self.y0) / self.dy)
+        ((p.x - self.bbox.min.x) / self.dx(), (p.y - self.bbox.min.y) / self.dy())
     }
 
     /// Check if point is inside grid
@@ -309,8 +312,7 @@ impl Grid2D {
     /// * `p` - point to be checked
     #[inline(always)]
     pub fn contains(&self, p: &Point2D) -> bool {
-        let (x1, y1) = (self.x0 + self.width(), self.y0 + self.height());
-        p.x >= self.x0 && p.x <= x1 && p.y >= self.y0 && p.y <= y1
+        self.bbox.contains(p)
     }
 
     /// Check if pixel indices are valid
@@ -345,25 +347,29 @@ impl Grid2D {
     /// Create 1D array of x coordinates for pixel centres
     #[inline]
     pub fn x_coords(&self) -> Array1<f64> {
-        Array1::from_shape_fn(self.nx, |i| self.x_at(i))
+        let (min_x, dx) = (self.bbox.min.x, self.dx());
+        Array1::from_shape_fn(self.nx, |i| min_x + (i as f64 + 0.5) * dx)
     }
 
     /// Create 1D array of y coordinates for pixel centres
     #[inline]
     pub fn y_coords(&self) -> Array1<f64> {
-        Array1::from_shape_fn(self.ny, |j| self.y_at(j))
+        let (min_y, dy) = (self.bbox.min.y, self.dy());
+        Array1::from_shape_fn(self.ny, |j| min_y + (j as f64 + 0.5) * dy)
     }
 
     /// Create 1D array of x coordinates for pixel edges
     #[inline]
     pub fn x_edges(&self) -> Array1<f64> {
-        Array1::from_shape_fn(self.nx + 1, |i| self.x_corner_at(i))
+        let (min_x, dx) = (self.bbox.min.x, self.dx());
+        Array1::from_shape_fn(self.nx + 1, |i| min_x + i as f64 * dx)
     }
 
     /// Create 1D array of y coordinates for pixel edges
     #[inline]
     pub fn y_edges(&self) -> Array1<f64> {
-        Array1::from_shape_fn(self.ny + 1, |j| self.y_corner_at(j))
+        let (min_y, dy) = (self.bbox.min.y, self.dy());
+        Array1::from_shape_fn(self.ny + 1, |j| min_y + j as f64 * dy)
     }
 
     /* ============ Coordinate matrices ============================================== */
@@ -429,14 +435,13 @@ impl Grid2D {
         let c = center.unwrap_or_else(|| self.center());
         let cx = c.x;
         let cy = c.y;
-        // Precompute (x - cx)^2 for each column
-        let dx2: Array1<f64> = Array1::from_shape_fn(self.nx, |i| {
-            let d = self.x_at(i) - cx;
+        // Precompute (x - cx)^2 for each column and (y - cy)^2 for each row
+        let dx2: Array1<f64> = self.x_coords().mapv(|x| {
+            let d = x - cx;
             d * d
         });
-        // Precompute (y - cy)^2 for each row
-        let dy2: Array1<f64> = Array1::from_shape_fn(self.ny, |j| {
-            let d = self.y_at(j) - cy;
+        let dy2: Array1<f64> = self.y_coords().mapv(|y| {
+            let d = y - cy;
             d * d
         });
 
@@ -466,10 +471,12 @@ impl Grid2D {
         let c = center.unwrap_or_else(|| self.center());
         let cx = c.x;
         let cy = c.y;
+        let xs = self.x_coords();
+        let ys = self.y_coords();
 
         Array2::from_shape_fn((self.ny, self.nx), |(j, i)| {
-            let x = self.x_at(i) - cx;
-            let y = self.y_at(j) - cy;
+            let x = xs[i] - cx;
+            let y = ys[j] - cy;
             y.atan2(x)
         })
     }
@@ -482,8 +489,8 @@ impl Grid2D {
         let c = center.unwrap_or_else(|| self.center());
 
         // Precompute deltas
-        let dx_vec: Array1<f64> = Array1::from_shape_fn(self.nx, |i| self.x_at(i) - c.x);
-        let dy_vec: Array1<f64> = Array1::from_shape_fn(self.ny, |j| self.y_at(j) - c.y);
+        let dx_vec: Array1<f64> = self.x_coords().mapv(|x| x - c.x);
+        let dy_vec: Array1<f64> = self.y_coords().mapv(|y| y - c.y);
         let dx2_vec: Array1<f64> = dx_vec.mapv(|d| d * d);
 
         let mut r_grid = Array2::zeros((self.ny, self.nx));
@@ -552,10 +559,11 @@ impl Grid2D {
     /// * `center` - Optional reference point (default: grid centre)
     pub fn par_coord_matrix_r2(&self, center: Option<Point2D>) -> Array2<f64> {
         let c = center.unwrap_or_else(|| self.center());
-        let dx2: Array1<f64> = Array1::from_shape_fn(self.nx, |i| {
-            let d = self.x_at(i) - c.x;
+        let dx2: Array1<f64> = self.x_coords().mapv(|x| {
+            let d = x - c.x;
             d * d
         });
+        let ys = self.y_coords();
 
         let mut result = Array2::zeros((self.ny, self.nx));
         result
@@ -563,7 +571,7 @@ impl Grid2D {
             .into_par_iter()
             .enumerate()
             .for_each(|(j, mut row)| {
-                let dy = self.y_at(j) - c.y;
+                let dy = ys[j] - c.y;
                 let dy2 = dy * dy;
                 Zip::from(&mut row).and(&dx2).for_each(|r, &dx2_i| {
                     *r = dx2_i + dy2;
@@ -589,11 +597,9 @@ impl Grid2D {
     where
         F: Fn(f64, f64) -> T,
     {
-        Array2::from_shape_fn((self.ny, self.nx), |(j, i)| {
-            let x = self.x_at(i);
-            let y = self.y_at(j);
-            f(x, y)
-        })
+        let xs = self.x_coords();
+        let ys = self.y_coords();
+        Array2::from_shape_fn((self.ny, self.nx), |(j, i)| f(xs[i], ys[j]))
     }
 
     /// Apply a function that takes Point2D
@@ -645,9 +651,11 @@ impl Grid2D {
     /// Iterate with coordinates
     #[inline]
     pub fn iter_coords(&self) -> impl Iterator<Item = (usize, usize, f64, f64)> + '_ {
+        let (min_x, dx) = (self.bbox.min.x, self.dx());
+        let (min_y, dy) = (self.bbox.min.y, self.dy());
         (0..self.ny).flat_map(move |j| {
-            let y = self.y_at(j);
-            (0..self.nx).map(move |i| (i, j, self.x_at(i), y))
+            let y = min_y + (j as f64 + 0.5) * dy;
+            (0..self.nx).map(move |i| (i, j, min_x + (i as f64 + 0.5) * dx, y))
         })
     }
 
@@ -720,10 +728,7 @@ impl Grid2D {
         Ok(Self {
             nx: self.nx * factor,
             ny: self.ny * factor,
-            x0: self.x0,
-            y0: self.y0,
-            dx: self.dx / factor as f64,
-            dy: self.dy / factor as f64,
+            bbox: self.bbox,
         })
     }
 
@@ -747,10 +752,7 @@ impl Grid2D {
         Ok(Self {
             nx: self.nx / factor,
             ny: self.ny / factor,
-            x0: self.x0,
-            y0: self.y0,
-            dx: self.dx * factor as f64,
-            dy: self.dy * factor as f64,
+            bbox: self.bbox,
         })
     }
 
@@ -766,10 +768,16 @@ impl Grid2D {
         Self {
             nx: self.nx + left + right,
             ny: self.ny + bottom + top,
-            x0: self.x0 - left as f64 * self.dx,
-            y0: self.y0 - bottom as f64 * self.dy,
-            dx: self.dx,
-            dy: self.dy,
+            bbox: BBox::new(
+                Point2D::new(
+                    self.bbox.min.x - left as f64 * self.dx(),
+                    self.bbox.min.y - bottom as f64 * self.dy(),
+                ),
+                Point2D::new(
+                    self.bbox.max.x + right as f64 * self.dx(),
+                    self.bbox.max.y + top as f64 * self.dy(),
+                ),
+            ),
         }
     }
 
@@ -780,9 +788,9 @@ impl Grid2D {
     /// * `dy` - shift along the y axis
     #[inline]
     pub fn translate(&self, dx: f64, dy: f64) -> Self {
+        let shift = Point2D::new(dx, dy);
         Self {
-            x0: self.x0 + dx,
-            y0: self.y0 + dy,
+            bbox: BBox::new(self.bbox.min + shift, self.bbox.max + shift),
             ..*self
         }
     }
@@ -795,20 +803,12 @@ impl Grid2D {
     pub fn same_geometry(&self, other: &Self) -> bool {
         self.nx == other.nx
             && self.ny == other.ny
-            && (self.x0 - other.x0).abs() < 1e-10
-            && (self.y0 - other.y0).abs() < 1e-10
-            && (self.dx - other.dx).abs() < 1e-10
-            && (self.dy - other.dy).abs() < 1e-10
+            && (self.bbox.min.x - other.bbox.min.x).abs() < 1e-10
+            && (self.bbox.min.y - other.bbox.min.y).abs() < 1e-10
+            && (self.dx() - other.dx()).abs() < 1e-10
+            && (self.dy() - other.dy()).abs() < 1e-10
     }
 
-    /// Get bounding box corners at the lower left and upper right
-    #[inline]
-    pub fn bounding_box(&self) -> (Point2D, Point2D) {
-        (
-            Point2D::new(self.x0, self.y0),
-            Point2D::new(self.x0 + self.width(), self.y0 + self.height()),
-        )
-    }
 }
 
 impl std::fmt::Display for Grid2D {
@@ -818,10 +818,10 @@ impl std::fmt::Display for Grid2D {
             "Grid2D({}x{}, [{:.3}, {:.3}]x[{:.3}, {:.3}])",
             self.nx,
             self.ny,
-            self.x0,
-            self.x0 + self.width(),
-            self.y0,
-            self.y0 + self.height()
+            self.bbox.min.x,
+            self.bbox.min.x + self.width(),
+            self.bbox.min.y,
+            self.bbox.min.y + self.height()
         )
     }
 }
@@ -839,7 +839,7 @@ mod tests {
 
     #[test]
     fn test_coord_matrix_x_values() {
-        let grid = Grid2D::new(4, 3, (0.0, 4.0), (0.0, 3.0)).unwrap();
+        let grid = Grid2D::new(4, 3, BBox::from_lims(0.0, 4.0, 0.0, 3.0)).unwrap();
         let mgx = grid.coord_matrix_x();
 
         assert_eq!(mgx.shape(), &[3, 4]);
@@ -855,7 +855,7 @@ mod tests {
 
     #[test]
     fn test_coord_matrix_y_values() {
-        let grid = Grid2D::new(4, 3, (0.0, 4.0), (0.0, 3.0)).unwrap();
+        let grid = Grid2D::new(4, 3, BBox::from_lims(0.0, 4.0, 0.0, 3.0)).unwrap();
         let mgy = grid.coord_matrix_y();
 
         for j in 0..3 {

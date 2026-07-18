@@ -22,7 +22,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use lens_forge::grid::{MeshGrid, Point2D};
+use lens_forge::grid::{BBox, MeshGrid, Point2D};
 
 struct Lcg(u64);
 impl Lcg {
@@ -46,8 +46,8 @@ fn concentrated_mesh(n: usize) -> MeshGrid {
             Point2D::new(r * theta.cos(), r * theta.sin())
         })
         .collect();
-    let (min, max) = (Point2D::new(-1.0, -1.0), Point2D::new(1.0, 1.0));
-    MeshGrid::constant(&sites, min, max, 0.0).unwrap()
+    let bbox = BBox::from_lims(-1.0, 1.0, -1.0, 1.0);
+    MeshGrid::constant(&sites, bbox, 0.0).unwrap()
 }
 
 const SITE_COUNTS: [usize; 3] = [500, 2_000, 8_000];

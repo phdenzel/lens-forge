@@ -8,7 +8,7 @@
 //! downstream code — solvers, models, rendering — have an interface behind one
 //! trait. The trait is object-safe (`&dyn ScalarField2D`).
 
-use crate::grid::{PixelGrid, Point2D};
+use crate::grid::{BBox, PixelGrid, Point2D};
 
 /// A scalar field sampled at discrete cells over a 2D domain.
 ///
@@ -33,8 +33,8 @@ pub trait ScalarField2D {
     /// Area of cell `i` (pixel area / Voronoi cell area).
     fn cell_area(&self, i: usize) -> f64;
 
-    /// Domain bounding box as `(min, max)` corners.
-    fn bounds(&self) -> (Point2D, Point2D);
+    /// Domain bounding box.
+    fn bounds(&self) -> BBox;
 
     /// Field value at an arbitrary point (interpolation for a pixel grid,
     /// nearest-cell for a mesh).
@@ -91,8 +91,8 @@ impl ScalarField2D for PixelGrid {
         self.grid.pixel_area()
     }
 
-    fn bounds(&self) -> (Point2D, Point2D) {
-        self.grid.bounding_box()
+    fn bounds(&self) -> BBox {
+        self.grid.bbox
     }
 
     fn sample(&self, p: Point2D) -> f64 {

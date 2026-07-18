@@ -105,7 +105,7 @@ impl PixelGrid {
     /// * `grid` - grid struct holding information about the geometry
     /// * `f` - function mapping 2D points into values
     pub fn from_point_func<F: Fn(&Point2D) -> f64>(grid: Grid2D, f: F) -> Self {
-        let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(&grid.pixel_center(i, j)));
+        let values = grid.map_points(f);
         Self { grid, values }
     }
 
@@ -115,7 +115,7 @@ impl PixelGrid {
     /// * `grid` - grid struct holding information about the geometry
     /// * `f` - function mapping coordinates into values
     pub fn from_func<F: Fn(f64, f64) -> f64>(grid: Grid2D, f: F) -> Self {
-        let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(grid.x_at(i), grid.y_at(j)));
+        let values = grid.map_centers(f);
         Self { grid, values }
     }
 
@@ -132,7 +132,7 @@ impl PixelGrid {
         F: Fn(f64, f64) -> f64,
     {
         let grid = Grid2D::square(n, radius).unwrap();
-        let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(grid.x_at(i), grid.y_at(j)));
+        let values = grid.map_centers(f);
         Self { grid, values }
     }
 
@@ -149,7 +149,7 @@ impl PixelGrid {
         F: Fn(f64, f64) -> f64,
     {
         let grid = Grid2D::rectangular(nx, ny, rx, ry).unwrap();
-        let values = Array2::from_shape_fn(grid.shape(), |(j, i)| f(grid.x_at(i), grid.y_at(j)));
+        let values = grid.map_centers(f);
         Self { grid, values }
     }
 

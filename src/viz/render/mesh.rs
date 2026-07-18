@@ -371,8 +371,7 @@ mod tests {
         ];
         let mesh = MeshGrid::new(
             &sites,
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 1.0),
+            crate::grid::BBox::from_lims(0.0, 1.0, 0.0, 1.0),
             vec![1.0, 2.0, 3.0, 4.0],
         )
         .unwrap();
@@ -410,8 +409,7 @@ mod tests {
         ];
         let mesh = MeshGrid::new(
             &sites,
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 1.0),
+            crate::grid::BBox::from_lims(0.0, 1.0, 0.0, 1.0),
             vec![1.0, 2.0, 3.0, 4.0],
         )
         .unwrap();

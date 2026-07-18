@@ -97,6 +97,7 @@ impl Grid2D {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grid::BBox;
 
     const EPS: f64 = 1e-10;
 
@@ -106,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_bilinear_interp_at_center() {
-        let grid = Grid2D::new(4, 4, (0.0, 4.0), (0.0, 4.0)).unwrap();
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
 
         // Point at pixel centre
         let w = grid.bilinear_interp(&Point2D::new(0.5, 0.5)).unwrap();
@@ -117,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_bilinear_interp_between() {
-        let grid = Grid2D::new(4, 4, (-2.0, 2.0), (-2.0, 2.0)).unwrap();
+        let grid = Grid2D::new(4, 4, BBox::from_lims(-2.0, 2.0, -2.0, 2.0)).unwrap();
 
         // Point between four pixels
         let w = grid.bilinear_interp(&Point2D::new(1.0, 1.0)).unwrap();
@@ -130,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_bilinear_interpolate() {
-        let grid = Grid2D::new(4, 4, (0.0, 4.0), (0.0, 4.0)).unwrap();
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
         let data = grid.map_centers(|x, _| x); // f(x,y) = x
 
         let p = Point2D::new(2.0, 2.0);

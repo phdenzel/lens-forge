@@ -32,7 +32,7 @@
 //! let rf = rasterize_with(&adaptive_grid, &params)?;
 //! ```
 
-use crate::grid::{MeshGrid, PixelGrid, Point2D, ScalarField2D};
+use crate::grid::{BBox, MeshGrid, PixelGrid, Point2D, ScalarField2D};
 use crate::viz::render::RenderBounds;
 use crate::{LensForgeError, Result};
 use std::borrow::Cow;
@@ -325,10 +325,11 @@ impl RasterizeToField for MeshGrid {
     fn to_raster(&self, params: &RasterizeParams) -> Result<RasterField<'static>> {
         let w = params.width.get() as usize;
         let h = params.height.get() as usize;
-        let (min, max) = match params.bounds {
-            Some(b) => (Point2D::new(b.min[0], b.min[1]), Point2D::new(b.max[0], b.max[1])),
+        let bbox = match params.bounds {
+            Some(b) => BBox::from_arrs(b.min, b.max),
             None => self.bounds(),
         };
+        let (min, max) = (bbox.min, bbox.max);
         let dx = (max.x - min.x) / w as f64;
         let dy = (max.y - min.y) / h as f64;
 
@@ -364,8 +365,8 @@ impl<'a> TryFrom<&'a MeshGrid> for RasterField<'a> {
     type Error = LensForgeError;
 
     fn try_from(mesh: &'a MeshGrid) -> Result<Self> {
-        let (min, max) = mesh.bounds();
-        let (width, height) = default_raster_dims(max.x - min.x, max.y - min.y);
+        let bbox = mesh.bounds();
+        let (width, height) = default_raster_dims(bbox.width(), bbox.height());
         let params = RasterizeParams { width, height, bounds: None, sampling: RasterSampling::Nearest };
         mesh.to_raster(&params)
     }
@@ -675,8 +676,7 @@ mod tests {
         ];
         MeshGrid::new(
             &sites,
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 1.0),
+            BBox::from_lims(0.0, 1.0, 0.0, 1.0),
             vec![1.0, 2.0, 3.0, 4.0],
         )
         .unwrap()

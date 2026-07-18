@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Voronoi tessellation: the geometric dual of the Delaunay triangulation.
 //!
-//! [`VoronoiMesh`] is the unstructured analogue of [`Grid2D`](crate::grid::Grid2D) — it
-//! holds the generating sites, a clipped Voronoi cell (polygon, area, centroid)
+//! [`VoronoiMesh`] is the unstructured analogue of [`Grid2D`](crate::grid::Grid2D).
+//! It holds the generating sites, a clipped Voronoi cell (polygon, area, centroid)
 //! per site, and the site adjacency. It carries no field data itself; a value
 //! per cell turns it into the mesh counterpart of `PixelGrid`.
 //!
@@ -16,24 +16,25 @@
 
 use super::kdtree::KdTree;
 use super::triangulate::triangulate;
-use crate::grid::Point2D;
+use crate::grid::{BBox, Point2D};
 use crate::{LensForgeError, Result};
 
-/// A single Voronoi cell: its clipped polygon (counter-clockwise), area, and
-/// centroid.
+/// A single Voronoi cell: its clipped edges, centroid, and area.
 pub(crate) struct VoronoiCell {
+    /// Edge points of the cell (ordering: ccw)
     pub polygon: Vec<Point2D>,
-    pub area: f64,
+    /// Centroid of the cell
     pub centroid: Point2D,
+    /// Area of the cell
+    pub area: f64,
 }
 
 /// A Voronoi tessellation of sites, clipped to a rectangular domain.
 pub(crate) struct VoronoiMesh {
     /// Generating points (one per cell).
     pub sites: Vec<Point2D>,
-    /// Domain box (inclusive corners).
-    pub min: Point2D,
-    pub max: Point2D,
+    /// Domain box the cells are clipped to.
+    pub bbox: BBox,
     /// Voronoi cell per site.
     pub cells: Vec<VoronoiCell>,
     /// Delaunay 1-ring neighbours per site (== Voronoi adjacency).
@@ -43,13 +44,19 @@ pub(crate) struct VoronoiMesh {
 }
 
 impl VoronoiMesh {
-    /// Build the Voronoi tessellation of `sites` clipped to the box
-    /// `[min, max]`.
-    pub fn new(sites: &[Point2D], min: Point2D, max: Point2D) -> Result<Self> {
+    /// Build the Voronoi tessellation of `sites` clipped to a rectangular domain.
+    ///
+    /// # Arguments
+    /// * `sites` - the generating points, one per cell; must be non-empty and finite.
+    /// * `bbox` - the domain box the cells are clipped to; must be non-degenerate.
+    ///
+    /// Returns the [`VoronoiMesh`], or an error for empty or non-finite sites or a
+    /// degenerate (`min >= max`) domain.
+    pub fn new(sites: &[Point2D], bbox: BBox) -> Result<Self> {
         if sites.is_empty() {
             return Err(LensForgeError::invalid_parameter("mesh needs at least one site"));
         }
-        if !(min.x < max.x && min.y < max.y) {
+        if !bbox.is_positive() {
             return Err(LensForgeError::invalid_option("mesh domain must have min < max"));
         }
         if sites.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
@@ -57,12 +64,7 @@ impl VoronoiMesh {
         }
 
         let neighbors = build_adjacency(sites);
-        let boxpoly = [
-            Point2D::new(min.x, min.y),
-            Point2D::new(max.x, min.y),
-            Point2D::new(max.x, max.y),
-            Point2D::new(min.x, max.y),
-        ];
+        let boxpoly = bbox.corners_ccw();
 
         let mut cells = Vec::with_capacity(sites.len());
         for (s, &site) in sites.iter().enumerate() {
@@ -83,7 +85,7 @@ impl VoronoiMesh {
         }
 
         let kdtree = KdTree::new(sites);
-        Ok(Self { sites: sites.to_vec(), min, max, cells, neighbors, kdtree })
+        Ok(Self { sites: sites.to_vec(), bbox, cells, neighbors, kdtree })
     }
 
     /// Total area covered by the cells (equals the domain area).
@@ -91,8 +93,13 @@ impl VoronoiMesh {
         self.cells.iter().map(|c| c.area).sum()
     }
 
-    /// Index of the cell containing `p` — the nearest site, by definition of a
-    /// Voronoi tessellation.
+    /// Index of the cell containing `p`: its nearest site, by the definition of a
+    /// Voronoi tessellation, found by an `O(log n)` k-d tree query.
+    ///
+    /// # Arguments
+    /// * `p` - the query point to locate.
+    ///
+    /// Returns the index of the containing (nearest-site) cell.
     pub fn cell_of(&self, p: Point2D) -> usize {
         self.kdtree.nearest(p).expect("VoronoiMesh always has at least one site")
     }
@@ -132,8 +139,13 @@ impl VoronoiMesh {
     }
 }
 
-/// Delaunay 1-ring neighbours per site, deduplicated. Small point counts (which
-/// cannot be triangulated) are handled directly.
+/// Voronoi adjacency: the deduplicated Delaunay 1-ring of each site.
+///
+/// # Arguments
+/// * `sites` - the generating points; counts below three (which cannot be
+///   triangulated) are handled directly.
+///
+/// Returns, per site, the sorted indices of its Delaunay neighbours.
 fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
     let n = sites.len();
     match n {
@@ -159,8 +171,15 @@ fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
 }
 
 /// Sutherland–Hodgman clip of a convex polygon by the half-plane
-/// `{x : nx·x + ny·y <= c}`. Assumes the input polygon is convex (it always is
-/// here: a box progressively clipped by half-planes).
+/// `{x : nx·x + ny·y <= c}`.
+///
+/// # Arguments
+/// * `poly` - the polygon to clip, assumed convex (it always is here: a box
+///   progressively clipped by half-planes).
+/// * `nx`, `ny` - the half-plane normal.
+/// * `c` - the half-plane offset.
+///
+/// Returns the clipped polygon (empty if fully outside).
 fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64) -> Vec<Point2D> {
     let n = poly.len();
     if n == 0 {
@@ -185,8 +204,13 @@ fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64) -> Vec<Point2D> {
     out
 }
 
-/// Signed-area / centroid of a simple polygon (shoelace). Returns positive area;
-/// falls back to `fallback` centroid for degenerate (< 3 vertex) polygons.
+/// Area and centroid of a simple polygon by the shoelace formula.
+///
+/// # Arguments
+/// * `poly` - the polygon vertices in order.
+/// * `fallback` - centroid returned for a degenerate (< 3 vertex) polygon.
+///
+/// Returns `(area, centroid)` with a non-negative area.
 fn polygon_area_centroid(poly: &[Point2D], fallback: Point2D) -> (f64, Point2D) {
     let n = poly.len();
     if n < 3 {
@@ -217,8 +241,8 @@ mod tests {
         Point2D::new(x, y)
     }
 
-    fn unit() -> (Point2D, Point2D) {
-        (p(0.0, 0.0), p(1.0, 1.0))
+    fn unit() -> BBox {
+        BBox::from_lims(0.0, 1.0, 0.0, 1.0)
     }
 
     struct Lcg(u64);
@@ -234,16 +258,16 @@ mod tests {
 
     #[test]
     fn single_site_fills_box() {
-        let (min, max) = unit();
-        let m = VoronoiMesh::new(&[p(0.3, 0.7)], min, max).unwrap();
+        let bbox = unit();
+        let m = VoronoiMesh::new(&[p(0.3, 0.7)], bbox).unwrap();
         assert!((m.total_area() - 1.0).abs() < 1e-12);
         assert_eq!(m.cells[0].polygon.len(), 4);
     }
 
     #[test]
     fn two_sites_split_box_in_half() {
-        let (min, max) = unit();
-        let m = VoronoiMesh::new(&[p(0.25, 0.5), p(0.75, 0.5)], min, max).unwrap();
+        let bbox = unit();
+        let m = VoronoiMesh::new(&[p(0.25, 0.5), p(0.75, 0.5)], bbox).unwrap();
         assert!((m.cells[0].area - 0.5).abs() < 1e-12);
         assert!((m.cells[1].area - 0.5).abs() < 1e-12);
         assert_eq!(m.neighbors[0], vec![1]);
@@ -251,9 +275,9 @@ mod tests {
 
     #[test]
     fn four_symmetric_sites_are_quadrants() {
-        let (min, max) = unit();
+        let bbox = unit();
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
-        let m = VoronoiMesh::new(&sites, min, max).unwrap();
+        let m = VoronoiMesh::new(&sites, bbox).unwrap();
         for c in &m.cells {
             assert!((c.area - 0.25).abs() < 1e-12, "quadrant area {}", c.area);
         }
@@ -266,8 +290,8 @@ mod tests {
         // The defining property: clipped Voronoi cells partition the box exactly.
         let mut rng = Lcg(0x1234_5678);
         let sites: Vec<Point2D> = (0..200).map(|_| p(0.02 + 0.96 * rng.f(), 0.02 + 0.96 * rng.f())).collect();
-        let (min, max) = unit();
-        let m = VoronoiMesh::new(&sites, min, max).unwrap();
+        let bbox = unit();
+        let m = VoronoiMesh::new(&sites, bbox).unwrap();
 
         assert!((m.total_area() - 1.0).abs() < 1e-9, "area sum {}", m.total_area());
         for (s, c) in m.cells.iter().enumerate() {
@@ -283,8 +307,8 @@ mod tests {
     fn adjacency_is_symmetric() {
         let mut rng = Lcg(0x99);
         let sites: Vec<Point2D> = (0..60).map(|_| p(rng.f(), rng.f())).collect();
-        let (min, max) = unit();
-        let m = VoronoiMesh::new(&sites, min, max).unwrap();
+        let bbox = unit();
+        let m = VoronoiMesh::new(&sites, bbox).unwrap();
         for (s, list) in m.neighbors.iter().enumerate() {
             for &t in list {
                 assert!(m.neighbors[t].contains(&s), "adjacency not symmetric: {s}-{t}");
@@ -298,8 +322,8 @@ mod tests {
         // regardless of the starting hint — including a deliberately bad one.
         let mut rng = Lcg(0xC0FFEE);
         let sites: Vec<Point2D> = (0..300).map(|_| p(rng.f(), rng.f())).collect();
-        let (min, max) = unit();
-        let m = VoronoiMesh::new(&sites, min, max).unwrap();
+        let bbox = unit();
+        let m = VoronoiMesh::new(&sites, bbox).unwrap();
         for _ in 0..2000 {
             let q = p(rng.f(), rng.f());
             let want = m.cell_of(q);

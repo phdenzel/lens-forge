@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use super::voronoi::VoronoiMesh;
-use crate::grid::{Point2D, ScalarField2D};
+use crate::grid::{BBox, Point2D, ScalarField2D};
 use crate::{LensForgeError, Result};
 
 /// A scalar field sampled on a Voronoi tessellation (one value per cell).
@@ -22,42 +22,41 @@ pub struct MeshGrid {
 }
 
 impl MeshGrid {
-    /// Build a mesh grid from `sites` clipped to `[min, max]`, with one value
+    /// Build a mesh grid from `sites` clipped to `bbox`, with one value
     /// per site.
     ///
     /// # Errors
     /// Returns an error if `values.len() != sites.len()` or the geometry is
-    /// invalid (empty sites, `min >= max`, non-finite sites).
-    pub fn new(sites: &[Point2D], min: Point2D, max: Point2D, values: Vec<f64>) -> Result<Self> {
+    /// invalid (empty sites, degenerate `bbox`, non-finite sites).
+    pub fn new(sites: &[Point2D], bbox: BBox, values: Vec<f64>) -> Result<Self> {
         if values.len() != sites.len() {
             return Err(LensForgeError::dimension_mismatch(
                 format!("{} values", sites.len()),
                 format!("{} values", values.len()),
             ));
         }
-        let mesh = VoronoiMesh::new(sites, min, max)?;
+        let mesh = VoronoiMesh::new(sites, bbox)?;
         Ok(Self { mesh: Arc::new(mesh), values })
     }
 
     /// Mesh grid of zeros over `sites`.
-    pub fn zeros(sites: &[Point2D], min: Point2D, max: Point2D) -> Result<Self> {
-        Self::new(sites, min, max, vec![0.0; sites.len()])
+    pub fn zeros(sites: &[Point2D], bbox: BBox) -> Result<Self> {
+        Self::new(sites, bbox, vec![0.0; sites.len()])
     }
 
     /// Mesh grid with a constant value over `sites`.
-    pub fn constant(sites: &[Point2D], min: Point2D, max: Point2D, value: f64) -> Result<Self> {
-        Self::new(sites, min, max, vec![value; sites.len()])
+    pub fn constant(sites: &[Point2D], bbox: BBox, value: f64) -> Result<Self> {
+        Self::new(sites, bbox, vec![value; sites.len()])
     }
 
     /// Mesh grid sampling `f` at each site.
     pub fn from_point_func<F: Fn(Point2D) -> f64>(
         sites: &[Point2D],
-        min: Point2D,
-        max: Point2D,
+        bbox: BBox,
         f: F,
     ) -> Result<Self> {
         let values = sites.iter().map(|&s| f(s)).collect();
-        Self::new(sites, min, max, values)
+        Self::new(sites, bbox, values)
     }
 
     /// Reuse an existing geometry with a new set of values (shares the
@@ -124,7 +123,8 @@ impl MeshGrid {
         &self.mesh.neighbors[i]
     }
 
-    /// Index of the cell containing `p` (nearest site).
+    /// Index of the cell containing `p` (nearest site), via an `O(log n)` k-d
+    /// tree query.
     pub fn cell_of(&self, p: Point2D) -> usize {
         self.mesh.cell_of(p)
     }
@@ -201,8 +201,8 @@ impl ScalarField2D for MeshGrid {
         self.mesh.cells[i].area
     }
 
-    fn bounds(&self) -> (Point2D, Point2D) {
-        (self.mesh.min, self.mesh.max)
+    fn bounds(&self) -> BBox {
+        self.mesh.bbox
     }
 
     fn sample(&self, p: Point2D) -> f64 {
@@ -240,7 +240,7 @@ mod tests {
 
     fn demo() -> MeshGrid {
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
-        MeshGrid::from_point_func(&sites, p(0.0, 0.0), p(1.0, 1.0), |s| s.x + s.y).unwrap()
+        MeshGrid::from_point_func(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), |s| s.x + s.y).unwrap()
     }
 
     #[test]
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn flux_of_constant_is_value_times_area() {
         let sites = [p(0.2, 0.3), p(0.8, 0.1), p(0.5, 0.9), p(0.1, 0.6), p(0.9, 0.7)];
-        let m = MeshGrid::constant(&sites, p(0.0, 0.0), p(1.0, 1.0), 2.5).unwrap();
+        let m = MeshGrid::constant(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), 2.5).unwrap();
         assert!((m.flux() - 2.5 * 1.0).abs() < 1e-9);
     }
 
@@ -281,7 +281,7 @@ mod tests {
         let mut rng = Lcg(0xBA7C4);
         let sites: Vec<Point2D> = (0..120).map(|_| p(rng.f(), rng.f())).collect();
         let values: Vec<f64> = (0..sites.len()).map(|i| i as f64).collect();
-        let m = MeshGrid::new(&sites, p(0.0, 0.0), p(1.0, 1.0), values).unwrap();
+        let m = MeshGrid::new(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), values).unwrap();
 
         let pts: Vec<Point2D> = (0..500).map(|_| p(rng.f(), rng.f())).collect();
         let batch = m.sample_batch(&pts);

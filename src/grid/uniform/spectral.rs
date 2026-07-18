@@ -196,8 +196,8 @@ impl PixelGrid {
     ) -> Result<FourierSymbols> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx, ky) = self.grid.wavenumbers();
-        let dx = self.grid.dx;
-        let dy = self.grid.dy;
+        let dx = self.grid.dx();
+        let dy = self.grid.dy();
         let dkx = kx * dx;
         let dky = ky * dy;
 
@@ -279,8 +279,8 @@ impl PixelGrid {
     ) -> Result<FourierSymbols> {
         let stencil = stencil.into().unwrap_or_default();
         let (kx, ky) = self.grid.wavenumbers();
-        let dx = self.grid.dx;
-        let dy = self.grid.dy;
+        let dx = self.grid.dx();
+        let dy = self.grid.dy();
         let dx2 = dx * dx;
         let dy2 = dy * dy;
         let dkx = kx * dx;

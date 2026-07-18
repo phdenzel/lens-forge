@@ -69,12 +69,14 @@ pub type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
 pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
 mod point;
+mod bbox;
 mod field;
 mod uniform;
 mod adaptive;
 mod mesh;
 
 pub use point::Point2D;
+pub use bbox::BBox;
 pub use field::ScalarField2D;
 pub use uniform::{
     BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, PoissonConfig,

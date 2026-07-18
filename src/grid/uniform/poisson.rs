@@ -148,8 +148,8 @@ impl PixelGrid {
         let nx = self.grid.nx;
         let ny = self.grid.ny;
         let m = nx * ny;
-        let inv_dx2 = 1.0 / (self.grid.dx * self.grid.dx);
-        let inv_dy2 = 1.0 / (self.grid.dy * self.grid.dy);
+        let inv_dx2 = 1.0 / (self.grid.dx() * self.grid.dx());
+        let inv_dy2 = 1.0 / (self.grid.dy() * self.grid.dy());
 
         // Source in row-major order. Singular BCs need a zero-mean source for the
         // problem to be solvable; Dirichlet is non-singular so it is left as-is.
@@ -295,8 +295,8 @@ mod tests {
     ) -> PixelGrid {
         let nx = grid.nx;
         let ny = grid.ny;
-        let inv_dx2 = 1.0 / (grid.dx * grid.dx);
-        let inv_dy2 = 1.0 / (grid.dy * grid.dy);
+        let inv_dx2 = 1.0 / (grid.dx() * grid.dx());
+        let inv_dy2 = 1.0 / (grid.dy() * grid.dy());
         let mut f = vec![0.0; nx * ny];
         apply_laplacian_5pt_symm(psi, nx, ny, inv_dx2, inv_dy2, bc, &mut f);
         PixelGrid::from_values(grid, to_field(f, ny, nx).unwrap()).unwrap()
