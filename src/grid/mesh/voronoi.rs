@@ -230,21 +230,19 @@ fn polygon_area_centroid(poly: &[Point2D], fallback: Point2D) -> (f64, Point2D) 
     if n < 3 {
         return (0.0, fallback);
     }
-    let mut a2 = 0.0; // 2 × signed area
-    let mut cx = 0.0;
-    let mut cy = 0.0;
+    let mut a2 = 0.0; // double signed area
+    let mut c_acc = Point2D::new(0.0, 0.0); // centroid moment accumulator
     for i in 0..n {
         let p0 = poly[i];
         let p1 = poly[(i + 1) % n];
-        let cross = p0.x * p1.y - p1.x * p0.y;
+        let cross = p0.cross(&p1);
         a2 += cross;
-        cx += (p0.x + p1.x) * cross;
-        cy += (p0.y + p1.y) * cross;
+        c_acc += (p0 + p1) * cross;
     }
     if a2.abs() < 1e-300 {
         return (0.0, fallback);
     }
-    (0.5 * a2.abs(), Point2D::new(cx / (3.0 * a2), cy / (3.0 * a2)))
+    (0.5 * a2.abs(), c_acc / (3.0 * a2))
 }
 
 #[cfg(test)]
