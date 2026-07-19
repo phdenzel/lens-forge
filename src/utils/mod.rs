@@ -7,6 +7,8 @@
 //!   of a single `f64` `+`/`*`.
 //! * `double_double` — `hi + lo` compensated arithmetic built on error-free
 //!   transformations.
+//! * `rng` — a small seedable LCG for site sampling and test fixtures.
 
 pub(crate) mod double_double;
 pub(crate) mod error_free;
+pub(crate) mod rng;

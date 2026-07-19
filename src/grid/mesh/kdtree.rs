@@ -175,17 +175,7 @@ fn build<P: KdPoint>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct Lcg(u64);
-    impl Lcg {
-        fn f(&mut self) -> f64 {
-            self.0 = self
-                .0
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            (self.0 >> 11) as f64 / (1u64 << 53) as f64
-        }
-    }
+    use crate::utils::rng::Lcg;
 
     fn brute(pts: &[Point2D], q: Point2D) -> usize {
         (0..pts.len())
@@ -200,7 +190,7 @@ mod tests {
 
     #[test]
     fn matches_brute_force() {
-        let mut rng = Lcg(0xF00D);
+        let mut rng = Lcg::new(0xF00D);
         let pts: Vec<Point2D> = (0..500).map(|_| Point2D::new(rng.f(), rng.f())).collect();
         let tree = KdTree::new(&pts);
         for _ in 0..500 {

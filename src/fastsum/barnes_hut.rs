@@ -187,25 +187,11 @@ impl FieldSolver for BarnesHut {
 mod tests {
     use super::*;
     use crate::fastsum::DirectSum;
+    use crate::utils::rng::Lcg;
     use std::f64::consts::FRAC_1_PI;
 
-    /// Deterministic LCG so tests don't need an rng dependency.
-    struct Lcg(u64);
-    impl Lcg {
-        fn next_f64(&mut self) -> f64 {
-            self.0 = self
-                .0
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            (self.0 >> 11) as f64 / (1u64 << 53) as f64
-        }
-        fn range(&mut self, lo: f64, hi: f64) -> f64 {
-            lo + (hi - lo) * self.next_f64()
-        }
-    }
-
     fn random_bodies(n: usize, seed: u64) -> Vec<MassElement> {
-        let mut rng = Lcg(seed);
+        let mut rng = Lcg::new(seed);
         (0..n)
             .map(|_| {
                 MassElement::new(
@@ -235,7 +221,7 @@ mod tests {
         let cfg = SolverConfig::default().with_theta(0.5);
         let bh = BarnesHut::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
-        let mut rng = Lcg(999);
+        let mut rng = Lcg::new(999);
         for _ in 0..50 {
             let theta = Point2D::from_polar(rng.range(1.5, 4.0), rng.range(0.0, std::f64::consts::TAU));
             let approx = bh.deflection(theta);

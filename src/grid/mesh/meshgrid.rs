@@ -233,6 +233,7 @@ impl ScalarField2D for MeshGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::rng::Lcg;
 
     fn p(x: f64, y: f64) -> Point2D {
         Point2D::new(x, y)
@@ -271,14 +272,7 @@ mod tests {
     fn sample_batch_matches_pointwise_sample() {
         // The warm-started batch override must agree with the cold, point-wise
         // path for every point, coherent or not.
-        struct Lcg(u64);
-        impl Lcg {
-            fn f(&mut self) -> f64 {
-                self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                (self.0 >> 11) as f64 / (1u64 << 53) as f64
-            }
-        }
-        let mut rng = Lcg(0xBA7C4);
+        let mut rng = Lcg::new(0xBA7C4);
         let sites: Vec<Point2D> = (0..120).map(|_| p(rng.f(), rng.f())).collect();
         let values: Vec<f64> = (0..sites.len()).map(|i| i as f64).collect();
         let m = MeshGrid::new(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), values).unwrap();

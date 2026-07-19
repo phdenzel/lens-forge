@@ -595,20 +595,10 @@ pub(crate) fn triangulate(points: &[Point2D]) -> Triangulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::rng::Lcg;
 
     fn p(x: f64, y: f64) -> Point2D {
         Point2D::new(x, y)
-    }
-
-    struct Lcg(u64);
-    impl Lcg {
-        fn f(&mut self) -> f64 {
-            self.0 = self
-                .0
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            (self.0 >> 11) as f64 / (1u64 << 53) as f64
-        }
     }
 
     /// Every triangle is counter-clockwise and its circumcircle contains no
@@ -662,7 +652,7 @@ mod tests {
 
     #[test]
     fn random_points_are_delaunay() {
-        let mut rng = Lcg(0xABCDEF);
+        let mut rng = Lcg::new(0xABCDEF);
         let pts: Vec<Point2D> = (0..150).map(|_| p(rng.f(), rng.f())).collect();
         let t = triangulate(&pts);
         // For points in general position: #triangles = 2n - 2 - h (h = hull pts).
