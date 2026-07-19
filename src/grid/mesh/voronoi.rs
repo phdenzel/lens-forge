@@ -23,7 +23,7 @@ pub(crate) struct VoronoiCell {
 }
 
 /// A Voronoi tessellation of sites, clipped to a rectangular domain.
-pub(crate) struct VoronoiMesh {
+pub struct VoronoiMesh {
     /// Generating points (one per cell).
     pub sites: Vec<Point2D>,
     /// Domain box the cells are clipped to.
@@ -107,9 +107,142 @@ impl VoronoiMesh {
         Ok(mesh)
     }
 
+    /* ============ Mesh attributes ======================================== */
+    /// Number of cells (one per generating site).
+    #[inline]
+    pub fn n_cells(&self) -> usize {
+        self.sites.len()
+    }
+
+    /// x extent of the domain as `(min, max)`.
+    #[inline]
+    pub fn extent_x(&self) -> (f64, f64) {
+        self.bbox.extent_x()
+    }
+
+    /// y extent of the domain as `(min, max)`.
+    #[inline]
+    pub fn extent_y(&self) -> (f64, f64) {
+        self.bbox.extent_y()
+    }
+
+    /// Domain width.
+    #[inline]
+    pub fn width(&self) -> f64 {
+        self.bbox.width()
+    }
+
+    /// Domain height.
+    #[inline]
+    pub fn height(&self) -> f64 {
+        self.bbox.height()
+    }
+
+    /// Domain centre.
+    #[inline]
+    pub fn center(&self) -> Point2D {
+        self.bbox.center()
+    }
+
+    /// Aspect ratio (width / height).
+    #[inline]
+    pub fn aspect_ratio(&self) -> f64 {
+        self.width() / self.height()
+    }
+
     /// Total area covered by the cells (equals the domain area).
     pub fn total_area(&self) -> f64 {
         self.cells.iter().map(|c| c.area).sum()
+    }
+
+    /* ============ Per-cell accessors ===================================== */
+    /// Generating site of cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    #[inline]
+    pub fn site(&self, i: usize) -> Point2D {
+        self.sites[i]
+    }
+
+    /// Area-weighted centroid of cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    #[inline]
+    pub fn centroid(&self, i: usize) -> Point2D {
+        self.cells[i].centroid
+    }
+
+    /// Area of cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    #[inline]
+    pub fn cell_area(&self, i: usize) -> f64 {
+        self.cells[i].area
+    }
+
+    /// Clipped polygon (counter-clockwise vertices) of cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    #[inline]
+    pub fn cell_polygon(&self, i: usize) -> &[Point2D] {
+        &self.cells[i].polygon
+    }
+
+    /// Voronoi neighbours (Delaunay 1-ring) of cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    #[inline]
+    pub fn neighbors_of(&self, i: usize) -> &[usize] {
+        &self.neighbors[i]
+    }
+
+    /// All generating sites, one per cell (the mesh's coordinate array).
+    #[inline]
+    pub fn sites(&self) -> &[Point2D] {
+        &self.sites
+    }
+
+    /// Whether `p` lies within the domain box.
+    ///
+    /// # Arguments
+    /// * `p` - the point to test.
+    #[inline]
+    pub fn contains(&self, p: Point2D) -> bool {
+        self.bbox.contains(&p)
+    }
+
+    /* ============ Maps ==================================================== */
+    /// The area-weighted centroids of every cell.
+    pub fn centroids(&self) -> Vec<Point2D> {
+        self.cells.iter().map(|c| c.centroid).collect()
+    }
+
+    /// Apply `f` to every site, collecting one value per cell — the unstructured
+    /// analogue of [`Grid2D::map_centers`](crate::grid::Grid2D::map_centers).
+    ///
+    /// # Arguments
+    /// * `f` - mapped over each generating site.
+    pub fn map_sites<F, T>(&self, f: F) -> Vec<T>
+    where
+        F: Fn(Point2D) -> T,
+    {
+        self.sites.iter().map(|&s| f(s)).collect()
+    }
+
+    /* ============ Transformations ======================================== */
+    /// A copy translated by `(dx, dy)`: sites and domain shifted, then rebuilt.
+    ///
+    /// # Arguments
+    /// * `dx`, `dy` - the shift along each axis.
+    pub fn translate(&self, dx: f64, dy: f64) -> Result<Self> {
+        let shift = Point2D::new(dx, dy);
+        let sites: Vec<Point2D> = self.sites.iter().map(|&s| s + shift).collect();
+        Self::new(&sites, BBox::new(self.bbox.min + shift, self.bbox.max + shift))
     }
 
     /// Index of the cell containing `p`: its nearest site, by the definition of a
@@ -152,6 +285,20 @@ impl VoronoiMesh {
             cur = best;
             cur_d2 = best_d2;
         }
+    }
+}
+
+impl std::fmt::Display for VoronoiMesh {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "VoronoiMesh({} sites, [{:.3}, {:.3}]x[{:.3}, {:.3}])",
+            self.sites.len(),
+            self.bbox.min.x,
+            self.bbox.max.x,
+            self.bbox.min.y,
+            self.bbox.max.y,
+        )
     }
 }
 
@@ -287,6 +434,58 @@ mod tests {
         let sites_before = m.sites.clone();
         let relaxed = m.with_lloyd_iters(0).unwrap();
         assert_eq!(relaxed.sites, sites_before);
+    }
+
+    #[test]
+    fn attributes_match_domain_and_sites() {
+        let m = VoronoiMesh::new(&[p(0.25, 0.5), p(0.75, 0.5)], unit()).unwrap();
+        assert_eq!(m.n_cells(), 2);
+        assert_eq!(m.extent_x(), (0.0, 1.0));
+        assert_eq!(m.extent_y(), (0.0, 1.0));
+        assert!((m.width() - 1.0).abs() < 1e-12);
+        assert!((m.height() - 1.0).abs() < 1e-12);
+        assert!((m.aspect_ratio() - 1.0).abs() < 1e-12);
+        assert_eq!(m.center(), p(0.5, 0.5));
+        assert!(m.contains(p(0.5, 0.5)));
+        assert!(!m.contains(p(2.0, 0.0)));
+    }
+
+    #[test]
+    fn per_cell_accessors_agree_with_fields() {
+        let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.5, 0.75)];
+        let m = VoronoiMesh::new(&sites, unit()).unwrap();
+        assert_eq!(m.sites(), sites.as_slice());
+        for i in 0..m.n_cells() {
+            assert_eq!(m.site(i), m.sites[i]);
+            assert_eq!(m.centroid(i), m.cells[i].centroid);
+            assert_eq!(m.cell_area(i), m.cells[i].area);
+            assert_eq!(m.cell_polygon(i), m.cells[i].polygon.as_slice());
+            assert_eq!(m.neighbors_of(i), m.neighbors[i].as_slice());
+        }
+        assert_eq!(m.centroids().len(), 3);
+    }
+
+    #[test]
+    fn map_sites_collects_one_value_per_cell() {
+        let sites = [p(0.1, 0.2), p(0.8, 0.9)];
+        let m = VoronoiMesh::new(&sites, unit()).unwrap();
+        assert_eq!(m.map_sites(|s| s.x), vec![0.1, 0.8]);
+    }
+
+    #[test]
+    fn translate_shifts_sites_and_preserves_area() {
+        let m = VoronoiMesh::new(&[p(0.25, 0.25), p(0.75, 0.75)], unit()).unwrap();
+        let t = m.translate(1.0, 2.0).unwrap();
+        assert_eq!(t.site(0), p(1.25, 2.25));
+        assert_eq!(t.extent_x(), (1.0, 2.0));
+        assert_eq!(t.extent_y(), (2.0, 3.0));
+        assert!((t.total_area() - m.total_area()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn display_reports_sites_and_extent() {
+        let m = VoronoiMesh::new(&[p(0.3, 0.7)], unit()).unwrap();
+        assert!(format!("{m}").starts_with("VoronoiMesh(1 sites"));
     }
 
     #[test]
