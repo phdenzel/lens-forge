@@ -62,26 +62,37 @@ impl VoronoiMesh {
         if sites.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
             return Err(LensForgeError::numerical_error("mesh site is not finite"));
         }
-
+        let mut cells = Vec::with_capacity(sites.len());
+	// Build the triangulated Delaunay diagram
         let neighbors = build_adjacency(sites);
         let boxpoly = bbox.corners_ccw();
-
-        let mut cells = Vec::with_capacity(sites.len());
+        // Squared distance of each site from the origin for the bisector offset
+        let mag2: Vec<f64> = sites.iter().map(|p| p.x * p.x + p.y * p.y).collect();
+        // Scratch buffers reused across every cell and every half-plane clip
+        let mut src: Vec<Point2D> = Vec::with_capacity(8);
+        let mut dst: Vec<Point2D> = Vec::with_capacity(8);
         for (s, &site) in sites.iter().enumerate() {
-            let mut poly = boxpoly.to_vec();
+	    // Load starting polygon from bbox
+            src.clear();
+            src.extend_from_slice(&boxpoly);
+            let half_mag2_s = 0.5 * mag2[s];
             for &t in &neighbors[s] {
+		// Bisector half-plane: {x : n·x <= c};
+		// all points closer to site than Delaunay neighbour
                 let other = sites[t];
-                // Bisector half-plane: keep x with n·x <= n·midpoint, n = t - s.
-                let nx = other.x - site.x;
-                let ny = other.y - site.y;
-                let c = nx * 0.5 * (site.x + other.x) + ny * 0.5 * (site.y + other.y);
-                poly = clip_halfplane(&poly, nx, ny, c);
-                if poly.is_empty() {
+		// Normal vector (nx, ny)
+                let n = other - site;
+		// Bisector offset
+                let c = 0.5 * mag2[t] - half_mag2_s;
+		// Clip to Voronoi membership
+                clip_halfplane(&src, n.x, n.y, c, &mut dst);
+                std::mem::swap(&mut src, &mut dst);
+                if src.is_empty() {
                     break;
                 }
             }
-            let (area, centroid) = polygon_area_centroid(&poly, site);
-            cells.push(VoronoiCell { polygon: poly, area, centroid });
+            let (area, centroid) = polygon_area_centroid(&src, site);
+            cells.push(VoronoiCell { polygon: src.clone(), area, centroid });
         }
 
         let kdtree = KdTree::new(sites);
@@ -171,37 +182,40 @@ fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
 }
 
 /// Sutherland–Hodgman clip of a convex polygon by the half-plane
-/// `{x : nx·x + ny·y <= c}`.
+/// `{(x,y) : nx·x + ny·y <= c}`.
 ///
 /// # Arguments
-/// * `poly` - the polygon to clip, assumed convex (it always is here: a box
-///   progressively clipped by half-planes).
-/// * `nx`, `ny` - the half-plane normal.
+/// * `poly` - the polygon to clip, assumed to be convex.
+/// * `nx` - the half-plane normal's x component.
+/// * `ny` - the half-plane normal's y component.
 /// * `c` - the half-plane offset.
-///
-/// Returns the clipped polygon (empty if fully outside).
-fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64) -> Vec<Point2D> {
+/// * `out` - reused output buffer; cleared then filled with the clipped polygon
+///   (left empty if `poly` is fully outside). Must not alias `poly`.
+fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64, out: &mut Vec<Point2D>) {
+    out.clear();
     let n = poly.len();
     if n == 0 {
-        return Vec::new();
+        return;
     }
-    let mut out = Vec::with_capacity(n + 1);
     for i in 0..n {
+	// Walk the polygon's edge: current→next
         let cur = poly[i];
         let nxt = poly[(i + 1) % n];
+	// Compute intersections
         let dcur = nx * cur.x + ny * cur.y - c;
         let dnxt = nx * nxt.x + ny * nxt.y - c;
+	// Test inside -> keep
         let cur_in = dcur <= 0.0;
         let nxt_in = dnxt <= 0.0;
         if cur_in {
             out.push(cur);
         }
+	// if outside: emit intersection point via linear interpolation onto cut
         if cur_in != nxt_in {
             let s = dcur / (dcur - dnxt);
             out.push(Point2D::new(cur.x + s * (nxt.x - cur.x), cur.y + s * (nxt.y - cur.y)));
         }
     }
-    out
 }
 
 /// Area and centroid of a simple polygon by the shoelace formula.
