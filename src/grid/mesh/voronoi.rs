@@ -4,15 +4,8 @@
 //! Voronoi tessellation: the geometric dual of the Delaunay triangulation.
 //!
 //! [`VoronoiMesh`] is the unstructured analogue of [`Grid2D`](crate::grid::Grid2D).
-//! It holds the generating sites, a clipped Voronoi cell (polygon, area, centroid)
-//! per site, and the site adjacency. It carries no field data itself; a value
-//! per cell turns it into the mesh counterpart of `PixelGrid`.
-//!
-//! Cells are built by **half-plane clipping**: each cell starts as the domain
-//! box and is clipped by the perpendicular bisector between its site and every
-//! Delaunay neighbour. This handles hull (unbounded) and interior cells
-//! uniformly, needs no circumcentre/ray bookkeeping, and — because the clipped
-//! cells exactly tile the box — their areas sum to the domain area.
+//! It holds the generating sites, a half-plane-clipped Voronoi cell per site
+//! (polygon, area, centroid), and the site adjacency.
 
 use super::kdtree::KdTree;
 use super::triangulate::triangulate;
@@ -99,6 +92,49 @@ impl VoronoiMesh {
         Ok(Self { sites: sites.to_vec(), bbox, cells, neighbors, kdtree })
     }
 
+    /// Voronoi mesh of an `n × n` lattice of sites centred at the origin.
+    ///
+    /// The mesh analogue of [`Grid2D::square`](crate::grid::Grid2D::square): the
+    /// sites are pixel centres, so the clipped cells reproduce a regular square
+    /// grid spanning `-radius..radius` in each axis.
+    ///
+    /// # Arguments
+    /// * `n` - number of sites per axis (`n²` cells total).
+    /// * `radius` - half the domain extent.
+    pub fn square(n: usize, radius: f64) -> Result<Self> {
+        Self::rectangular(n, n, radius, radius)
+    }
+
+    /// Voronoi mesh of an `nx × ny` lattice of sites centred at the origin.
+    ///
+    /// # Arguments
+    /// * `nx`, `ny` - number of sites along x and y (`nx · ny` cells total).
+    /// * `rx`, `ry` - half the domain extent in x and y.
+    pub fn rectangular(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
+        if rx <= 0.0 || ry <= 0.0 {
+            return Err(LensForgeError::invalid_option("mesh extents must be positive"));
+        }
+        let bbox = BBox::from_lims(-rx, rx, -ry, ry);
+        let sites = lattice_sites(nx, ny, &bbox);
+        Self::new(&sites, bbox)
+    }
+
+    /// Voronoi mesh of a triangular lattice of sites centred at the origin, whose
+    /// cells form a hexagonal honeycomb (boundary cells clipped to the box).
+    ///
+    /// # Arguments
+    /// * `nx` - sites per row.
+    /// * `ny` - number of rows (odd rows offset by half the column spacing).
+    /// * `rx`, `ry` - half the domain extent in x and y.
+    pub fn hexagonal(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
+        if rx <= 0.0 || ry <= 0.0 {
+            return Err(LensForgeError::invalid_option("mesh extents must be positive"));
+        }
+        let bbox = BBox::from_lims(-rx, rx, -ry, ry);
+        let sites = hexagonal_sites(nx, ny, &bbox);
+        Self::new(&sites, bbox)
+    }
+
     /// Total area covered by the cells (equals the domain area).
     pub fn total_area(&self) -> f64 {
         self.cells.iter().map(|c| c.area).sum()
@@ -145,6 +181,52 @@ impl VoronoiMesh {
             cur_d2 = best_d2;
         }
     }
+}
+
+/// Pixel-centre sites of an `nx × ny` lattice over `bbox`, in row-major order.
+///
+/// # Arguments
+/// * `nx`, `ny` - number of sites along x and y.
+/// * `bbox` - the domain the lattice fills; sites sit at cell centres.
+///
+/// Returns the `nx · ny` site positions (empty if either count is zero).
+fn lattice_sites(nx: usize, ny: usize, bbox: &BBox) -> Vec<Point2D> {
+    let dx = bbox.width() / nx as f64;
+    let dy = bbox.height() / ny as f64;
+    let mut sites = Vec::with_capacity(nx * ny);
+    for j in 0..ny {
+        let y = bbox.min.y + (j as f64 + 0.5) * dy;
+        for i in 0..nx {
+            sites.push(Point2D::new(bbox.min.x + (i as f64 + 0.5) * dx, y));
+        }
+    }
+    sites
+}
+
+/// Triangular-lattice sites over `bbox`, odd rows offset by half a column — the
+/// generators whose Voronoi cells form a hexagonal honeycomb.
+///
+/// # Arguments
+/// * `nx`, `ny` - number of columns and rows.
+/// * `bbox` - the domain the lattice fills.
+///
+/// Returns the site positions inside `bbox` (offset rows may hold `nx - 1`).
+fn hexagonal_sites(nx: usize, ny: usize, bbox: &BBox) -> Vec<Point2D> {
+    let dx = bbox.width() / nx as f64;
+    let dy = bbox.height() / ny as f64;
+    let mut sites = Vec::with_capacity(nx * ny);
+    for j in 0..ny {
+        let y = bbox.min.y + (j as f64 + 0.5) * dy;
+        // Offset odd rows by half a column to build the triangular lattice.
+        let x0 = bbox.min.x + if j % 2 == 1 { dx } else { 0.5 * dx };
+        for i in 0..nx {
+            let x = x0 + i as f64 * dx;
+            if x < bbox.max.x {
+                sites.push(Point2D::new(x, y));
+            }
+        }
+    }
+    sites
 }
 
 /// Voronoi adjacency: the deduplicated Delaunay 1-ring of each site.
@@ -263,6 +345,48 @@ mod tests {
                 .wrapping_add(1442695040888963407);
             (self.0 >> 11) as f64 / (1u64 << 53) as f64
         }
+    }
+
+    #[test]
+    fn square_lattice_tiles_into_equal_cells() {
+        // A perfect lattice is maximally cocircular; the tessellation must still
+        // tile the box, and every cell must be an identical square pixel.
+        let m = VoronoiMesh::square(5, 1.0).unwrap();
+        assert_eq!(m.cells.len(), 25);
+        assert!((m.total_area() - 4.0).abs() < 1e-9, "area {}", m.total_area());
+        let pixel = (2.0 / 5.0) * (2.0 / 5.0); // side 2r/n = 0.4
+        for (s, c) in m.cells.iter().enumerate() {
+            assert!((c.area - pixel).abs() < 1e-9, "cell {s} area {}", c.area);
+        }
+    }
+
+    #[test]
+    fn rectangular_lattice_tiles_and_counts() {
+        let m = VoronoiMesh::rectangular(4, 3, 2.0, 1.0).unwrap();
+        assert_eq!(m.cells.len(), 12);
+        assert!((m.total_area() - 8.0).abs() < 1e-9, "area {}", m.total_area());
+    }
+
+    #[test]
+    fn rectangular_rejects_nonpositive_extent() {
+        assert!(VoronoiMesh::rectangular(3, 3, 0.0, 1.0).is_err());
+        assert!(VoronoiMesh::square(3, -1.0).is_err());
+    }
+
+    #[test]
+    fn hexagonal_interior_cells_are_regular_hexagons() {
+        // Aspect chosen so row height = column spacing · √3⁄2: dx = 1, dy = √3⁄2,
+        // giving unit nearest-neighbour spacing and regular hexagon cells of area
+        // √3⁄2. rx = nx·dx/2 = 3, ry = ny·dy/2 = √3.
+        let m = VoronoiMesh::hexagonal(6, 4, 3.0, 3.0_f64.sqrt()).unwrap();
+        assert!((m.total_area() - 12.0 * 3.0_f64.sqrt()).abs() < 1e-9, "area {}", m.total_area());
+        let hex_area = 3.0_f64.sqrt() / 2.0;
+        let n_regular = m
+            .cells
+            .iter()
+            .filter(|c| c.polygon.len() == 6 && (c.area - hex_area).abs() < 1e-9)
+            .count();
+        assert!(n_regular >= 1, "expected regular hexagon cells, got {n_regular}");
     }
 
     #[test]
