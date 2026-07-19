@@ -21,7 +21,7 @@ use crate::{LensForgeError, Result};
 
 /// A single Voronoi cell: its clipped edges, centroid, and area.
 pub(crate) struct VoronoiCell {
-    /// Edge points of the cell (ordering: ccw)
+    /// Vertices of the cell (ordering: ccw)
     pub polygon: Vec<Point2D>,
     /// Centroid of the cell
     pub centroid: Point2D,
@@ -115,17 +115,14 @@ impl VoronoiMesh {
         self.kdtree.nearest(p).expect("VoronoiMesh always has at least one site")
     }
 
-    /// Index of the cell containing `q`, found by a warm-started greedy walk on
-    /// the Voronoi adjacency: step to the nearest neighbouring site until none is
-    /// closer. Exact — a cell is the intersection of its neighbours' bisector
-    /// half-planes, so a local distance minimum is the containing cell — and
-    /// terminating, since each step strictly decreases the distance to `q`.
+    /// Index of the cell containing `q`, via a warm-started greedy walk on the
+    /// Voronoi adjacency: step to the nearest neighbouring site until none is
+    /// closer.
     ///
     /// # Arguments
     /// * `q` - the query point to locate.
-    /// * `hint` - cell to start the walk from; the previous result for
-    ///   spatially-coherent queries (a raster scan) keeps each walk ~`O(1)`,
-    ///   versus the `O(log n)` cold descent of [`cell_of`](Self::cell_of).
+    /// * `hint` - cell to start the walk from; a spatially-close hint (e.g. the
+    ///   previous result in a raster scan) keeps each walk ~`O(1)`.
     ///
     /// Returns the index of the containing (nearest-site) cell.
     pub fn cell_of_walk(&self, q: Point2D, hint: usize) -> usize {
