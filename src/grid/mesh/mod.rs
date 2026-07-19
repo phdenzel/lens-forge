@@ -13,11 +13,15 @@
 //! * `predicates` — robust orientation and in-circle tests, the numerical
 //!   foundation of the Delaunay triangulation.
 //! * `triangulate` — incremental Delaunay triangulation with Lawson edge-flips.
-//! * `voronoi` — the Voronoi dual: clipped cells (polygon, area, centroid) and
-//!   site adjacency.
+//! * `voronoi` — the Voronoi dual: clipped cells (polygon, area, centroid),
+//!   site adjacency, and Lloyd relaxation.
+//! * `generators` — site-layout constructors (lattice, hexagonal, concentric,
+//!   density-graded).
 //! * `kdtree` — nearest-site point location.
 //! * `meshgrid` — [`MeshGrid`], the public Voronoi field type.
 
+#[allow(dead_code)]
+mod generators;
 mod kdtree;
 mod predicates;
 #[allow(dead_code)]
