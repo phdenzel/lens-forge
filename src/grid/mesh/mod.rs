@@ -19,6 +19,8 @@
 //!   density-graded).
 //! * `kdtree` — nearest-site point location.
 //! * `meshgrid` — [`MeshGrid`], the public Voronoi field type.
+//! * `interp` — continuous interpolation (Laplace natural-neighbour, with a
+//!   barycentric-linear fallback).
 
 mod generators;
 mod kdtree;
@@ -30,3 +32,5 @@ pub use voronoi::VoronoiMesh;
 
 mod meshgrid;
 pub use meshgrid::MeshGrid;
+
+mod interp;

@@ -411,7 +411,7 @@ fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
 /// * `c` - the half-plane offset.
 /// * `out` - reused output buffer; cleared then filled with the clipped polygon
 ///   (left empty if `poly` is fully outside). Must not alias `poly`.
-fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64, out: &mut Vec<Point2D>) {
+pub(super) fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64, out: &mut Vec<Point2D>) {
     out.clear();
     let n = poly.len();
     if n == 0 {
