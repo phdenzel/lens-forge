@@ -24,6 +24,7 @@
 //! * `interp` — continuous interpolation (Laplace natural-neighbour, with a
 //!   barycentric-linear fallback).
 //! * `diff` — finite-volume gradient (least-squares) and Laplacian (TPFA).
+//! * `poisson` — conjugate-gradient Poisson solver ($\nabla^2 \psi = f$).
 
 mod generators;
 mod kdtree;
@@ -39,3 +40,4 @@ pub use meshgrid::MeshGrid;
 
 mod diff;
 mod interp;
+mod poisson;
