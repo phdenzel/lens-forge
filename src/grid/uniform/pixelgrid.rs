@@ -8,11 +8,11 @@
 //! (derivatives, FFTs, Poisson solvers, interpolation) are inherent methods
 //! added in sibling submodules.
 
-use crate::grid::{FieldArray2D, Grid2D, Point2D};
-use crate::{LensForgeError, Result};
 use core::f64;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use rayon::prelude::*;
+use crate::grid::{BBox, FieldArray2D, Grid2D, Point2D};
+use crate::{LensForgeError, Result};
 
 /// A 2D pixel grid with associated values
 #[derive(Debug, Clone, Default)]
@@ -24,7 +24,23 @@ pub struct PixelGrid {
 }
 
 impl PixelGrid {
-    /// Create a new pixel grid initialized with zeros
+    /// Create a pixel grid from a grid geometry's arguments and a value array.
+    ///
+    /// # Arguments
+    /// * `nx` - number of pixels in the x direction
+    /// * `ny` - number of pixels in the y direction
+    /// * `bbox` - physical domain of the grid
+    /// * `values` - pixel value array; must match the grid shape `[ny, nx]`
+    ///
+    /// # Errors
+    /// Returns an error if the geometry is invalid (see [`Grid2D::new`]) or the
+    /// value array does not match the grid shape.
+    pub fn new(nx: usize, ny: usize, bbox: BBox, values: FieldArray2D) -> Result<Self> {
+        let grid = Grid2D::new(nx, ny, bbox)?;
+        Self::from_values(grid, values)
+    }
+
+    /// Create a new pixel grid initialized with zeros.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -35,7 +51,7 @@ impl PixelGrid {
         }
     }
 
-    /// Create a new pixel grid initialized with ones
+    /// Create a new pixel grid initialized with ones.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -46,7 +62,7 @@ impl PixelGrid {
         }
     }
 
-    /// Create a new pixel grid initialized with a constant value
+    /// Create a new pixel grid initialized with a constant value.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -58,7 +74,7 @@ impl PixelGrid {
         }
     }
 
-    /// Create a new pixel grid initialized from an ndarray
+    /// Create a new pixel grid initialized from an ndarray.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -73,7 +89,7 @@ impl PixelGrid {
         Ok(Self { grid, values })
     }
 
-    /// Create from a flat vector (row-major order)
+    /// Create from a flat vector (row-major order).
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -90,7 +106,7 @@ impl PixelGrid {
         Ok(Self { grid, values })
     }
 
-    /// Create from a 1D array (row-major order)
+    /// Create from a 1D array (row-major order).
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -99,7 +115,15 @@ impl PixelGrid {
         Self::from_vec(grid, arr.to_vec())
     }
 
-    /// Create from a function using 2D points
+    /// Reuse this grid's geometry with a new value array (no geometry rebuild).
+    ///
+    /// # Arguments
+    /// * `values` - replacement values; must match the grid shape `[ny, nx]`.
+    pub fn with_values(&self, values: FieldArray2D) -> Result<Self> {
+        Self::from_values(self.grid, values)
+    }
+
+    /// Create from a function using 2D points.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -109,7 +133,7 @@ impl PixelGrid {
         Self { grid, values }
     }
 
-    /// Create from a function using pixel coordinates
+    /// Create from a function using pixel coordinates.
     ///
     /// # Arguments
     /// * `grid` - grid struct holding information about the geometry
@@ -154,7 +178,7 @@ impl PixelGrid {
     }
 
     /* ================ Getter & Setter ==================================== */
-    /// Get value at pixel (i, j)
+    /// Get value at pixel (i, j).
     ///
     /// # Arguments
     /// * `i` - pixel grid index along x axis
@@ -164,7 +188,7 @@ impl PixelGrid {
         self.values[[j, i]]
     }
 
-    /// Get value at pixel (i, j) with bounds checking
+    /// Get value at pixel (i, j) with bounds checking.
     ///
     /// # Arguments
     /// * `i` - pixel grid index along x axis
@@ -178,7 +202,7 @@ impl PixelGrid {
         }
     }
 
-    /// Set value at pixel (i, j)
+    /// Set value at pixel (i, j).
     ///
     /// # Arguments
     /// * `i` - pixel grid index along x axis
@@ -189,7 +213,100 @@ impl PixelGrid {
         self.values[[j, i]] = value;
     }
 
-    /// Get values as a flat 1D array (row-major order)
+    /* ============ Grid attributes ======================================== */
+    /// Total number of pixels.
+    #[inline]
+    pub fn n_pixels(&self) -> usize {
+        self.grid.n_pixels()
+    }
+
+    /// Shape as `(ny, nx)`.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        self.grid.shape()
+    }
+
+    /// Grid width.
+    #[inline]
+    pub fn width(&self) -> f64 {
+        self.grid.width()
+    }
+
+    /// Grid height.
+    #[inline]
+    pub fn height(&self) -> f64 {
+        self.grid.height()
+    }
+
+    /// Pixel size in x.
+    #[inline]
+    pub fn dx(&self) -> f64 {
+        self.grid.dx()
+    }
+
+    /// Pixel size in y.
+    #[inline]
+    pub fn dy(&self) -> f64 {
+        self.grid.dy()
+    }
+
+    /// Pixel area.
+    #[inline]
+    pub fn pixel_area(&self) -> f64 {
+        self.grid.pixel_area()
+    }
+
+    /// Total grid area (`width × height`).
+    #[inline]
+    pub fn total_area(&self) -> f64 {
+        self.grid.total_area()
+    }
+
+    /// Grid centre.
+    #[inline]
+    pub fn center(&self) -> Point2D {
+        self.grid.center()
+    }
+
+    /// x extent as `(min, max)`.
+    #[inline]
+    pub fn extent_x(&self) -> (f64, f64) {
+        self.grid.extent_x()
+    }
+
+    /// y extent as `(min, max)`.
+    #[inline]
+    pub fn extent_y(&self) -> (f64, f64) {
+        self.grid.extent_y()
+    }
+
+    /// Aspect ratio (width / height).
+    #[inline]
+    pub fn aspect_ratio(&self) -> f64 {
+        self.grid.aspect_ratio()
+    }
+
+    /// Whether `p` lies within the grid domain.
+    ///
+    /// # Arguments
+    /// * `p` - the point to test.
+    #[inline]
+    pub fn contains(&self, p: &Point2D) -> bool {
+        self.grid.contains(p)
+    }
+
+    /// Flat (row-major) index of the pixel containing `p`, or `None` if `p` lies
+    /// outside the domain.
+    ///
+    /// # Arguments
+    /// * `p` - the query point to locate.
+    #[inline]
+    pub fn cell_of(&self, p: &Point2D) -> Option<usize> {
+        self.grid.point_to_pixel(p).map(|(i, j)| self.grid.flatten_index(i, j))
+    }
+
+    /* ============ Values ================================================= */
+    /// Get values as a flat 1D array (row-major order).
     pub fn as_array1(&self) -> Array1<f64> {
         self.values
             .clone()
@@ -197,22 +314,22 @@ impl PixelGrid {
             .expect("Shape conversion should not fail")
     }
 
-    /// Get values as a flat Vec (row-major order)
+    /// Get values as a flat Vec (row-major order).
     pub fn as_vec(&self) -> Vec<f64> {
         self.values.iter().cloned().collect()
     }
 
-    /// Get a view of the 2D array
+    /// Get a view of the 2D array.
     pub fn as_array2(&self) -> ArrayView2<'_, f64> {
         self.values.view()
     }
 
-    /// Get a mutable reference to the underlying array
+    /// Get a mutable reference to the underlying array.
     pub fn as_mut_array2(&mut self) -> &mut FieldArray2D {
         &mut self.values
     }
 
-    /// Get row j as a slice
+    /// Get row `j` as a slice.
     ///
     /// # Arguments
     /// * `j` - pixel grid index along y axis
@@ -220,7 +337,7 @@ impl PixelGrid {
         self.values.row(j)
     }
 
-    /// Get column i as a slice
+    /// Get column `i` as a slice.
     ///
     /// # Arguments
     /// * `i` - pixel grid index along x axis
@@ -229,22 +346,22 @@ impl PixelGrid {
     }
 
     /* ================ Statistics ========================================= */
-    /// Sum of all pixel grid values
+    /// Sum of all pixel grid values.
     pub fn sum(&self) -> f64 {
         self.values.sum()
     }
 
-    /// Average of all pixel grid values
+    /// Average of all pixel grid values.
     pub fn mean(&self) -> f64 {
         self.values.mean().unwrap_or(0.0)
     }
 
-    /// Minimum of all pixel grid values
+    /// Minimum of all pixel grid values.
     pub fn min(&self) -> f64 {
         self.values.iter().cloned().fold(f64::INFINITY, f64::min)
     }
 
-    /// Maximum of all pixel grid values
+    /// Maximum of all pixel grid values.
     pub fn max(&self) -> f64 {
         self.values
             .iter()
@@ -252,24 +369,24 @@ impl PixelGrid {
             .fold(f64::NEG_INFINITY, f64::max)
     }
 
-    /// Variance of all pixel grid values
+    /// Variance of all pixel grid values.
     pub fn var(&self) -> f64 {
         let mean = self.mean();
         self.values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / self.grid.n_pixels() as f64
     }
 
-    /// Standard deviation of all pixel grid values
+    /// Standard deviation of all pixel grid values.
     pub fn std(&self) -> f64 {
         self.var().sqrt()
     }
 
-    /// Flux (per-area sum) of all pixel grid values
+    /// Flux (per-area sum) of all pixel grid values.
     pub fn flux(&self) -> f64 {
         self.sum() * self.grid.pixel_area()
     }
 
     /* ================ Mappings =========================================== */
-    /// Scale the pixel grid values by a factor
+    /// Scale the pixel grid values by a factor.
     ///
     /// # Arguments
     /// * `scale` - scaling factor
@@ -280,7 +397,7 @@ impl PixelGrid {
         }
     }
 
-    /// Shift the pixel grid values by a scalar
+    /// Shift the pixel grid values by a scalar.
     ///
     /// # Arguments
     /// * `scalar` - scalar addend
@@ -291,7 +408,7 @@ impl PixelGrid {
         }
     }
 
-    /// Add two pixel grids of same dimensions
+    /// Add two pixel grids of same dimensions.
     ///
     /// # Arguments
     /// * `other` - other pixel grid
@@ -308,7 +425,7 @@ impl PixelGrid {
         })
     }
 
-    /// Subtract two pixel grids of same dimensions
+    /// Subtract two pixel grids of same dimensions.
     ///
     /// # Arguments
     /// * `other` - other pixel grid
@@ -325,7 +442,7 @@ impl PixelGrid {
         })
     }
 
-    /// Multiply two pixel grids of same dimensions
+    /// Multiply two pixel grids of same dimensions.
     ///
     /// # Arguments
     /// * `other` - other pixel grid
@@ -342,7 +459,7 @@ impl PixelGrid {
         })
     }
 
-    /// Apply function to the pixel grid values (in-place)
+    /// Apply function to the pixel grid values (in-place).
     ///
     /// # Arguments
     /// * `f` - function to be applied
@@ -350,7 +467,7 @@ impl PixelGrid {
         self.values.mapv_inplace(f);
     }
 
-    /// Map function to the pixel grid values
+    /// Map function to the pixel grid values.
     ///
     /// # Arguments
     /// * `f` - function to be mapped
@@ -361,7 +478,7 @@ impl PixelGrid {
         }
     }
 
-    /// Clamp the pixel grid values
+    /// Clamp the pixel grid values.
     ///
     /// # Arguments
     /// * `min` - minimum value
@@ -370,7 +487,7 @@ impl PixelGrid {
         self.values.mapv_inplace(|x| x.clamp(min, max));
     }
 
-    /// Normalize the map's sum to a given total
+    /// Normalize the map's sum to a given total.
     ///
     /// # Arguments
     /// * `num` - total sum normalization
@@ -382,7 +499,7 @@ impl PixelGrid {
         }
     }
 
-    /// Normalize the map's maximum to a given number
+    /// Normalize the map's maximum to a given number.
     ///
     /// # Arguments
     /// * `num` - total sum normalization
@@ -395,7 +512,7 @@ impl PixelGrid {
     }
 
     /* ================ Resampling ========================================= */
-    /// Resample to a different grid using bilinear interpolation
+    /// Resample to a different grid using bilinear interpolation.
     ///
     /// # Arguments
     /// * `grid` -
@@ -403,7 +520,8 @@ impl PixelGrid {
         Self::from_point_func(grid, |p| self.interpolate_or(p, 0.0))
     }
 
-    /// Resample to a different grid using bilinear interpolation in parallel (using rayon backend)
+    /// Resample to a different grid using bilinear interpolation in parallel
+    /// (using rayon backend).
     ///
     /// # Arguments
     /// * `grid` -
@@ -428,7 +546,7 @@ impl PixelGrid {
     }
 
     /* ================ Interpolation ====================================== */
-    /// Bilinear interpolation at arbitrary point
+    /// Bilinear interpolation at arbitrary point.
     ///
     /// # Arguments
     /// * `p` - point for interpolation
@@ -440,7 +558,7 @@ impl PixelGrid {
         }
     }
 
-    /// Bilinear interpolation with explicit fallback value
+    /// Bilinear interpolation with explicit fallback value.
     ///
     /// # Arguments
     /// * `p` - point for interpolation
@@ -453,7 +571,7 @@ impl PixelGrid {
         }
     }
 
-    /// Batch interpolation for multiple points
+    /// Batch interpolation for multiple points.
     ///
     /// # Arguments
     /// * `points` - batch array of points
@@ -461,7 +579,7 @@ impl PixelGrid {
         points.iter().map(|p| self.interpolate_or(p, 0.0)).collect()
     }
 
-    /// Batch interpolation for multiple points in parallel
+    /// Batch interpolation for multiple points in parallel.
     ///
     /// # Arguments
     /// * `points` - batch array of points
@@ -504,6 +622,37 @@ mod tests {
 
         assert_eq!(pg.values.shape(), &[4, 4]);
         assert!(approx_eq(pg.sum(), 0.0, 1e-12));
+    }
+
+    #[test]
+    fn delegated_getters_match_the_grid() {
+        let grid = Grid2D::rectangular(4, 3, 2.0, 1.0).unwrap();
+        let pg = PixelGrid::zeros(grid);
+        assert_eq!(pg.n_pixels(), grid.n_pixels());
+        assert_eq!(pg.shape(), grid.shape());
+        assert_eq!(pg.width(), grid.width());
+        assert_eq!(pg.height(), grid.height());
+        assert_eq!(pg.dx(), grid.dx());
+        assert_eq!(pg.dy(), grid.dy());
+        assert_eq!(pg.pixel_area(), grid.pixel_area());
+        assert_eq!(pg.center(), grid.center());
+        assert_eq!(pg.extent_x(), grid.extent_x());
+        assert_eq!(pg.extent_y(), grid.extent_y());
+        assert_eq!(pg.aspect_ratio(), grid.aspect_ratio());
+        assert_eq!(pg.contains(&Point2D::origin()), grid.contains(&Point2D::origin()));
+    }
+
+    #[test]
+    fn new_builds_geometry_from_args() {
+        let bbox = BBox::from_lims(-2.0, 2.0, -1.0, 1.0);
+        let values = Array2::from_shape_fn((3, 4), |(j, i)| (i + 4 * j) as f64);
+        let pg = PixelGrid::new(4, 3, bbox, values.clone()).unwrap();
+        assert_eq!(pg.grid, Grid2D::new(4, 3, bbox).unwrap());
+        assert_eq!(pg.values, values);
+        // Shape mismatch against the built geometry is rejected.
+        assert!(PixelGrid::new(4, 3, bbox, Array2::zeros((2, 2))).is_err());
+        // Invalid geometry is rejected too.
+        assert!(PixelGrid::new(0, 3, bbox, Array2::zeros((3, 0))).is_err());
     }
 
     #[test]
@@ -634,6 +783,35 @@ mod tests {
                 ));
             }
         }
+    }
+
+    #[test]
+    fn total_area_matches_grid() {
+        let grid = Grid2D::rectangular(4, 3, 2.0, 1.0).unwrap();
+        let pg = PixelGrid::zeros(grid);
+        assert!(approx_eq(pg.total_area(), grid.total_area(), 1e-12));
+        assert!(approx_eq(pg.total_area(), pg.width() * pg.height(), 1e-12));
+    }
+
+    #[test]
+    fn cell_of_locates_pixel_or_none() {
+        let grid = Grid2D::square(4, 2.0).unwrap();
+        let pg = PixelGrid::zeros(grid);
+        let idx = pg.cell_of(&Point2D::origin()).unwrap();
+        let (i, j) = grid.unflatten_index(idx);
+        assert!(grid.is_valid_pixel(i, j));
+        assert_eq!(pg.cell_of(&Point2D::new(100.0, 100.0)), None);
+    }
+
+    #[test]
+    fn with_values_reuses_geometry() {
+        let grid = Grid2D::square(3, 1.0).unwrap();
+        let pg = PixelGrid::zeros(grid);
+        let updated = pg.with_values(Array2::from_elem(grid.shape(), 7.0)).unwrap();
+        assert!(approx_eq(updated.mean(), 7.0, 1e-12));
+        assert!(updated.grid.same_geometry(&pg.grid));
+        // Shape mismatch is rejected.
+        assert!(pg.with_values(Array2::zeros((1, 1))).is_err());
     }
 
     #[test]
