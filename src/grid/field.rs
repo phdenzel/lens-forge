@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! A representation-agnostic scalar field sampled on a 2D domain.
 //!
-//! Both [`PixelGrid`](crate::grid::PixelGrid) (regular) and
+//! Both [`PixelGrid`] (regular) and
 //! [`MeshGrid`](crate::grid::MeshGrid) (Voronoi) implement [`ScalarField2D`], so
 //! downstream code — solvers, models, rendering — have an interface behind one
 //! trait. The trait is object-safe (`&dyn ScalarField2D`).
