@@ -19,8 +19,11 @@
 //!   density-graded).
 //! * `kdtree` — nearest-site point location.
 //! * `meshgrid` — [`MeshGrid`], the public Voronoi field type.
+//! * `faces` — shared Voronoi facet lengths, the geometry the finite-volume
+//!   operators discretize over.
 //! * `interp` — continuous interpolation (Laplace natural-neighbour, with a
 //!   barycentric-linear fallback).
+//! * `diff` — finite-volume gradient (least-squares) and Laplacian (TPFA).
 
 mod generators;
 mod kdtree;
@@ -30,7 +33,9 @@ mod triangulate;
 mod voronoi;
 pub use voronoi::VoronoiMesh;
 
+mod faces;
 mod meshgrid;
 pub use meshgrid::MeshGrid;
 
+mod diff;
 mod interp;
