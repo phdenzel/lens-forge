@@ -275,11 +275,7 @@ impl MeshGrid {
 
     /// Mean of all cell values (`0` for an empty mesh).
     pub fn mean(&self) -> f64 {
-        if self.values.is_empty() {
-            0.0
-        } else {
-            self.sum() / self.values.len() as f64
-        }
+        self.values.mean().unwrap_or(0.0)
     }
 
     /// Minimum cell value.
@@ -292,14 +288,10 @@ impl MeshGrid {
         self.values.iter().copied().fold(f64::NEG_INFINITY, f64::max)
     }
 
-    /// Variance of all cell values (`0` for an empty mesh).
+    /// Variance of all cell values.
     pub fn var(&self) -> f64 {
-        let n = self.values.len();
-        if n == 0 {
-            return 0.0;
-        }
         let mean = self.mean();
-        self.values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64
+        self.values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / self.values.len() as f64
     }
 
     /// Standard deviation of all cell values.
@@ -711,5 +703,101 @@ mod tests {
         let s = format!("{m}");
         assert!(s.starts_with("MeshGrid(VoronoiMesh("));
         assert!(s.contains("mean: 1.0000"));
+    }
+
+    #[test]
+    fn zeros_constructs_empty_valued_mesh() {
+        let sites = [p(0.25, 0.25), p(0.75, 0.75)];
+        let z = MeshGrid::zeros(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0)).unwrap();
+        assert_eq!(z.as_vec(), vec![0.0, 0.0]);
+        assert!(!z.is_empty());
+    }
+
+    #[test]
+    fn new_rejects_value_count_mismatch() {
+        let sites = [p(0.2, 0.2), p(0.8, 0.8)];
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        assert!(MeshGrid::new(&sites, bbox, FieldArray1D::from_vec(vec![1.0])).is_err());
+    }
+
+    #[test]
+    fn with_values_shares_geometry_and_checks_length() {
+        let m = demo();
+        let updated = m.with_values(FieldArray1D::from_vec(vec![10.0, 20.0, 30.0, 40.0])).unwrap();
+        assert_eq!(updated.values(), &[10.0, 20.0, 30.0, 40.0]);
+        assert!(Arc::ptr_eq(&m.mesh, &updated.mesh)); // geometry reused, not rebuilt
+        assert!(m.with_values(FieldArray1D::from_vec(vec![1.0])).is_err());
+    }
+
+    #[test]
+    fn ndarray_accessors_view_and_mutate_values() {
+        let mut m = demo();
+        assert_eq!(m.as_array1().len(), 4);
+        assert_eq!(m.as_array1()[0], m.value(0));
+        m.set(0, 99.0);
+        assert_eq!(m.value(0), 99.0);
+        m.as_mut_array1()[1] = 7.0;
+        assert_eq!(m.value(1), 7.0);
+    }
+
+    #[test]
+    fn per_cell_geometry_accessors_delegate_to_mesh() {
+        let m = demo();
+        for i in 0..m.len() {
+            assert_eq!(m.centroid(i), m.mesh().centroid(i));
+            assert_eq!(m.neighbors(i), m.mesh().neighbors_of(i));
+        }
+        assert_eq!(m.centroids(), m.mesh().centroids());
+    }
+
+    #[test]
+    fn shift_map_apply_transform_values() {
+        // demo values: [0.5, 1.0, 1.5, 1.0].
+        let m = demo();
+        assert!((m.shift(2.0).value(0) - 2.5).abs() < 1e-12);
+        assert!((m.map(|v| v * 10.0).value(0) - 5.0).abs() < 1e-12);
+        let mut a = demo();
+        a.apply(|v| v + 1.0);
+        assert!((a.value(0) - 1.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn sub_and_mul_reject_mismatched_geometry() {
+        let m1 = demo();
+        let other = [p(0.1, 0.1), p(0.9, 0.9)];
+        let m2 = MeshGrid::ones(&other, BBox::from_lims(0.0, 1.0, 0.0, 1.0)).unwrap();
+        assert!(m1.sub(&m2).is_err());
+        assert!(m1.mul(&m2).is_err());
+    }
+
+    #[test]
+    fn scalar_field_center_returns_the_site() {
+        let m = demo();
+        let f: &dyn ScalarField2D = &m;
+        for i in 0..m.len() {
+            assert_eq!(f.center(i), m.site(i));
+        }
+    }
+
+    #[test]
+    fn constructors_propagate_geometry_errors() {
+        // Value count matches the sites, but the domain is degenerate, so the `?`
+        // on VoronoiMesh::new inside `new` must propagate the error.
+        let bad = BBox::from_lims(0.0, 0.0, 0.0, 1.0); // min.x == max.x
+        assert!(MeshGrid::zeros(&[p(0.5, 0.5)], bad).is_err());
+        assert!(MeshGrid::new(&[p(0.5, 0.5)], bad, FieldArray1D::from_vec(vec![1.0])).is_err());
+    }
+
+    #[test]
+    fn normalize_is_a_noop_on_degenerate_totals() {
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        let sites = [p(0.25, 0.25), p(0.75, 0.75)];
+        // Zero sum / zero max: normalization must leave the values untouched.
+        let mut s = MeshGrid::zeros(&sites, bbox).unwrap();
+        s.normalize_sum(None);
+        assert_eq!(s.as_vec(), vec![0.0, 0.0]);
+        let mut m = MeshGrid::zeros(&sites, bbox).unwrap();
+        m.normalize_max(None);
+        assert_eq!(m.as_vec(), vec![0.0, 0.0]);
     }
 }
