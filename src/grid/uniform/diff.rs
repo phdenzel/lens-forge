@@ -1384,7 +1384,9 @@ impl PixelGrid {
                             *o += (rr - 2.0 * cc + ll) * inv_dx2;
                         });
                     }
-                    {
+                    // Skip when nx == 3: column nx-2 coincides with column 1 above,
+                    // and `+=` would double-apply the same 2nd-central stencil.
+                    if nx > 3 {
                         let mut out = laplace.slice_mut(s![.., nx - 2..nx - 1]);
                         let l = v.slice(s![.., nx - 3..nx - 2]);
                         let c = v.slice(s![.., nx - 2..nx - 1]);
@@ -1428,7 +1430,8 @@ impl PixelGrid {
                             *o += (bb - 2.0 * cc + tt) * inv_dy2;
                         });
                     }
-                    {
+                    // Skip when ny == 3: row ny-2 coincides with row 1 above.
+                    if ny > 3 {
                         let mut out = laplace.slice_mut(s![ny - 2..ny - 1, ..]);
                         let t = v.slice(s![ny - 3..ny - 2, ..]);
                         let c = v.slice(s![ny - 2..ny - 1, ..]);
@@ -1504,7 +1507,8 @@ impl PixelGrid {
                             *o += (-(p2 + m2)) * inv_12dx2;
                         });
                     }
-                    {
+                    // Skip when nx == 5: column nx-3 coincides with column 2 above.
+                    if nx > 5 {
                         let mut out = laplace.slice_mut(s![.., nx - 3..nx - 2]);
                         let l0 = v.slice(s![.., nx - 5..nx - 4]);
                         let l1 = v.slice(s![.., nx - 4..nx - 3]);
@@ -1534,8 +1538,8 @@ impl PixelGrid {
                             *o += (rr - 2.0 * cc + ll) * inv_dx2;
                         });
                     }
-                    // i = nx-2
-                    {
+                    // i = nx-2; skip when nx == 3 (coincides with column 1 above).
+                    if nx > 3 {
                         let mut out = laplace.slice_mut(s![.., nx - 2..nx - 1]);
                         let l = v.slice(s![.., nx - 3..nx - 2]);
                         let c = v.slice(s![.., nx - 2..nx - 1]);
@@ -1595,7 +1599,8 @@ impl PixelGrid {
                             *o += (-(p2 + m2)) * inv_12dy2;
                         });
                     }
-                    {
+                    // Skip when ny == 5: row ny-3 coincides with row 2 above.
+                    if ny > 5 {
                         let mut out = laplace.slice_mut(s![ny - 3..ny - 2, ..]);
                         let t0 = v.slice(s![ny - 5..ny - 4, ..]);
                         let t1 = v.slice(s![ny - 4..ny - 3, ..]);
@@ -1624,7 +1629,8 @@ impl PixelGrid {
                             *o += (uu - 2.0 * cc + dd) * inv_dy2;
                         });
                     }
-                    {
+                    // j = ny-2; skip when ny == 3 (coincides with row 1 above).
+                    if ny > 3 {
                         let mut out = laplace.slice_mut(s![ny - 2..ny - 1, ..]);
                         let d = v.slice(s![ny - 3..ny - 2, ..]);
                         let c = v.slice(s![ny - 2..ny - 1, ..]);
