@@ -298,43 +298,45 @@ impl PixelGrid {
             DerivativeStencil::Forward => {
                 (
                     // (exp(ikh) - 1)^2 / h^2
+                    // = (2*cos(kh)*(cos(kh)-1) + 2i*(cos(kh)-1)*sin(kh)) / h^2
                     dkx.mapv(|theta| {
                         let cos_theta = theta.cos();
                         Complex::new(
                             2.0 * ((cos_theta - 1.0) * cos_theta),
-                            2.0 - 2.0 * cos_theta * theta.sin(),
+                            2.0 * (cos_theta - 1.0) * theta.sin(),
                         ) / dx2
                     }),
                     dky.mapv(|theta| {
                         let cos_theta = theta.cos();
                         Complex::new(
                             2.0 * ((cos_theta - 1.0) * cos_theta),
-                            2.0 - 2.0 * cos_theta * theta.sin(),
+                            2.0 * (cos_theta - 1.0) * theta.sin(),
                         ) / dy2
                     }),
                 )
             }
             DerivativeStencil::Backward => {
                 (
-                    // (1 - exp(-ikh))^2 / h^2
+                    // (1 - exp(-ikh))^2 / h^2 = conjugate of the forward symbol
+                    // = (2*cos(kh)*(cos(kh)-1) + 2i*(1-cos(kh))*sin(kh)) / h^2
                     dkx.mapv(|theta| {
                         let cos_theta = theta.cos();
                         Complex::new(
                             2.0 * ((cos_theta - 1.0) * cos_theta),
-                            2.0 - 2.0 * cos_theta * theta.sin(),
+                            2.0 * (1.0 - cos_theta) * theta.sin(),
                         ) / dx2
                     }),
                     dky.mapv(|theta| {
                         let cos_theta = theta.cos();
                         Complex::new(
                             2.0 * ((cos_theta - 1.0) * cos_theta),
-                            2.0 - 2.0 * cos_theta * theta.sin(),
+                            2.0 * (1.0 - cos_theta) * theta.sin(),
                         ) / dy2
                     }),
                 )
             }
             DerivativeStencil::Central4 => {
-                let c2 = 1.0 / 6.0;
+                let c2 = -1.0 / 6.0;
                 let c1 = 8.0 / 3.0;
                 (
                     // (-exp(2ikh) + 16*exp(ikh) - 30 + 16*exp(-ikh) - exp(-2ikh)) / 12h^2
@@ -358,11 +360,11 @@ impl PixelGrid {
                 let c0 = 49.0 / 18.0;
                 (
                     // (2*exp(3ikh) - 27*exp(2ikh) + 270*exp(ikh) - 490 + 270*exp(-ikh) - 27*exp(-2ikh) + 2*exp(-3ikh)) / 180h^2
-                    // (1/45*cos(3kh) - 3/10*cos(2kh) + 2*cos(kh) - 49/18) / h^2
+                    // (1/45*cos(3kh) - 3/10*cos(2kh) + 3*cos(kh) - 49/18) / h^2
                     dkx.mapv(|theta| {
                         Complex::new(
                             (c3 * (3.0 * theta).cos() - 0.3 * (2.0 * theta).cos()
-                                + 2.0 * theta.cos()
+                                + 3.0 * theta.cos()
                                 - c0)
                                 / dx2,
                             0.0,
@@ -371,7 +373,7 @@ impl PixelGrid {
                     dky.mapv(|theta| {
                         Complex::new(
                             (c3 * (3.0 * theta).cos() - 0.3 * (2.0 * theta).cos()
-                                + 2.0 * theta.cos()
+                                + 3.0 * theta.cos()
                                 - c0)
                                 / dy2,
                             0.0,
