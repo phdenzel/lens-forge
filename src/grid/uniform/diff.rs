@@ -1975,4 +1975,257 @@ mod tests {
             }
         }
     }
+
+    const ALL_STENCILS: [DerivativeStencil; 5] = [
+        DerivativeStencil::Central,
+        DerivativeStencil::Forward,
+        DerivativeStencil::Backward,
+        DerivativeStencil::Central4,
+        DerivativeStencil::Central6,
+    ];
+
+    /// A smooth, non-polynomial test field.
+    fn smooth(grid: Grid2D) -> PixelGrid {
+        PixelGrid::from_func(grid, |x, y| (0.5 * x).sin() * (0.3 * y).cos() + 0.1 * x * y)
+    }
+
+    fn max_field_diff(a: &FieldArray2D, b: &FieldArray2D) -> f64 {
+        a.iter()
+            .zip(b.iter())
+            .fold(0.0_f64, |m, (x, y)| m.max((x - y).abs()))
+    }
+
+    #[test]
+    fn gradient_point_exact_for_linear_all_stencils() {
+        // Every stencil (interior and one-sided edge fallbacks) is exact for a
+        // linear field, so the pixel gradient is (2, 3) everywhere. Sweeping the
+        // whole 8×8 grid hits the i==0/1, interior, nx-2/nx-1 branches.
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x + 3.0 * y);
+        for stencil in ALL_STENCILS {
+            for j in 0..grid.ny {
+                for i in 0..grid.nx {
+                    let g = pg.gradient(i, j, stencil).unwrap();
+                    assert!(approx_eq(g.x, 2.0, 1e-9), "{stencil:?} gx at ({i},{j})");
+                    assert!(approx_eq(g.y, 3.0, 1e-9), "{stencil:?} gy at ({i},{j})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gradient_interp_exact_for_linear_all_stencils() {
+        // gradient_interp samples the bilinear surface at offset points; on a
+        // linear field every stencil recovers the exact analytic gradient.
+        let grid = Grid2D::square(16, 3.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x - 0.5 * y);
+        let p = grid.pixel_center(8, 8);
+        for stencil in ALL_STENCILS {
+            let g = pg.gradient_interp(&p, stencil).unwrap();
+            assert!(approx_eq(g.x, 2.0, 1e-9), "{stencil:?} interp gx");
+            assert!(approx_eq(g.y, -0.5, 1e-9), "{stencil:?} interp gy");
+        }
+    }
+
+    #[test]
+    fn gradient_field_matches_point_and_parallel_all_sizes() {
+        // The vectorised field path must agree with the per-pixel gradient for
+        // every stencil, and the parallel path must match the serial one. Sweeping
+        // sizes 2..=9 exercises the nx>=3/5/7 interior guards and their edge
+        // fallbacks (including the nx==4 vs nx>4 Central6 branch split).
+        for n in 2..=9usize {
+            let grid = Grid2D::square(n, 2.0).unwrap();
+            let pg = smooth(grid);
+            for stencil in ALL_STENCILS {
+                let (fx, fy) = pg.gradient_field(stencil).unwrap();
+                let (px, py) = pg.par_gradient_field(stencil).unwrap();
+                assert!(max_field_diff(&fx, &px) < 1e-12, "n={n} {stencil:?} par x");
+                assert!(max_field_diff(&fy, &py) < 1e-12, "n={n} {stencil:?} par y");
+                for j in 0..grid.ny {
+                    for i in 0..grid.nx {
+                        let g = pg.gradient(i, j, stencil).unwrap();
+                        assert!(
+                            (fx[[j, i]] - g.x).abs() < 1e-9,
+                            "n={n} {stencil:?} field vs point gx at ({i},{j})"
+                        );
+                        assert!(
+                            (fy[[j, i]] - g.y).abs() < 1e-9,
+                            "n={n} {stencil:?} field vs point gy at ({i},{j})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gradient_magnitude_matches_field_all_stencils() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = smooth(grid);
+        for stencil in ALL_STENCILS {
+            let mag = pg.gradient_magnitude(stencil).unwrap();
+            let par_mag = pg.par_gradient_magnitude(stencil).unwrap();
+            let (gx, gy) = pg.gradient_field(stencil).unwrap();
+            for j in 0..grid.ny {
+                for i in 0..grid.nx {
+                    let expected = (gx[[j, i]].powi(2) + gy[[j, i]].powi(2)).sqrt();
+                    assert!(approx_eq(mag[[j, i]], expected, 1e-12));
+                    assert!(approx_eq(mag[[j, i]], par_mag[[j, i]], 1e-12));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_field_par_matches_serial_all_sizes() {
+        // The parallel and serial field paths differ only in the const-generic
+        // PAR flag, so they must produce identical results for every stencil,
+        // boundary condition and grid size. Sweeping sizes 2..=9 executes all the
+        // interior guards and edge fallbacks (Natural and every ghost BC).
+        for n in 2..=9usize {
+            let grid = Grid2D::square(n, 2.0).unwrap();
+            let pg = smooth(grid);
+            for stencil in ALL_STENCILS {
+                for bc in [
+                    BoundaryCondition::Natural,
+                    BoundaryCondition::Periodic,
+                    BoundaryCondition::Dirichlet,
+                    BoundaryCondition::Neumann,
+                ] {
+                    let field = pg.laplacian_field(stencil, bc).unwrap();
+                    let par = pg.par_laplacian_field(stencil, bc).unwrap();
+                    assert!(
+                        max_field_diff(&field, &par) < 1e-12,
+                        "n={n} {stencil:?} {bc:?} par"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_field_natural_matches_point_all_sizes() {
+        // The vectorised Natural field path must reproduce the per-pixel laplacian
+        // for every stencil at every size. Small grids (n = 3, 5) previously
+        // double-applied the Central4/Central6 boundary bands; this is the
+        // regression guard for that fix.
+        for n in 2..=12usize {
+            let grid = Grid2D::square(n, 2.0).unwrap();
+            let pg = smooth(grid);
+            for stencil in ALL_STENCILS {
+                let field = pg.laplacian_field(stencil, None).unwrap();
+                for j in 0..grid.ny {
+                    for i in 0..grid.nx {
+                        let point = pg.laplacian(i, j, stencil, None).unwrap();
+                        assert!(
+                            (field[[j, i]] - point).abs() < 1e-9,
+                            "n={n} {stencil:?} field vs point at ({i},{j}) = {} vs {}",
+                            field[[j, i]],
+                            point
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_field_ghost_bcs_match_point_all_stencils() {
+        // Ghost boundary conditions dispatch per pixel; the field and point paths
+        // share laplacian_ghost, so they agree exactly for every stencil and BC.
+        let grid = Grid2D::square(10, 1.5).unwrap();
+        let pg = smooth(grid);
+        for bc in [
+            BoundaryCondition::Periodic,
+            BoundaryCondition::Dirichlet,
+            BoundaryCondition::Neumann,
+        ] {
+            for stencil in ALL_STENCILS {
+                let field = pg.laplacian_field(stencil, bc).unwrap();
+                let par = pg.par_laplacian_field(stencil, bc).unwrap();
+                assert!(max_field_diff(&field, &par) < 1e-12, "{bc:?} {stencil:?} par");
+                for j in 0..grid.ny {
+                    for i in 0..grid.nx {
+                        let point = pg.laplacian(i, j, stencil, bc).unwrap();
+                        assert!(
+                            (field[[j, i]] - point).abs() < 1e-12,
+                            "{bc:?} {stencil:?} at ({i},{j})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_quadratic_interior_is_exact_all_stencils() {
+        // ∇²(x²+y²) = 4; all 2nd-difference stencils are exact in the interior.
+        let grid = Grid2D::square(12, 3.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
+        for stencil in ALL_STENCILS {
+            let lap = pg.laplacian_field(stencil, None).unwrap();
+            // Stay well inside so every stencil uses its full interior formula.
+            for j in 4..8 {
+                for i in 4..8 {
+                    assert!(
+                        approx_eq(lap[[j, i]], 4.0, 1e-9),
+                        "{stencil:?} lap {} at ({i},{j})",
+                        lap[[j, i]]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn degenerate_single_pixel_grids() {
+        // A 1×1 grid can apply no stencil: the point laplacian falls through to the
+        // zero fallbacks for every stencil, and the field operators leave the
+        // (nx<2 / ny<2) guarded bands untouched. Exercises the degenerate branches.
+        let tiny = Grid2D::square(1, 1.0).unwrap();
+        let pg = PixelGrid::constant(tiny, 2.0);
+        for stencil in ALL_STENCILS {
+            assert_eq!(pg.laplacian(0, 0, stencil, None).unwrap(), 0.0);
+            let (gx, gy) = pg.gradient_field(stencil).unwrap();
+            assert_eq!(gx[[0, 0]], 0.0);
+            assert_eq!(gy[[0, 0]], 0.0);
+            assert_eq!(pg.gradient_magnitude(stencil).unwrap()[[0, 0]], 0.0);
+            for bc in [BoundaryCondition::Natural, BoundaryCondition::Dirichlet] {
+                let lap = pg.laplacian_field(stencil, bc).unwrap();
+                assert!(lap[[0, 0]].is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn thin_strip_grids_run_all_stencils() {
+        // 1-wide strips exercise the axis-asymmetric guards: one axis has no room
+        // for a stencil while the other does. Par and serial must still agree.
+        for (nx, ny) in [(1usize, 6usize), (6usize, 1usize)] {
+            let grid = Grid2D::rectangular(nx, ny, 2.0, 2.0).unwrap();
+            let pg = smooth(grid);
+            for stencil in ALL_STENCILS {
+                let (fx, _) = pg.gradient_field(stencil).unwrap();
+                let (px, _) = pg.par_gradient_field(stencil).unwrap();
+                assert!(max_field_diff(&fx, &px) < 1e-12);
+                for bc in [
+                    BoundaryCondition::Natural,
+                    BoundaryCondition::Periodic,
+                    BoundaryCondition::Neumann,
+                ] {
+                    let field = pg.laplacian_field(stencil, bc).unwrap();
+                    let par = pg.par_laplacian_field(stencil, bc).unwrap();
+                    assert!(max_field_diff(&field, &par) < 1e-12);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn is_singular_flags_null_space() {
+        assert!(BoundaryCondition::Periodic.is_singular());
+        assert!(BoundaryCondition::Neumann.is_singular());
+        assert!(BoundaryCondition::Natural.is_singular());
+        assert!(!BoundaryCondition::Dirichlet.is_singular());
+    }
 }

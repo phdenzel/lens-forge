@@ -143,4 +143,17 @@ mod tests {
         println!("{}", interp);
         assert!((interp - 2.0).abs() < 0.5);
     }
+
+    #[test]
+    fn out_of_bounds_returns_none() {
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
+        // Far outside the domain in every direction -> no kernel.
+        assert!(grid.bilinear_interp(&Point2D::new(-5.0, 2.0)).is_none());
+        assert!(grid.bilinear_interp(&Point2D::new(2.0, -5.0)).is_none());
+        assert!(grid.bilinear_interp(&Point2D::new(50.0, 2.0)).is_none());
+        assert!(grid.bilinear_interp(&Point2D::new(2.0, 50.0)).is_none());
+        // Within half a pixel of the border the kernel clamps to the edge.
+        assert!(grid.bilinear_interp(&Point2D::new(0.1, 0.1)).is_some());
+        assert!(grid.bilinear_interp(&Point2D::new(3.9, 3.9)).is_some());
+    }
 }

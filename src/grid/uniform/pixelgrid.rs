@@ -821,4 +821,130 @@ mod tests {
 
         assert!(approx_eq(interp, 0.0, 1e-12));
     }
+
+    #[test]
+    fn from_vec_array1_and_errors() {
+        let grid = Grid2D::new(2, 2, BBox::from_lims(0.0, 2.0, 0.0, 2.0)).unwrap();
+        let pg = PixelGrid::from_vec(grid, vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        assert!(approx_eq(pg.get(0, 0), 1.0, None));
+        assert!(approx_eq(pg.get(1, 1), 4.0, None));
+        // Wrong length is rejected.
+        assert!(PixelGrid::from_vec(grid, vec![1.0, 2.0]).is_err());
+
+        let arr = ndarray::Array1::from(vec![5.0, 6.0, 7.0, 8.0]);
+        let pg2 = PixelGrid::from_array1(grid, &arr).unwrap();
+        assert!(approx_eq(pg2.get(1, 0), 6.0, None));
+    }
+
+    #[test]
+    fn from_func_sq_and_rect() {
+        let sq = PixelGrid::from_func_sq(4, 2.0, |x, y| x + y);
+        assert_eq!(sq.shape(), (4, 4));
+        let rect = PixelGrid::from_func_rect(5, 3, 2.0, 1.0, |x, _| x);
+        assert_eq!(rect.shape(), (3, 5));
+        assert!(approx_eq(rect.get(0, 0), rect.grid.x_at(0), None));
+    }
+
+    #[test]
+    fn value_accessors() {
+        let grid = Grid2D::new(3, 2, BBox::from_lims(0.0, 3.0, 0.0, 2.0)).unwrap();
+        let mut pg = PixelGrid::from_vec(grid, (0..6).map(|k| k as f64).collect()).unwrap();
+
+        assert_eq!(pg.as_vec(), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(pg.as_array1().to_vec(), pg.as_vec());
+        assert_eq!(pg.as_array2().shape(), &[2, 3]);
+        assert_eq!(pg.row(1).to_vec(), vec![3.0, 4.0, 5.0]);
+        assert_eq!(pg.column(0).to_vec(), vec![0.0, 3.0]);
+
+        // Mutable view lets us edit the backing store in place.
+        pg.as_mut_array2()[[0, 0]] = 42.0;
+        assert!(approx_eq(pg.get(0, 0), 42.0, None));
+    }
+
+    #[test]
+    fn variance_flux_and_extrema() {
+        let grid = Grid2D::new(2, 2, BBox::from_lims(0.0, 2.0, 0.0, 2.0)).unwrap();
+        let pg = PixelGrid::from_vec(grid, vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        assert!(approx_eq(pg.min(), 1.0, None));
+        assert!(approx_eq(pg.max(), 4.0, None));
+        assert!(approx_eq(pg.mean(), 2.5, None));
+        // Population variance of [1,2,3,4] = 1.25.
+        assert!(approx_eq(pg.var(), 1.25, 1e-12));
+        assert!(approx_eq(pg.std(), 1.25_f64.sqrt(), 1e-12));
+        // Flux = sum * pixel_area; pixel_area here is 1.
+        assert!(approx_eq(pg.flux(), pg.sum() * grid.pixel_area(), 1e-12));
+    }
+
+    #[test]
+    fn apply_map_and_clamp() {
+        let grid = Grid2D::square(3, 1.0).unwrap();
+        let base = PixelGrid::constant(grid, 2.0);
+
+        let mapped = base.map(|v| v * 3.0);
+        assert!(approx_eq(mapped.mean(), 6.0, None));
+        // map leaves the original untouched.
+        assert!(approx_eq(base.mean(), 2.0, None));
+
+        let mut pg = base.clone();
+        pg.apply(|v| v + 1.0);
+        assert!(approx_eq(pg.mean(), 3.0, None));
+
+        let mut clamped = PixelGrid::from_vec(
+            Grid2D::new(2, 2, BBox::from_lims(0.0, 2.0, 0.0, 2.0)).unwrap(),
+            vec![-1.0, 0.5, 2.0, 5.0],
+        )
+        .unwrap();
+        clamped.clamp(0.0, 1.0);
+        assert!(approx_eq(clamped.min(), 0.0, None));
+        assert!(approx_eq(clamped.max(), 1.0, None));
+    }
+
+    #[test]
+    fn normalize_ignores_degenerate_totals() {
+        let grid = Grid2D::square(3, 1.0).unwrap();
+        // Zero sum: normalize_sum must be a no-op (no division by ~0).
+        let mut zero = PixelGrid::zeros(grid);
+        zero.normalize_sum(None);
+        assert!(approx_eq(zero.sum(), 0.0, None));
+        // Zero max: normalize_max must be a no-op too.
+        zero.normalize_max(None);
+        assert!(approx_eq(zero.max(), 0.0, None));
+    }
+
+    #[test]
+    fn arithmetic_rejects_geometry_mismatch() {
+        let a = PixelGrid::constant(Grid2D::square(4, 1.0).unwrap(), 1.0);
+        let b = PixelGrid::constant(Grid2D::square(5, 1.0).unwrap(), 1.0);
+        assert!(a.add(&b).is_err());
+        assert!(a.sub(&b).is_err());
+        assert!(a.mul(&b).is_err());
+    }
+
+    #[test]
+    fn interpolation_out_of_bounds_and_batch() {
+        let grid = Grid2D::square(4, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, _| x);
+
+        let outside = Point2D::new(100.0, 100.0);
+        // interpolate falls back to 0.0, interpolate_or to the given default.
+        assert!(approx_eq(pg.interpolate(&outside), 0.0, None));
+        assert!(approx_eq(pg.interpolate_or(&outside, -9.0), -9.0, None));
+
+        let pts = [Point2D::origin(), outside, grid.pixel_center(1, 1)];
+        let seq = pg.interpolate_batch(&pts);
+        let par = pg.par_interpolate_batch(&pts);
+        assert_eq!(seq.len(), 3);
+        for (a, b) in seq.iter().zip(par.iter()) {
+            assert!(approx_eq(*a, *b, 1e-12));
+        }
+        assert!(approx_eq(seq[1], 0.0, None));
+    }
+
+    #[test]
+    fn display_formatting() {
+        let grid = Grid2D::square(3, 1.0).unwrap();
+        let pg = PixelGrid::constant(grid, 1.0);
+        let s = format!("{pg}");
+        assert!(s.contains("PixelGrid"));
+    }
 }

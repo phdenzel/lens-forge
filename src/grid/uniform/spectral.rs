@@ -589,20 +589,8 @@ mod tests {
         // Check interior
         for j in 16..48 {
             for i in 16..48 {
-                assert!(
-                    approx_eq(dvdx[[j, i]], 1.0, 1e-12),
-                    "dvdx at ({}, {}) = {}, expected 1.0",
-                    i,
-                    j,
-                    dvdx[[j, i]]
-                );
-                assert!(
-                    approx_eq(dvdy[[j, i]], 2.0, 1e-12),
-                    "dvdy at ({}, {}) = {}, expected 2.0",
-                    i,
-                    j,
-                    dvdy[[j, i]]
-                );
+                assert!(approx_eq(dvdx[[j, i]], 1.0, 1e-12));
+                assert!(approx_eq(dvdy[[j, i]], 2.0, 1e-12));
             }
         }
     }
@@ -619,14 +607,7 @@ mod tests {
         let border_size = size / 32;
         for j in border_size..size - border_size {
             for i in border_size..size - border_size {
-                assert!(
-                    approx_eq(laplace_fft[[j, i]], 4.0, 1e-12),
-                    "Laplacian at ({}, {}) = {}, expected {}",
-                    i,
-                    j,
-                    laplace_fft[[j, i]],
-                    4.0
-                );
+                assert!(approx_eq(laplace_fft[[j, i]], 4.0, 1e-12));
             }
         }
     }
@@ -650,8 +631,7 @@ mod tests {
                 max_err = max_err.max(err);
             }
         }
-        println!("Max Laplacian error: {}", max_err);
-        assert!(max_err < 1e-10, "Laplacian error too large: {}", max_err);
+        assert!(max_err < 1e-10);
     }
 
     /// Max absolute difference between two fields.
@@ -674,15 +654,11 @@ mod tests {
 
         let spec_err = max_abs_err(&sx, &analytic.values);
         let fd_err = max_abs_err(&fx, &analytic.values);
-        println!("gradient: spectral_err={spec_err:e}, fd_err={fd_err:e}");
 
         // Exact spectral recovers a band-limited derivative to round-off, while
         // 2nd-order central differences carry an O(dx²) truncation error.
-        assert!(spec_err < 1e-10, "spectral err {spec_err:e}");
-        assert!(
-            fd_err > 1e3 * spec_err,
-            "expected FD ({fd_err:e}) >> spectral ({spec_err:e})"
-        );
+        assert!(spec_err < 1e-10);
+        assert!(fd_err > 1e3 * spec_err);
     }
 
     #[test]
@@ -698,12 +674,101 @@ mod tests {
 
         let spec_err = max_abs_err(&spec, &analytic.values);
         let fd_err = max_abs_err(&fd, &analytic.values);
-        println!("laplacian: spectral_err={spec_err:e}, fd_err={fd_err:e}");
 
-        assert!(spec_err < 1e-10, "spectral err {spec_err:e}");
-        assert!(
-            fd_err > 1e3 * spec_err,
-            "expected FD ({fd_err:e}) >> spectral ({spec_err:e})"
-        );
+        assert!(spec_err < 1e-10);
+        assert!(fd_err > 1e3 * spec_err);
+    }
+
+    const ALL_STENCILS: [DerivativeStencil; 5] = [
+        DerivativeStencil::Central,
+        DerivativeStencil::Forward,
+        DerivativeStencil::Backward,
+        DerivativeStencil::Central4,
+        DerivativeStencil::Central6,
+    ];
+
+    #[test]
+    fn gradient_spectral_all_stencils_match_linear_interior() {
+        // Every FD stencil is exact for a linear field, and the spectral (circular)
+        // evaluation reproduces the FD stencil, so the non-wrapped interior recovers
+        // the analytic gradient for all stencil orders (covers fourier_symbols_fd1).
+        let grid = Grid2D::square(64, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        for stencil in ALL_STENCILS {
+            let (dvdx, dvdy) = pg.gradient_spectral(stencil).unwrap();
+            for j in 20..44 {
+                for i in 20..44 {
+                    assert!(approx_eq(dvdx[[j, i]], 1.0, 1e-9));
+                    assert!(approx_eq(dvdy[[j, i]], 2.0, 1e-9));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn laplacian_spectral_all_stencils_match_quadratic_interior() {
+        // Every fourier_symbols_fd2 stencil reproduces its finite-difference
+        // 2nd-derivative, which is exact for a quadratic, so ∇²(x²+y²)=4 in the
+        // non-wrapped interior. Regression guard for the fd2 symbol coefficients.
+        let size = 64usize;
+        let grid = Grid2D::square(size, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
+        for stencil in ALL_STENCILS {
+            let lap = pg.laplacian_spectral(stencil).unwrap();
+            for j in 20..44 {
+                for i in 20..44 {
+                    assert!(approx_eq(lap[[j, i]], 4.0, 1e-8));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fd2_symbols_vanish_at_dc() {
+        // The k=0 (DC) Fourier symbol of any consistent 2nd-derivative stencil must
+        // be zero: ∇² annihilates constants. A non-zero DC term was the signature
+        // of the earlier fd2 coefficient bug.
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::ones(grid);
+        for stencil in ALL_STENCILS {
+            let (kx2, ky2) = pg.fourier_symbols_fd2(stencil);
+            // wavenumbers()[0] is the k=0 mode on both axes.
+            assert!(kx2[0].norm() < 1e-12);
+            assert!(ky2[0].norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn laplacian_spectral_higher_order_beats_second_order() {
+        use std::f64::consts::PI;
+        // On a smooth periodic field the FD-equivalent spectral Laplacian carries
+        // the truncation error of its stencil, so Central6 must be markedly more
+        // accurate than Central. This checks the fd2 symbols are truly higher order
+        // (not merely DC-consistent) — a stronger guard than the interior value.
+        let grid = Grid2D::square(32, PI).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
+        let analytic = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
+
+        let e2 = max_abs_err(&pg.laplacian_spectral(DerivativeStencil::Central).unwrap(), &analytic.values);
+        let e6 = max_abs_err(&pg.laplacian_spectral(DerivativeStencil::Central6).unwrap(), &analytic.values);
+        assert!(e6 < e2 * 1e-2);
+    }
+
+    #[test]
+    fn ifft2d_rejects_non_power_of_two() {
+        let arr = Array2::from_elem((5, 5), Complex::new(1.0, 0.0));
+        assert!(PixelGrid::ifft2d(&arr).is_err());
+    }
+
+    #[test]
+    fn spectral_ops_propagate_fft_error() {
+        // Non-power-of-two dimensions make the underlying fft2d fail; every
+        // spectral operator must surface that error rather than panic.
+        let grid = Grid2D::square(5, 2.0).unwrap();
+        let pg = PixelGrid::ones(grid);
+        assert!(pg.gradient_spectral(None).is_err());
+        assert!(pg.laplacian_spectral(None).is_err());
+        assert!(pg.gradient_spectral_exact().is_err());
+        assert!(pg.laplacian_spectral_exact().is_err());
     }
 }

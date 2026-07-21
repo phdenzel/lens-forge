@@ -253,7 +253,7 @@ mod tests {
 
         let psi = rhs.poisson_spectral().unwrap();
         let err = max_abs_err(&psi, &expected.values);
-        assert!(err < 1e-10, "poisson err {err:e}");
+        assert!(err < 1e-10);
     }
 
     #[test]
@@ -275,10 +275,10 @@ mod tests {
         let expected = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
 
         let (psi, report) = rhs.poisson_cg(None).unwrap();
-        assert!(report.converged, "CG did not converge: {report:?}");
-        assert!(report.residual < 1e-8, "residual {}", report.residual);
+        assert!(report.converged);
+        assert!(report.residual < 1e-8);
         let err = max_abs_err(&psi, &expected.values);
-        assert!(err < 5e-3, "CG solution err {err:e}");
+        assert!(err < 5e-3);
     }
 
     #[test]
@@ -345,10 +345,10 @@ mod tests {
             .with_bc(BoundaryCondition::Dirichlet)
             .with_tol(1e-12);
         let (sol, info) = src.poisson_cg(cfg).unwrap();
-        assert!(info.converged, "CG did not converge: {info:?}");
+        assert!(info.converged);
         let expected = to_field(psi, grid.ny, grid.nx).unwrap();
         let err = max_abs_err(&sol, &expected);
-        assert!(err < 1e-8, "dirichlet err {err:e}");
+        assert!(err < 1e-8);
     }
 
     #[test]
@@ -363,7 +363,7 @@ mod tests {
             .with_bc(BoundaryCondition::Neumann)
             .with_tol(1e-12);
         let (sol, info) = src.poisson_cg(cfg).unwrap();
-        assert!(info.converged, "CG did not converge: {info:?}");
+        assert!(info.converged);
 
         let psi_arr = to_field(psi, grid.ny, grid.nx).unwrap();
         let sol_mean = sol.mean().unwrap();
@@ -371,6 +371,59 @@ mod tests {
         let err = Zip::from(&sol).and(&psi_arr).fold(0.0_f64, |m, &a, &b| {
             m.max(((a - sol_mean) - (b - psi_mean)).abs())
         });
-        assert!(err < 1e-8, "neumann err {err:e}");
+        assert!(err < 1e-8);
+    }
+
+    #[test]
+    fn to_field_rejects_length_mismatch() {
+        // The reshape helper surfaces a computation error when the buffer length
+        // does not match ny*nx.
+        assert!(to_field(vec![0.0; 3], 2, 2).is_err());
+        assert!(to_field(vec![0.0; 4], 2, 2).is_ok());
+    }
+
+    #[test]
+    fn poisson_config_builders() {
+        // Exercise the builder chain, including with_max_iter.
+        let cfg = PoissonConfig::default()
+            .with_tol(1e-6)
+            .with_max_iter(42)
+            .with_bc(BoundaryCondition::Dirichlet);
+        assert_eq!(cfg.tol, 1e-6);
+        assert_eq!(cfg.max_iter, 42);
+        assert_eq!(cfg.bc, BoundaryCondition::Dirichlet);
+    }
+
+    #[test]
+    fn poisson_cg_zero_source_short_circuits() {
+        // A constant field under a singular BC has a zero-mean source (b == 0), so
+        // CG returns the trivial zero solution without iterating.
+        let grid = Grid2D::square(8, PI).unwrap();
+        let pg = PixelGrid::constant(grid, 3.5);
+        let (psi, info) = pg.poisson_cg(None).unwrap();
+        assert_eq!(info.iterations, 0);
+        assert_eq!(info.residual, 0.0);
+        assert!(info.converged);
+        assert!(psi.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn poisson_spectral_propagates_fft_error() {
+        // The spectral solver relies on an FFT, so non-power-of-two dimensions
+        // must surface an error rather than panic.
+        let grid = Grid2D::square(6, PI).unwrap();
+        let pg = PixelGrid::ones(grid);
+        assert!(pg.poisson_spectral().is_err());
+    }
+
+    #[test]
+    fn poisson_cg_respects_max_iter_cap() {
+        // A tiny iteration cap with an impossible tolerance stops unconverged.
+        let grid = Grid2D::square(16, PI).unwrap();
+        let rhs = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
+        let cfg = PoissonConfig::default().with_tol(1e-16).with_max_iter(2);
+        let (_, info) = rhs.poisson_cg(cfg).unwrap();
+        assert!(!info.converged);
+        assert_eq!(info.iterations, 2);
     }
 }

@@ -941,4 +941,252 @@ mod tests {
         assert_eq!(r2_map, r2_coord_matrix);
     }
 
+    #[test]
+    fn constructors_validate_inputs() {
+        assert!(Grid2D::new(0, 4, BBox::from_lims(0.0, 1.0, 0.0, 1.0)).is_err());
+        assert!(Grid2D::new(4, 0, BBox::from_lims(0.0, 1.0, 0.0, 1.0)).is_err());
+        assert!(Grid2D::new(4, 4, BBox::from_lims(1.0, 0.0, 0.0, 1.0)).is_err());
+        assert!(Grid2D::square(4, -1.0).is_err());
+        assert!(Grid2D::square(4, 0.0).is_err());
+        assert!(Grid2D::rectangular(4, 4, -1.0, 1.0).is_err());
+        assert!(Grid2D::rectangular(4, 4, 1.0, 0.0).is_err());
+        assert!(Grid2D::with_resolution((0.0, 4.0), (0.0, 2.0), 0.0).is_err());
+    }
+
+    #[test]
+    fn with_resolution_computes_dimensions() {
+        let grid = Grid2D::with_resolution((0.0, 4.0), (0.0, 2.0), 2.0).unwrap();
+        assert_eq!((grid.nx, grid.ny), (8, 4));
+        assert!(approx_eq(grid.width(), 4.0));
+        assert!(approx_eq(grid.height(), 2.0));
+    }
+
+    #[test]
+    fn with_resolution_clamps_tiny_extents_to_one() {
+        // A rounding-to-zero extent is clamped to a single pixel (warns to stderr).
+        let grid = Grid2D::with_resolution((0.0, 0.1), (0.0, 0.1), 1.0).unwrap();
+        assert_eq!((grid.nx, grid.ny), (1, 1));
+    }
+
+    #[test]
+    fn with_resolution_warns_on_zero_extent() {
+        // A zero-width extent computes nx == 0, hits the warning branch, clamps to
+        // 1, then fails the degenerate-bbox check. Same for a zero-height extent.
+        assert!(Grid2D::with_resolution((5.0, 5.0), (0.0, 2.0), 2.0).is_err());
+        assert!(Grid2D::with_resolution((0.0, 2.0), (5.0, 5.0), 2.0).is_err());
+    }
+
+    #[test]
+    fn scalar_geometry_getters() {
+        let grid = Grid2D::new(4, 2, BBox::from_lims(0.0, 8.0, 0.0, 2.0)).unwrap();
+        assert_eq!(grid.extent_x(), (0.0, 8.0));
+        assert_eq!(grid.extent_y(), (0.0, 2.0));
+        assert!(approx_eq(grid.dx(), 2.0));
+        assert!(approx_eq(grid.dy(), 1.0));
+        assert!(approx_eq(grid.width(), 8.0));
+        assert!(approx_eq(grid.height(), 2.0));
+        assert!(approx_eq(grid.center().x, 4.0));
+        assert!(approx_eq(grid.center().y, 1.0));
+        assert!(approx_eq(grid.aspect_ratio(), 4.0));
+        assert_eq!(grid.n_pixels(), 8);
+        assert!(approx_eq(grid.pixel_area(), 2.0));
+        assert!(approx_eq(grid.total_area(), 16.0));
+        assert_eq!(grid.shape(), (2, 4));
+        assert_eq!(grid.shape_as_array(), [2, 4]);
+    }
+
+    #[test]
+    fn wavenumbers_layout() {
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
+        let (kx, _ky) = grid.wavenumbers();
+        let dk = 2.0 * std::f64::consts::PI / 4.0;
+        // Standard FFT ordering: 0, +1, ±2 (Nyquist), -1.
+        assert!(approx_eq(kx[0], 0.0));
+        assert!(approx_eq(kx[1], dk));
+        assert!(approx_eq(kx[2], 2.0 * dk));
+        assert!(approx_eq(kx[3], -dk));
+    }
+
+    #[test]
+    fn pixel_and_corner_coordinates() {
+        let grid = Grid2D::new(4, 2, BBox::from_lims(0.0, 8.0, 0.0, 2.0)).unwrap();
+        assert!(approx_eq(grid.x_at(0), 1.0));
+        assert!(approx_eq(grid.y_at(0), 0.5));
+        let pc = grid.pixel_center(1, 1);
+        assert!(approx_eq(pc.x, 3.0) && approx_eq(pc.y, 1.5));
+        assert!(approx_eq(grid.x_corner_at(1), 2.0));
+        assert!(approx_eq(grid.y_corner_at(1), 1.0));
+        let corner = grid.pixel_corner(2, 1);
+        assert!(approx_eq(corner.x, 4.0) && approx_eq(corner.y, 1.0));
+    }
+
+    #[test]
+    fn point_pixel_mapping_and_membership() {
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
+        assert_eq!(grid.point_to_pixel(&Point2D::new(2.5, 1.5)), Some((2, 1)));
+        assert_eq!(grid.point_to_pixel(&Point2D::new(-0.1, 1.0)), None);
+        assert_eq!(grid.point_to_pixel(&Point2D::new(4.0, 1.0)), None);
+
+        let (rx, ry) = grid.relative_to(&Point2D::new(0.5, 0.5));
+        assert!(approx_eq(rx, 0.0) && approx_eq(ry, 0.0));
+        let (cx, cy) = grid.relative_to_corner(&Point2D::new(1.0, 2.0));
+        assert!(approx_eq(cx, 1.0) && approx_eq(cy, 2.0));
+
+        assert!(grid.contains(&Point2D::new(2.0, 2.0)));
+        assert!(!grid.contains(&Point2D::new(5.0, 2.0)));
+        assert!(grid.is_valid_pixel(3, 3));
+        assert!(!grid.is_valid_pixel(4, 0));
+        assert!(!grid.is_valid_pixel(0, 4));
+    }
+
+    #[test]
+    fn flat_index_round_trip() {
+        let grid = Grid2D::new(4, 3, BBox::from_lims(0.0, 4.0, 0.0, 3.0)).unwrap();
+        for j in 0..3 {
+            for i in 0..4 {
+                let idx = grid.flatten_index(i, j);
+                assert_eq!(grid.unflatten_index(idx), (i, j));
+            }
+        }
+        assert_eq!(grid.flatten_index(2, 1), 6);
+    }
+
+    #[test]
+    fn coordinate_arrays_and_edges() {
+        let grid = Grid2D::new(4, 2, BBox::from_lims(0.0, 8.0, 0.0, 2.0)).unwrap();
+        let xs = grid.x_coords();
+        let ys = grid.y_coords();
+        assert_eq!(xs.len(), 4);
+        assert_eq!(ys.len(), 2);
+        assert!(approx_eq(xs[0], 1.0) && approx_eq(xs[3], 7.0));
+        assert!(approx_eq(ys[0], 0.5) && approx_eq(ys[1], 1.5));
+
+        let xe = grid.x_edges();
+        let ye = grid.y_edges();
+        assert_eq!(xe.len(), 5);
+        assert_eq!(ye.len(), 3);
+        assert!(approx_eq(xe[0], 0.0) && approx_eq(xe[4], 8.0));
+        assert!(approx_eq(ye[0], 0.0) && approx_eq(ye[2], 2.0));
+    }
+
+    #[test]
+    fn theta_and_polar_matrices() {
+        let grid = Grid2D::square(6, 3.0).unwrap();
+        let theta = grid.coord_matrix_theta(None);
+        let (r, theta2) = grid.coord_matrix_polar(None);
+        let r_direct = grid.coord_matrix_r(None);
+        for j in 0..grid.ny {
+            for i in 0..grid.nx {
+                assert!(approx_eq(theta[[j, i]], theta2[[j, i]]));
+                assert!(approx_eq(r[[j, i]], r_direct[[j, i]]));
+            }
+        }
+        // atan2 at an off-centre point.
+        let theta_c = grid.coord_matrix_theta(Some(Point2D::origin()));
+        let xs = grid.x_coords();
+        let ys = grid.y_coords();
+        assert!(approx_eq(theta_c[[2, 3]], ys[2].atan2(xs[3])));
+    }
+
+    #[test]
+    fn par_radial_matrices_match_serial() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let c = Some(Point2D::new(0.3, -0.4));
+        let r_serial = grid.coord_matrix_r(c);
+        let r_par = grid.par_coord_matrix_r(c);
+        let r2_par = grid.par_coord_matrix_r2(c);
+        let r2_serial = grid.coord_matrix_r2(c);
+        for j in 0..grid.ny {
+            for i in 0..grid.nx {
+                assert!(approx_eq(r_serial[[j, i]], r_par[[j, i]]));
+                assert!(approx_eq(r2_serial[[j, i]], r2_par[[j, i]]));
+            }
+        }
+    }
+
+    #[test]
+    fn map_points_and_par_map_match() {
+        let grid = Grid2D::square(6, 1.5).unwrap();
+        let a = grid.map_points(|p| p.x * p.x + p.y);
+        let b = grid.map_centers(|x, y| x * x + y);
+        let c = grid.par_map_centers(|x, y| x * x + y);
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+    }
+
+    #[test]
+    fn iterators_visit_all_pixels() {
+        let grid = Grid2D::new(3, 2, BBox::from_lims(0.0, 3.0, 0.0, 2.0)).unwrap();
+        assert_eq!(grid.iter_pixels().count(), 6);
+        assert_eq!(grid.iter_centers().count(), 6);
+        let coords: Vec<_> = grid.iter_coords().collect();
+        assert_eq!(coords.len(), 6);
+        // First pixel (0,0): centre at (0.5, 0.5).
+        let (i, j, x, y) = coords[0];
+        assert_eq!((i, j), (0, 0));
+        assert!(approx_eq(x, 0.5) && approx_eq(y, 0.5));
+        // iter_centers agrees with pixel_center.
+        let first = grid.iter_centers().next().unwrap();
+        assert!(approx_eq(first.x, 0.5) && approx_eq(first.y, 0.5));
+    }
+
+    #[test]
+    fn neighbor_iterators_respect_borders() {
+        let grid = Grid2D::new(3, 3, BBox::from_lims(0.0, 3.0, 0.0, 3.0)).unwrap();
+        // Interior cell has all four / eight neighbours.
+        assert_eq!(grid.neighbors_4(1, 1).count(), 4);
+        assert_eq!(grid.neighbors_8(1, 1).count(), 8);
+        // Corner cell is missing the out-of-domain ones.
+        let n4: Vec<_> = grid.neighbors_4(0, 0).collect();
+        assert_eq!(n4, vec![(1, 0), (0, 1)]);
+        assert_eq!(grid.neighbors_8(0, 0).count(), 3);
+        // Opposite corner exercises the upper-bound branches.
+        assert_eq!(grid.neighbors_4(2, 2).count(), 2);
+        assert_eq!(grid.neighbors_8(2, 2).count(), 3);
+    }
+
+    #[test]
+    fn refine_and_coarsen() {
+        let grid = Grid2D::new(4, 6, BBox::from_lims(0.0, 4.0, 0.0, 6.0)).unwrap();
+        let fine = grid.refine(2).unwrap();
+        assert_eq!((fine.nx, fine.ny), (8, 12));
+        assert_eq!(fine.bbox, grid.bbox);
+        let coarse = grid.coarsen(2).unwrap();
+        assert_eq!((coarse.nx, coarse.ny), (2, 3));
+        assert!(grid.refine(0).is_err());
+        assert!(grid.coarsen(0).is_err());
+        assert!(grid.coarsen(5).is_err());
+    }
+
+    #[test]
+    fn expand_and_translate() {
+        let grid = Grid2D::new(4, 4, BBox::from_lims(0.0, 4.0, 0.0, 4.0)).unwrap();
+        let expanded = grid.expand(1, 2, 3, 0);
+        assert_eq!((expanded.nx, expanded.ny), (7, 7));
+        assert!(approx_eq(expanded.bbox.min.x, -1.0));
+        assert!(approx_eq(expanded.bbox.max.x, 6.0));
+        assert!(approx_eq(expanded.bbox.min.y, -3.0));
+        assert!(approx_eq(expanded.bbox.max.y, 4.0));
+
+        let moved = grid.translate(2.0, -1.0);
+        assert!(approx_eq(moved.bbox.min.x, 2.0));
+        assert!(approx_eq(moved.bbox.min.y, -1.0));
+        assert_eq!((moved.nx, moved.ny), (4, 4));
+    }
+
+    #[test]
+    fn same_geometry_detects_differences() {
+        let grid = Grid2D::square(4, 2.0).unwrap();
+        assert!(grid.same_geometry(&grid));
+        assert!(!grid.same_geometry(&Grid2D::square(5, 2.0).unwrap()));
+        assert!(!grid.same_geometry(&Grid2D::square(4, 3.0).unwrap()));
+        assert!(!grid.same_geometry(&grid.translate(1.0, 0.0)));
+    }
+
+    #[test]
+    fn display_formatting() {
+        let grid = Grid2D::new(4, 3, BBox::from_lims(0.0, 4.0, 0.0, 3.0)).unwrap();
+        let s = format!("{grid}");
+        assert!(s.contains("Grid2D(4x3"));
+    }
 }
