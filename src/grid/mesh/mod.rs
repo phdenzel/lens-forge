@@ -20,13 +20,13 @@
 //! * `kdtree` — nearest-site point location.
 //! * `meshgrid` — [`MeshGrid`], the public Voronoi field type.
 
-#[allow(dead_code)]
 mod generators;
 mod kdtree;
 mod predicates;
 #[allow(dead_code)]
 mod triangulate;
 mod voronoi;
+pub use voronoi::VoronoiMesh;
 
 mod meshgrid;
 pub use meshgrid::MeshGrid;

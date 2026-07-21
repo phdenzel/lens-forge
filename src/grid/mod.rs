@@ -82,4 +82,4 @@ pub use uniform::{
     BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, PoissonConfig,
 };
 // pub use adaptive::AdaGrid;
-pub use mesh::MeshGrid;
+pub use mesh::{MeshGrid, VoronoiMesh};
