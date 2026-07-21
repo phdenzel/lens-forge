@@ -96,7 +96,7 @@ impl ScalarField2D for PixelGrid {
     }
 
     fn sample(&self, p: Point2D) -> f64 {
-        self.interpolate(&p)
+        self.interpolate(p)
     }
 }
 

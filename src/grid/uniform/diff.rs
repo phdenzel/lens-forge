@@ -201,60 +201,60 @@ impl PixelGrid {
 
         let dvdx = match stencil {
             DerivativeStencil::Central => {
-                (self.interpolate(&Point2D::new(p.x + dx, p.y))
-                    - self.interpolate(&Point2D::new(p.x - dx, p.y)))
+                (self.interpolate(Point2D::new(p.x + dx, p.y))
+                    - self.interpolate(Point2D::new(p.x - dx, p.y)))
                     / (2.0 * dx)
             }
             DerivativeStencil::Forward => {
-                (self.interpolate(&Point2D::new(p.x + dx, p.y)) - self.interpolate(p)) / dx
+                (self.interpolate(Point2D::new(p.x + dx, p.y)) - self.interpolate(*p)) / dx
             }
             DerivativeStencil::Backward => {
-                (self.interpolate(p) - self.interpolate(&Point2D::new(p.x - dx, p.y))) / dx
+                (self.interpolate(*p) - self.interpolate(Point2D::new(p.x - dx, p.y))) / dx
             }
             DerivativeStencil::Central4 => {
-                let f_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                let f_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let f_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let f_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
+                let f_p2 = self.interpolate(Point2D::new(p.x + 2.0 * dx, p.y));
+                let f_p1 = self.interpolate(Point2D::new(p.x + dx, p.y));
+                let f_m1 = self.interpolate(Point2D::new(p.x - dx, p.y));
+                let f_m2 = self.interpolate(Point2D::new(p.x - 2.0 * dx, p.y));
                 (-f_p2 + 8.0 * f_p1 - 8.0 * f_m1 + f_m2) / (12.0 * dx)
             }
             DerivativeStencil::Central6 => {
-                let f_p3 = self.interpolate(&Point2D::new(p.x + 3.0 * dx, p.y));
-                let f_p2 = self.interpolate(&Point2D::new(p.x + 2.0 * dx, p.y));
-                let f_p1 = self.interpolate(&Point2D::new(p.x + dx, p.y));
-                let f_m1 = self.interpolate(&Point2D::new(p.x - dx, p.y));
-                let f_m2 = self.interpolate(&Point2D::new(p.x - 2.0 * dx, p.y));
-                let f_m3 = self.interpolate(&Point2D::new(p.x - 3.0 * dx, p.y));
+                let f_p3 = self.interpolate(Point2D::new(p.x + 3.0 * dx, p.y));
+                let f_p2 = self.interpolate(Point2D::new(p.x + 2.0 * dx, p.y));
+                let f_p1 = self.interpolate(Point2D::new(p.x + dx, p.y));
+                let f_m1 = self.interpolate(Point2D::new(p.x - dx, p.y));
+                let f_m2 = self.interpolate(Point2D::new(p.x - 2.0 * dx, p.y));
+                let f_m3 = self.interpolate(Point2D::new(p.x - 3.0 * dx, p.y));
                 (f_p3 - 9.0 * f_p2 + 45.0 * f_p1 - 45.0 * f_m1 + 9.0 * f_m2 - f_m3) / (60.0 * dx)
             }
         };
 
         let dvdy = match stencil {
             DerivativeStencil::Central => {
-                (self.interpolate(&Point2D::new(p.x, p.y + dy))
-                    - self.interpolate(&Point2D::new(p.x, p.y - dy)))
+                (self.interpolate(Point2D::new(p.x, p.y + dy))
+                    - self.interpolate(Point2D::new(p.x, p.y - dy)))
                     / (2.0 * dy)
             }
             DerivativeStencil::Forward => {
-                (self.interpolate(&Point2D::new(p.x, p.y + dy)) - self.interpolate(p)) / dy
+                (self.interpolate(Point2D::new(p.x, p.y + dy)) - self.interpolate(*p)) / dy
             }
             DerivativeStencil::Backward => {
-                (self.interpolate(p) - self.interpolate(&Point2D::new(p.x, p.y - dy))) / dy
+                (self.interpolate(*p) - self.interpolate(Point2D::new(p.x, p.y - dy))) / dy
             }
             DerivativeStencil::Central4 => {
-                let f_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                let f_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let f_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let f_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
+                let f_p2 = self.interpolate(Point2D::new(p.x, p.y + 2.0 * dy));
+                let f_p1 = self.interpolate(Point2D::new(p.x, p.y + dy));
+                let f_m1 = self.interpolate(Point2D::new(p.x, p.y - dy));
+                let f_m2 = self.interpolate(Point2D::new(p.x, p.y - 2.0 * dy));
                 (-f_p2 + 8.0 * f_p1 - 8.0 * f_m1 + f_m2) / (12.0 * dy)
             }
             DerivativeStencil::Central6 => {
-                let f_p3 = self.interpolate(&Point2D::new(p.x, p.y + 3.0 * dy));
-                let f_p2 = self.interpolate(&Point2D::new(p.x, p.y + 2.0 * dy));
-                let f_p1 = self.interpolate(&Point2D::new(p.x, p.y + dy));
-                let f_m1 = self.interpolate(&Point2D::new(p.x, p.y - dy));
-                let f_m2 = self.interpolate(&Point2D::new(p.x, p.y - 2.0 * dy));
-                let f_m3 = self.interpolate(&Point2D::new(p.x, p.y - 3.0 * dy));
+                let f_p3 = self.interpolate(Point2D::new(p.x, p.y + 3.0 * dy));
+                let f_p2 = self.interpolate(Point2D::new(p.x, p.y + 2.0 * dy));
+                let f_p1 = self.interpolate(Point2D::new(p.x, p.y + dy));
+                let f_m1 = self.interpolate(Point2D::new(p.x, p.y - dy));
+                let f_m2 = self.interpolate(Point2D::new(p.x, p.y - 2.0 * dy));
+                let f_m3 = self.interpolate(Point2D::new(p.x, p.y - 3.0 * dy));
                 (f_p3 - 9.0 * f_p2 + 45.0 * f_p1 - 45.0 * f_m1 + 9.0 * f_m2 - f_m3) / (60.0 * dy)
             }
         };
@@ -1071,10 +1071,10 @@ impl PixelGrid {
         // samples come from bilinear interpolation at offset points rather than
         // array indices.
         let (num_x, den_x) = stencil_second_deriv(stencil, |o| {
-            self.interpolate(&Point2D::new(p.x + o as f64 * dx, p.y))
+            self.interpolate(Point2D::new(p.x + o as f64 * dx, p.y))
         });
         let (num_y, den_y) = stencil_second_deriv(stencil, |o| {
-            self.interpolate(&Point2D::new(p.x, p.y + o as f64 * dy))
+            self.interpolate(Point2D::new(p.x, p.y + o as f64 * dy))
         });
         Ok(num_x / den_x / (dx * dx) + num_y / den_y / (dy * dy))
     }
@@ -1384,8 +1384,7 @@ impl PixelGrid {
                             *o += (rr - 2.0 * cc + ll) * inv_dx2;
                         });
                     }
-                    // Skip when nx == 3: column nx-2 coincides with column 1 above,
-                    // and `+=` would double-apply the same 2nd-central stencil.
+                    // Skip when nx == 3: column nx-2 coincides with column 1 above.
                     if nx > 3 {
                         let mut out = laplace.slice_mut(s![.., nx - 2..nx - 1]);
                         let l = v.slice(s![.., nx - 3..nx - 2]);

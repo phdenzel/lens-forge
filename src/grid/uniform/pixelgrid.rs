@@ -514,7 +514,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `grid` -
     pub fn resample(&self, grid: Grid2D) -> Self {
-        Self::from_point_func(grid, |p| self.interpolate_or(p, 0.0))
+        Self::from_point_func(grid, |p| self.interpolate_or(*p, 0.0))
     }
 
     /// Resample to a different grid using bilinear interpolation in parallel
@@ -532,7 +532,7 @@ impl PixelGrid {
                 let i = idx % nx;
                 let j = idx / nx;
                 let p = grid.pixel_center(i, j);
-                self.interpolate_or(&p, 0.0)
+                self.interpolate_or(p, 0.0)
             })
             .collect();
 
@@ -548,8 +548,8 @@ impl PixelGrid {
     /// # Arguments
     /// * `p` - point for interpolation
     #[inline]
-    pub fn interpolate(&self, p: &Point2D) -> f64 {
-        match self.grid.bilinear_interp(p) {
+    pub fn interpolate(&self, p: Point2D) -> f64 {
+        match self.grid.bilinear_interp(&p) {
             Some(kernel) => kernel.apply(&self.values),
             None => 0.0,
         }
@@ -561,8 +561,8 @@ impl PixelGrid {
     /// * `p` - point for interpolation
     /// * `default` - out-of-bounds/fallback value
     #[inline]
-    pub fn interpolate_or(&self, p: &Point2D, default: f64) -> f64 {
-        match self.grid.bilinear_interp(p) {
+    pub fn interpolate_or(&self, p: Point2D, default: f64) -> f64 {
+        match self.grid.bilinear_interp(&p) {
             Some(kernel) => kernel.apply(&self.values),
             None => default,
         }
@@ -573,7 +573,7 @@ impl PixelGrid {
     /// # Arguments
     /// * `points` - batch array of points
     pub fn interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        points.iter().map(|p| self.interpolate_or(p, 0.0)).collect()
+        points.iter().map(|&p| self.interpolate_or(p, 0.0)).collect()
     }
 
     /// Batch interpolation for multiple points in parallel.
@@ -583,7 +583,7 @@ impl PixelGrid {
     pub fn par_interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
         points
             .par_iter()
-            .map(|p| self.interpolate_or(p, 0.0))
+            .map(|&p| self.interpolate_or(p, 0.0))
             .collect()
     }
 }
@@ -757,8 +757,8 @@ mod tests {
         assert_eq!(resampled.grid.ny, 8);
 
         let center = Point2D::origin();
-        let orig_val = pg.interpolate(&center);
-        let resampled_val = resampled.interpolate(&center);
+        let orig_val = pg.interpolate(center);
+        let resampled_val = resampled.interpolate(center);
         assert!(approx_eq(orig_val, resampled_val, 1e-12));
     }
 
@@ -817,7 +817,7 @@ mod tests {
         let pg = PixelGrid::from_func(grid, |x, _| x);
 
         let center = Point2D::origin();
-        let interp = pg.interpolate(&center);
+        let interp = pg.interpolate(center);
 
         assert!(approx_eq(interp, 0.0, 1e-12));
     }
@@ -927,8 +927,8 @@ mod tests {
 
         let outside = Point2D::new(100.0, 100.0);
         // interpolate falls back to 0.0, interpolate_or to the given default.
-        assert!(approx_eq(pg.interpolate(&outside), 0.0, None));
-        assert!(approx_eq(pg.interpolate_or(&outside, -9.0), -9.0, None));
+        assert!(approx_eq(pg.interpolate(outside), 0.0, None));
+        assert!(approx_eq(pg.interpolate_or(outside, -9.0), -9.0, None));
 
         let pts = [Point2D::origin(), outside, grid.pixel_center(1, 1)];
         let seq = pg.interpolate_batch(&pts);
