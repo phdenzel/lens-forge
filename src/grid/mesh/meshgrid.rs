@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 use ndarray::ArrayView1;
+use rayon::prelude::*;
 use super::voronoi::VoronoiMesh;
 use crate::grid::{BBox, FieldArray1D, Point2D, ScalarField2D};
 use crate::{LensForgeError, Result};
@@ -442,6 +443,17 @@ impl MeshGrid {
         let values = FieldArray1D::from_vec(self.sample_batch(sites));
         Self::new(sites, bbox, values)
     }
+
+    /// Resample onto a new set of `sites` in parallel, each point sampled
+    /// independently by nearest cell (the same result as [`resample`](Self::resample)).
+    ///
+    /// # Arguments
+    /// * `sites` - the new generating points.
+    /// * `bbox` - the domain box the new cells are clipped to.
+    pub fn par_resample(&self, sites: &[Point2D], bbox: BBox) -> Result<Self> {
+        let values: Vec<f64> = sites.par_iter().map(|&s| self.sample(s)).collect();
+        Self::new(sites, bbox, FieldArray1D::from_vec(values))
+    }
 }
 
 impl ScalarField2D for MeshGrid {
@@ -695,6 +707,20 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert_eq!(r.value(0), m.sample(p(0.1, 0.1)));
         assert_eq!(r.value(1), m.sample(p(0.9, 0.9)));
+    }
+
+    #[test]
+    fn par_resample_matches_resample() {
+        // The parallel path must reproduce the serial nearest-cell resampling.
+        let mut rng = Lcg::new(0x2E5A);
+        let sites: Vec<Point2D> = (0..60).map(|_| p(rng.f(), rng.f())).collect();
+        let values: FieldArray1D = (0..sites.len()).map(|i| (i * 2) as f64).collect();
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        let m = MeshGrid::new(&sites, bbox, values).unwrap();
+        let new_sites: Vec<Point2D> = (0..25).map(|_| p(rng.f(), rng.f())).collect();
+        let serial = m.resample(&new_sites, bbox).unwrap();
+        let parallel = m.par_resample(&new_sites, bbox).unwrap();
+        assert_eq!(serial.as_vec(), parallel.as_vec());
     }
 
     #[test]
