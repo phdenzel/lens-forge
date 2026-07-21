@@ -228,18 +228,18 @@ mod tests {
         // A perfect lattice is maximally cocircular; the tessellation must still
         // tile the box, and every cell must be an identical square pixel.
         let m = VoronoiMesh::square(5, 1.0).unwrap();
-        assert_eq!(m.cells.len(), 25);
+        assert_eq!(m.n_cells(), 25);
         assert!((m.total_area() - 4.0).abs() < 1e-9, "area {}", m.total_area());
         let pixel = (2.0 / 5.0) * (2.0 / 5.0); // side 2r/n = 0.4
-        for (s, c) in m.cells.iter().enumerate() {
-            assert!((c.area - pixel).abs() < 1e-9, "cell {s} area {}", c.area);
+        for s in 0..m.n_cells() {
+            assert!((m.cell_area(s) - pixel).abs() < 1e-9, "cell {s} area {}", m.cell_area(s));
         }
     }
 
     #[test]
     fn rectangular_lattice_tiles_and_counts() {
         let m = VoronoiMesh::rectangular(4, 3, 2.0, 1.0).unwrap();
-        assert_eq!(m.cells.len(), 12);
+        assert_eq!(m.n_cells(), 12);
         assert!((m.total_area() - 8.0).abs() < 1e-9, "area {}", m.total_area());
     }
 
@@ -257,10 +257,8 @@ mod tests {
         let m = VoronoiMesh::hexagonal(6, 4, 3.0, 3.0_f64.sqrt()).unwrap();
         assert!((m.total_area() - 12.0 * 3.0_f64.sqrt()).abs() < 1e-9, "area {}", m.total_area());
         let hex_area = 3.0_f64.sqrt() / 2.0;
-        let n_regular = m
-            .cells
-            .iter()
-            .filter(|c| c.polygon.len() == 6 && (c.area - hex_area).abs() < 1e-9)
+        let n_regular = (0..m.n_cells())
+            .filter(|&i| m.cell_polygon(i).len() == 6 && (m.cell_area(i) - hex_area).abs() < 1e-9)
             .count();
         assert!(n_regular >= 1, "expected regular hexagon cells, got {n_regular}");
     }
@@ -268,12 +266,12 @@ mod tests {
     #[test]
     fn concentric_is_finer_near_the_centre() {
         let m = VoronoiMesh::concentric(4, 8, 1.0).unwrap();
-        assert_eq!(m.cells.len(), 1 + 4 * 8);
+        assert_eq!(m.n_cells(), 1 + 4 * 8);
         assert!((m.total_area() - 4.0).abs() < 1e-9, "area {}", m.total_area());
         // The central site's cell is smaller than an outer-ring cell.
         let center = m.cell_of(p(0.0, 0.0));
         let outer = m.cell_of(p(0.7, 0.0));
-        assert!(m.cells[center].area < m.cells[outer].area);
+        assert!(m.cell_area(center) < m.cell_area(outer));
     }
 
     #[test]
@@ -285,7 +283,7 @@ mod tests {
             (-4.0 * (q.x * q.x + q.y * q.y)).exp()
         })
         .unwrap();
-        assert_eq!(m.cells.len(), 400);
+        assert_eq!(m.n_cells(), 400);
         assert!((m.total_area() - 4.0).abs() < 1e-9);
         let r2 = |q: &Point2D| q.x * q.x + q.y * q.y;
         let inner = m.sites.iter().filter(|s| r2(s) < 0.25).count(); // disk r < 0.5

@@ -12,14 +12,71 @@ use super::triangulate::triangulate;
 use crate::grid::{BBox, Point2D};
 use crate::{LensForgeError, Result};
 
-/// A single Voronoi cell: its clipped edges, centroid, and area.
-pub(crate) struct VoronoiCell {
-    /// Vertices of the cell (ordering: ccw)
-    pub polygon: Vec<Point2D>,
-    /// Centroid of the cell
-    pub centroid: Point2D,
-    /// Area of the cell
-    pub area: f64,
+/// The Voronoi cell polygons held in compressed-sparse-row (CSR) form.
+struct VoronoiCells {
+    /// Concatenated ccw polygon vertices of every cell, sliced by `offsets`.
+    vertices: Vec<Point2D>,
+    /// CSR offsets: cell `i` spans `vertices[offsets[i]..offsets[i + 1]]`.
+    offsets: Vec<usize>,
+    /// Area-weighted centroid per cell.
+    centroids: Vec<Point2D>,
+    /// Area per cell.
+    areas: Vec<f64>,
+}
+
+impl VoronoiCells {
+    /// Clipped polygon (ccw) of cell `i`.
+    #[inline]
+    fn polygon(&self, i: usize) -> &[Point2D] {
+        &self.vertices[self.offsets[i]..self.offsets[i + 1]]
+    }
+
+    /// Centroid of cell `i`.
+    #[inline]
+    fn centroid(&self, i: usize) -> Point2D {
+        self.centroids[i]
+    }
+
+    /// Area of cell `i`.
+    #[inline]
+    fn area(&self, i: usize) -> f64 {
+        self.areas[i]
+    }
+
+    /// Total area of all cells.
+    #[inline]
+    fn total_area(&self) -> f64 {
+        self.areas.iter().sum()
+    }
+}
+
+/// The Voronoi adjacency (Delaunay 1-ring) of cell `i` stored in CSR format.
+struct VoronoiAdjacency {
+    /// Cell neighbour indices.
+    indices: Vec<usize>,
+    /// CSR offsets: cell `i` spans `indices[offsets[i]..offsets[i + 1]]`.
+    offsets: Vec<usize>,
+}
+
+impl VoronoiAdjacency {
+    /// Flatten a per-cell list of neighbour lists into CSR form.
+    fn from_lists(lists: &[Vec<usize>]) -> Self {
+        let total: usize = lists.iter().map(Vec::len).sum();
+        let mut indices = Vec::with_capacity(total);
+        let mut offsets = Vec::with_capacity(lists.len() + 1);
+        offsets.push(0);
+        for list in lists {
+            indices.extend_from_slice(list);
+            offsets.push(indices.len());
+        }
+        Self { indices, offsets }
+    }
+
+    /// Neighbours of cell `i`.
+    #[inline]
+    fn of(&self, i: usize) -> &[usize] {
+        &self.indices[self.offsets[i]..self.offsets[i + 1]]
+    }
 }
 
 /// A Voronoi tessellation of sites, clipped to a rectangular domain.
@@ -28,10 +85,10 @@ pub struct VoronoiMesh {
     pub sites: Vec<Point2D>,
     /// Domain box the cells are clipped to.
     pub bbox: BBox,
-    /// Voronoi cell per site.
-    pub cells: Vec<VoronoiCell>,
-    /// Delaunay 1-ring neighbours per site (== Voronoi adjacency).
-    pub neighbors: Vec<Vec<usize>>,
+    /// Per-cell clipped geometry (reach it via the accessors).
+    cells: VoronoiCells,
+    /// Delaunay 1-ring adjacency per site.
+    neighbors: VoronoiAdjacency,
     /// Spatial index over the sites for `O(log n)` point location.
     kdtree: KdTree<Point2D>,
 }
@@ -55,12 +112,18 @@ impl VoronoiMesh {
         if sites.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
             return Err(LensForgeError::numerical_error("mesh site is not finite"));
         }
-        let mut cells = Vec::with_capacity(sites.len());
-	// Build the triangulated Delaunay diagram
-        let neighbors = build_adjacency(sites);
+        let n = sites.len();
+	// Build the triangulated Delaunay diagram, stored as CSR adjacency
+        let neighbors = VoronoiAdjacency::from_lists(&build_adjacency(sites));
         let boxpoly = bbox.corners_ccw();
         // Squared distance of each site from the origin for the bisector offset
         let mag2: Vec<f64> = sites.iter().map(|p| p.x * p.x + p.y * p.y).collect();
+        // Per-cell geometry accumulated struct-of-arrays; polygons packed CSR-style
+        let mut centroids = Vec::with_capacity(n);
+        let mut areas = Vec::with_capacity(n);
+        let mut vertices: Vec<Point2D> = Vec::with_capacity(n * 6);
+        let mut offsets = Vec::with_capacity(n + 1);
+        offsets.push(0);
         // Scratch buffers reused across every cell and every half-plane clip
         let mut src: Vec<Point2D> = Vec::with_capacity(8);
         let mut dst: Vec<Point2D> = Vec::with_capacity(8);
@@ -69,7 +132,7 @@ impl VoronoiMesh {
             src.clear();
             src.extend_from_slice(&boxpoly);
             let half_mag2_s = 0.5 * mag2[s];
-            for &t in &neighbors[s] {
+            for &t in neighbors.of(s) {
 		// Bisector half-plane: {x : n·x <= c};
 		// all points closer to site than Delaunay neighbour
                 let other = sites[t];
@@ -85,8 +148,13 @@ impl VoronoiMesh {
                 }
             }
             let (area, centroid) = polygon_area_centroid(&src, site);
-            cells.push(VoronoiCell { polygon: src.clone(), area, centroid });
+            // Append this cell's polygon to the shared buffer (no per-cell alloc)
+            vertices.extend_from_slice(&src);
+            offsets.push(vertices.len());
+            areas.push(area);
+            centroids.push(centroid);
         }
+        let cells = VoronoiCells { centroids, areas, vertices, offsets };
 
         let kdtree = KdTree::new(sites);
         Ok(Self { sites: sites.to_vec(), bbox, cells, neighbors, kdtree })
@@ -101,7 +169,7 @@ impl VoronoiMesh {
     pub fn with_lloyd_iters(self, iterations: usize) -> Result<Self> {
         let mut mesh = self;
         for _ in 0..iterations {
-            let relaxed: Vec<Point2D> = mesh.cells.iter().map(|c| c.centroid).collect();
+            let relaxed: Vec<Point2D> = mesh.cells.centroids.clone();
             mesh = Self::new(&relaxed, mesh.bbox)?;
         }
         Ok(mesh)
@@ -152,7 +220,7 @@ impl VoronoiMesh {
 
     /// Total area covered by the cells (equals the domain area).
     pub fn total_area(&self) -> f64 {
-        self.cells.iter().map(|c| c.area).sum()
+        self.cells.total_area()
     }
 
     /* ============ Per-cell accessors ===================================== */
@@ -171,7 +239,7 @@ impl VoronoiMesh {
     /// * `i` - the cell index.
     #[inline]
     pub fn centroid(&self, i: usize) -> Point2D {
-        self.cells[i].centroid
+        self.cells.centroid(i)
     }
 
     /// Area of cell `i`.
@@ -180,7 +248,7 @@ impl VoronoiMesh {
     /// * `i` - the cell index.
     #[inline]
     pub fn cell_area(&self, i: usize) -> f64 {
-        self.cells[i].area
+        self.cells.area(i)
     }
 
     /// Clipped polygon (counter-clockwise vertices) of cell `i`.
@@ -189,7 +257,7 @@ impl VoronoiMesh {
     /// * `i` - the cell index.
     #[inline]
     pub fn cell_polygon(&self, i: usize) -> &[Point2D] {
-        &self.cells[i].polygon
+        self.cells.polygon(i)
     }
 
     /// Voronoi neighbours (Delaunay 1-ring) of cell `i`.
@@ -198,7 +266,7 @@ impl VoronoiMesh {
     /// * `i` - the cell index.
     #[inline]
     pub fn neighbors_of(&self, i: usize) -> &[usize] {
-        &self.neighbors[i]
+        self.neighbors.of(i)
     }
 
     /// All generating sites, one per cell (the mesh's coordinate array).
@@ -219,7 +287,7 @@ impl VoronoiMesh {
     /* ============ Maps ==================================================== */
     /// The area-weighted centroids of every cell.
     pub fn centroids(&self) -> Vec<Point2D> {
-        self.cells.iter().map(|c| c.centroid).collect()
+        self.cells.centroids.clone()
     }
 
     /// Apply `f` to every site, collecting one value per cell — the unstructured
@@ -272,7 +340,7 @@ impl VoronoiMesh {
         loop {
             let mut best = cur;
             let mut best_d2 = cur_d2;
-            for &t in &self.neighbors[cur] {
+            for &t in self.neighbors.of(cur) {
                 let d2 = self.sites[t].distance_squared(&q);
                 if d2 < best_d2 {
                     best = t;
@@ -422,8 +490,9 @@ mod tests {
         let after = VoronoiMesh::new(&sites, bbox).unwrap().with_lloyd_iters(15).unwrap();
         assert!((after.total_area() - 1.0).abs() < 1e-9);
         let area_var = |m: &VoronoiMesh| {
-            let mean = m.total_area() / m.cells.len() as f64;
-            m.cells.iter().map(|c| (c.area - mean).powi(2)).sum::<f64>() / m.cells.len() as f64
+            let mean = m.total_area() / m.n_cells() as f64;
+            (0..m.n_cells()).map(|i| (m.cell_area(i) - mean).powi(2)).sum::<f64>()
+                / m.n_cells() as f64
         };
         assert!(area_var(&after) < area_var(&before), "variance not reduced");
     }
@@ -451,16 +520,24 @@ mod tests {
     }
 
     #[test]
-    fn per_cell_accessors_agree_with_fields() {
+    fn per_cell_accessors_are_consistent() {
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.5, 0.75)];
         let m = VoronoiMesh::new(&sites, unit()).unwrap();
         assert_eq!(m.sites(), sites.as_slice());
         for i in 0..m.n_cells() {
             assert_eq!(m.site(i), m.sites[i]);
-            assert_eq!(m.centroid(i), m.cells[i].centroid);
-            assert_eq!(m.cell_area(i), m.cells[i].area);
-            assert_eq!(m.cell_polygon(i), m.cells[i].polygon.as_slice());
-            assert_eq!(m.neighbors_of(i), m.neighbors[i].as_slice());
+            // The area accessor matches a shoelace recompute of the polygon accessor,
+            // and the centroid accessor agrees with the maps-level `centroids()`.
+            let poly = m.cell_polygon(i);
+            assert!(poly.len() >= 3, "degenerate polygon for cell {i}");
+            let (area, centroid) = polygon_area_centroid(poly, m.site(i));
+            assert!((m.cell_area(i) - area).abs() < 1e-12);
+            assert_eq!(m.centroid(i), centroid);
+            assert_eq!(m.centroid(i), m.centroids()[i]);
+            // Neighbours are valid, distinct cell indices.
+            for &t in m.neighbors_of(i) {
+                assert!(t < m.n_cells() && t != i, "bad neighbour {t} of {i}");
+            }
         }
         assert_eq!(m.centroids().len(), 3);
     }
@@ -493,16 +570,16 @@ mod tests {
         let bbox = unit();
         let m = VoronoiMesh::new(&[p(0.3, 0.7)], bbox).unwrap();
         assert!((m.total_area() - 1.0).abs() < 1e-12);
-        assert_eq!(m.cells[0].polygon.len(), 4);
+        assert_eq!(m.cell_polygon(0).len(), 4);
     }
 
     #[test]
     fn two_sites_split_box_in_half() {
         let bbox = unit();
         let m = VoronoiMesh::new(&[p(0.25, 0.5), p(0.75, 0.5)], bbox).unwrap();
-        assert!((m.cells[0].area - 0.5).abs() < 1e-12);
-        assert!((m.cells[1].area - 0.5).abs() < 1e-12);
-        assert_eq!(m.neighbors[0], vec![1]);
+        assert!((m.cell_area(0) - 0.5).abs() < 1e-12);
+        assert!((m.cell_area(1) - 0.5).abs() < 1e-12);
+        assert_eq!(m.neighbors_of(0), &[1]);
     }
 
     #[test]
@@ -510,11 +587,12 @@ mod tests {
         let bbox = unit();
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
-        for c in &m.cells {
-            assert!((c.area - 0.25).abs() < 1e-12, "quadrant area {}", c.area);
+        for i in 0..m.n_cells() {
+            assert!((m.cell_area(i) - 0.25).abs() < 1e-12, "quadrant area {}", m.cell_area(i));
         }
         // Each quadrant centroid sits between its site and the box centre.
-        assert!(m.cells[0].centroid.x < 0.5 && m.cells[0].centroid.y < 0.5);
+        let c0 = m.centroid(0);
+        assert!(c0.x < 0.5 && c0.y < 0.5);
     }
 
     #[test]
@@ -526,12 +604,13 @@ mod tests {
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
 
         assert!((m.total_area() - 1.0).abs() < 1e-9, "area sum {}", m.total_area());
-        for (s, c) in m.cells.iter().enumerate() {
-            assert!(c.area > 0.0, "empty cell {s}");
-            assert!(c.polygon.len() >= 3, "degenerate cell {s}");
+        for i in 0..m.n_cells() {
+            assert!(m.cell_area(i) > 0.0, "empty cell {i}");
+            assert!(m.cell_polygon(i).len() >= 3, "degenerate cell {i}");
             // Centroid lies inside the domain.
-            assert!(c.centroid.x >= -1e-9 && c.centroid.x <= 1.0 + 1e-9);
-            assert!(c.centroid.y >= -1e-9 && c.centroid.y <= 1.0 + 1e-9);
+            let c = m.centroid(i);
+            assert!(c.x >= -1e-9 && c.x <= 1.0 + 1e-9);
+            assert!(c.y >= -1e-9 && c.y <= 1.0 + 1e-9);
         }
     }
 
@@ -541,9 +620,9 @@ mod tests {
         let sites: Vec<Point2D> = (0..60).map(|_| p(rng.f(), rng.f())).collect();
         let bbox = unit();
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
-        for (s, list) in m.neighbors.iter().enumerate() {
-            for &t in list {
-                assert!(m.neighbors[t].contains(&s), "adjacency not symmetric: {s}-{t}");
+        for s in 0..m.n_cells() {
+            for &t in m.neighbors_of(s) {
+                assert!(m.neighbors_of(t).contains(&s), "adjacency not symmetric: {s}-{t}");
             }
         }
     }
