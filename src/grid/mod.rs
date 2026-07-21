@@ -23,7 +23,11 @@
 //! representations: cell count, per-cell value/centre/area, domain bounds, and
 //! pointwise [`sample`](ScalarField2D::sample), plus default aggregates (flux,
 //! sum, mean, min, max). Downstream code can accept `&dyn ScalarField2D` and
-//! treat either representation identically. Two implementations:
+//! treat either representation identically. [`FieldOps`] extends it with the
+//! operator workflow — continuous interpolation, gradient, Laplacian and the
+//! Poisson solve — for generic (`T: FieldOps`) code that must run on either
+//! representation; being `Self`-valued it is a generic bound, not a trait
+//! object. Two implementations:
 //!
 //! * [`PixelGrid`] (module `uniform`) — a [`Grid2D`] paired with a
 //!   [`FieldArray2D`] of samples: a scalar field on a regular grid. The main
@@ -75,6 +79,7 @@ pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 mod point;
 mod bbox;
 mod field;
+mod ops;
 mod uniform;
 mod adaptive;
 mod mesh;
@@ -82,6 +87,7 @@ mod mesh;
 pub use point::Point2D;
 pub use bbox::BBox;
 pub use field::ScalarField2D;
+pub use ops::FieldOps;
 pub use uniform::{
     BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, PoissonConfig,
 };

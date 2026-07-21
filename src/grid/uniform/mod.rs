@@ -20,6 +20,7 @@ mod interp;
 mod spectral;
 mod diff;
 mod poisson;
+mod fieldops;
 
 pub use grid2d::Grid2D;
 pub use pixelgrid::PixelGrid;
