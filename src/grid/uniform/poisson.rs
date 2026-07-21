@@ -117,7 +117,8 @@ impl PixelGrid {
                 };
             });
         }
-        Self::ifft2d(&fhat)
+        // fhat came from fft2d, so the dimensions are already power-of-two.
+        Ok(Self::ifft2d_unchecked(&fhat))
     }
 
     /// Solve $\nabla^2 \psi = f$ by conjugate gradient on the 5-point Laplacian,
@@ -137,7 +138,16 @@ impl PixelGrid {
         &self,
         cfg: impl Into<Option<PoissonConfig>>,
     ) -> Result<(FieldArray2D, SolveInfo)> {
-        let cfg = cfg.into().unwrap_or_default();
+        self.poisson_cg_impl(cfg.into().unwrap_or_default())
+    }
+
+    /// Concrete implementation of [`Self::poisson_cg`]. Keeping the solver body in
+    /// a single non-generic function (rather than in the `impl Into<…>` wrapper)
+    /// avoids re-monomorphizing it per argument type.
+    ///
+    /// # Arguments
+    /// * `cfg` - solver configuration (tolerance, iterations, BC)
+    fn poisson_cg_impl(&self, cfg: PoissonConfig) -> Result<(FieldArray2D, SolveInfo)> {
         if cfg.bc == BoundaryCondition::Natural {
             return Err(LensForgeError::computation_error(
                 "poisson_cg requires a symmetric boundary condition (Periodic, Dirichlet, or \
@@ -169,8 +179,9 @@ impl PixelGrid {
         let bnorm2 = dot(&b, &b);
 
         let mut x = vec![0.0f64; m];
+        // `x` always has length m = nx*ny, so the reshape cannot fail.
         if bnorm2 == 0.0 {
-            let psi = to_field(x, ny, nx)?;
+            let psi = to_field(x, ny, nx).expect("x has length nx*ny");
             return Ok((
                 psi,
                 SolveInfo {
@@ -211,7 +222,7 @@ impl PixelGrid {
             rs = rs_new;
         }
 
-        let psi = to_field(x, ny, nx)?;
+        let psi = to_field(x, ny, nx).expect("x has length nx*ny");
         let info = SolveInfo {
             iterations,
             residual: (rs / bnorm2).sqrt(),

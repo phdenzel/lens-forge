@@ -95,14 +95,11 @@ impl PixelGrid {
     /// * `grid` - grid struct holding information about the geometry
     /// * `vec` - pixel value vector
     pub fn from_vec(grid: Grid2D, v: Vec<f64>) -> Result<Self> {
-        if v.len() != grid.n_pixels() {
-            return Err(LensForgeError::dimension_mismatch(
-                format!("{}", grid.n_pixels()),
-                format!("{}", v.len()),
-            ));
-        }
+        // `from_shape_vec` already rejects a length that does not match the shape,
+        // so map its error to a dimension mismatch rather than checking twice.
+        let (expected, got) = (grid.n_pixels(), v.len());
         let values = Array2::from_shape_vec(grid.shape(), v)
-            .map_err(|e| LensForgeError::numerical_error(e.to_string()))?;
+            .map_err(|_| LensForgeError::dimension_mismatch(expected.to_string(), got.to_string()))?;
         Ok(Self { grid, values })
     }
 

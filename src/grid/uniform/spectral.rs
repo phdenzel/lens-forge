@@ -105,6 +105,19 @@ impl PixelGrid {
                 ny, nx
             )));
         }
+        Ok(Self::ifft2d_unchecked(arr))
+    }
+
+    /// Inverse 2D FFT assuming power-of-two dimensions (no validation).
+    ///
+    /// Internal fast path for callers that produced `arr` from [`Self::fft2d`],
+    /// so the dimensions are already power-of-two and the transform cannot fail.
+    ///
+    /// # Arguments
+    /// * `arr` - complex ndarray to be inverse transformed
+    pub(crate) fn ifft2d_unchecked(arr: &ComplexFieldArray2D) -> FieldArray2D {
+        let nx = arr.ncols();
+        let ny = arr.nrows();
 
         let mut buffer: Vec<Complex<f64>> = arr.iter().cloned().collect();
         let opts = Options::default();
@@ -133,8 +146,8 @@ impl PixelGrid {
         }
 
         let values_re: Vec<f64> = buffer.iter().map(|c| c.re).collect();
-        Array2::from_shape_vec((ny, nx), values_re)
-            .map_err(|e| LensForgeError::numerical_error(e.to_string()))
+        // Length equals ny*nx by construction, so the reshape cannot fail.
+        Array2::from_shape_vec((ny, nx), values_re).expect("buffer length matches (ny, nx)")
     }
 
     /// Compute FFT shift (move zero-frequency component to centre)
@@ -188,13 +201,9 @@ impl PixelGrid {
     /// Fourier symbols (for gradients) for given finite difference stencil types
     ///
     /// # Arguments
-    /// * `stencil`: derivative stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `stencil`: derivative stencil type
     #[inline]
-    fn fourier_symbols_fd1(
-        &self,
-        stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<FourierSymbols> {
-        let stencil = stencil.into().unwrap_or_default();
+    fn fourier_symbols_fd1(&self, stencil: DerivativeStencil) -> FourierSymbols {
         let (kx, ky) = self.grid.wavenumbers();
         let dx = self.grid.dx();
         let dy = self.grid.dy();
@@ -265,19 +274,15 @@ impl PixelGrid {
             }
         };
 
-        Ok((kxd1, kyd1))
+        (kxd1, kyd1)
     }
 
     /// Fourier symbols (for Laplacian) for given finite difference stencil types
     ///
     /// # Arguments
-    /// * `stencil`: Laplacian stencil type (default: DerivativeStencil::Central; defaults if `None`)
+    /// * `stencil`: Laplacian stencil type
     #[inline]
-    fn fourier_symbols_fd2(
-        &self,
-        stencil: impl Into<Option<DerivativeStencil>>,
-    ) -> Result<FourierSymbols> {
-        let stencil = stencil.into().unwrap_or_default();
+    fn fourier_symbols_fd2(&self, stencil: DerivativeStencil) -> FourierSymbols {
         let (kx, ky) = self.grid.wavenumbers();
         let dx = self.grid.dx();
         let dy = self.grid.dy();
@@ -383,7 +388,7 @@ impl PixelGrid {
             }
         };
 
-        Ok((kxd2, kyd2))
+        (kxd2, kyd2)
     }
 
     /// Compute gradient using spectral method (using FFT)
@@ -395,7 +400,7 @@ impl PixelGrid {
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Result<VectorField2D> {
         let stencil = stencil.into().unwrap_or_default();
-        let (kx_fd, ky_fd) = self.fourier_symbols_fd1(stencil)?;
+        let (kx_fd, ky_fd) = self.fourier_symbols_fd1(stencil);
         self.gradient_spectral_k(&kx_fd, &ky_fd)
     }
 
@@ -423,8 +428,9 @@ impl PixelGrid {
             row.mapv_inplace(|fhat| fhat * ky);
         }
 
-        let dvdx = Self::ifft2d(&dvdx_fft)?;
-        let dvdy = Self::ifft2d(&dvdy_fft)?;
+        // dvdx_fft came from fft2d, so the dimensions are already power-of-two.
+        let dvdx = Self::ifft2d_unchecked(&dvdx_fft);
+        let dvdy = Self::ifft2d_unchecked(&dvdy_fft);
 
         Ok((dvdx, dvdy))
     }
@@ -440,7 +446,7 @@ impl PixelGrid {
         stencil: impl Into<Option<DerivativeStencil>>,
     ) -> Result<FieldArray2D> {
         let stencil = stencil.into().unwrap_or_default();
-        let (kx_fd2, ky_fd2) = self.fourier_symbols_fd2(stencil)?;
+        let (kx_fd2, ky_fd2) = self.fourier_symbols_fd2(stencil);
         self.laplacian_spectral_k(&kx_fd2, &ky_fd2)
     }
 
@@ -464,7 +470,8 @@ impl PixelGrid {
                 .for_each(|fhat, &kx2| *fhat *= kx2 + ky2);
         }
 
-        Self::ifft2d(&fft_data)
+        // fft_data came from fft2d, so the dimensions are already power-of-two.
+        Ok(Self::ifft2d_unchecked(&fft_data))
     }
 
     /* ============ Exact spectral operators =============================== */
