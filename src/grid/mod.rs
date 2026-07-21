@@ -53,10 +53,14 @@
 //!
 //! # Type aliases
 //!
-//! [`FieldArray2D`], [`VectorField2D`], [`ComplexArray1D`],
+//! [`FieldArray1D`], [`FieldArray2D`], [`VectorField2D`], [`ComplexArray1D`],
 //! [`ComplexFieldArray2D`], and [`FourierSymbols`] name the `ndarray` types used
-//! for scalar/vector fields and their Fourier transforms.
+//! for scalar/vector fields and their Fourier transforms. [`FieldArray1D`] backs
+//! the mesh field ([`MeshGrid`]); [`FieldArray2D`] backs the regular grid
+//! ([`PixelGrid`]).
 
+/// A 1D scalar field sampled on an unstructured mesh (one value per cell).
+pub type FieldArray1D = ndarray::Array1<f64>;
 /// A 2D scalar field sampled on a grid (row-major, indexed `[j, i]`).
 pub type FieldArray2D = ndarray::Array2<f64>;
 /// A 2D vector field as a pair of scalar-field components `(x, y)`.

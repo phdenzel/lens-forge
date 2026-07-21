@@ -677,7 +677,7 @@ mod tests {
         MeshGrid::new(
             &sites,
             BBox::from_lims(0.0, 1.0, 0.0, 1.0),
-            vec![1.0, 2.0, 3.0, 4.0],
+            ndarray::arr1(&[1.0, 2.0, 3.0, 4.0]),
         )
         .unwrap()
     }
