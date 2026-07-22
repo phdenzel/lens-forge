@@ -29,11 +29,13 @@ pub mod barnes_hut;
 pub mod direct;
 pub mod jet;
 pub mod monopole;
+pub mod multipole;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use jet::PotentialJet;
 pub use monopole::Monopole;
+pub use multipole::Multipole;
 
 use crate::grid::Point2D;
 
