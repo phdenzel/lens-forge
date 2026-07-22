@@ -4,10 +4,11 @@
 //! The [`PotentialJet`]: the potential and its derivatives at a query point.
 //!
 //! Holds the 2-jet of ψ — value, gradient (deflection) and Hessian — the
-//! order-≤2 truncation of a [`LocalExpansion`](super::local::LocalExpansion).
+//! order-≤2 truncation of a [`LocalExpansion`](super::expansion::LocalExpansion).
 //! The lensing observables κ, shear and magnification are derived from it.
 
 use crate::grid::Point2D;
+use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
 /// The potential ψ and its derivatives (deflection, Hessian) at one point.
@@ -53,6 +54,28 @@ impl PotentialJet {
         self.hessian[0][1] += hxy;
         self.hessian[1][0] += hxy;
         self.hessian[1][1] += hyy;
+    }
+
+    /// Build the jet from the holomorphic potential Φ and its derivatives at a
+    /// source-free point (κ = 0): ψ = Re Φ, α = conj Φ′, shear = conj Φ″.
+    ///
+    /// The bridge shared by the [`Multipole`](super::multipole::Multipole) and
+    /// [`LocalExpansion`](super::expansion::LocalExpansion) evaluators.
+    ///
+    /// # Arguments
+    /// * `phi` - Φ(θ).
+    /// * `dphi` - Φ′(θ).
+    /// * `ddphi` - Φ″(θ).
+    pub(crate) fn from_holomorphic(
+        phi: Complex<f64>,
+        dphi: Complex<f64>,
+        ddphi: Complex<f64>,
+    ) -> Self {
+        Self {
+            potential: phi.re,
+            deflection: Point2D::from_complex(dphi.conj()),
+            hessian: [[ddphi.re, -ddphi.im], [-ddphi.im, -ddphi.re]],
+        }
     }
 
     /// Convergence κ = ½∇²ψ = ½ tr H.

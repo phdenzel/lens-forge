@@ -27,12 +27,14 @@
 
 pub mod barnes_hut;
 pub mod direct;
+pub mod expansion;
 pub mod jet;
 pub mod monopole;
 pub mod multipole;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
+pub use expansion::LocalExpansion;
 pub use jet::PotentialJet;
 pub use monopole::Monopole;
 pub use multipole::Multipole;

@@ -80,14 +80,7 @@ impl Multipole {
             ddphi -= mk * wk * inv_w * inv_w * (kf + 1.0);
             wk *= inv_w;
         }
-        phi = phi * FRAC_1_PI;
-        dphi = dphi * FRAC_1_PI;
-        ddphi = ddphi * FRAC_1_PI;
-        PotentialJet {
-            potential: phi.re,
-            deflection: Point2D::from_complex(dphi.conj()),
-            hessian: [[ddphi.re, -ddphi.im], [-ddphi.im, -ddphi.re]],
-        }
+        PotentialJet::from_holomorphic(phi * FRAC_1_PI, dphi * FRAC_1_PI, ddphi * FRAC_1_PI)
     }
 }
 
