@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The [`Multipole`]: a source cluster's far-field expansion.
+//! The [`Multipole`]: a source's far-field expansion.
 //!
 //! Laurent expansion of the holomorphic potential Φ(z) = (1/π) Σ mᵢ ln(z − zᵢ)
 //! about a centre `z_c`: with `t_i = z_i − z_c` and `w = z − z_c`,
@@ -14,49 +14,45 @@ use crate::grid::Point2D;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
-/// A cluster's multipole (Laurent) expansion of Φ about [`center`](Self::center);
-/// `coeffs[k]` is the moment `M_k`, with `coeffs[0]` the total strength `M₀`.
+/// A source's multipole (Laurent) expansion of Φ about [`center`](Self::center):
+/// the real M₀ lives in [`strength`](Self::strength); `coeffs[i]` is `M_{i+1}`.
 pub struct Multipole {
     /// Expansion centre.
     pub center: Point2D,
-    /// Complex moments `M_k`, `k = 0..=order`.
+    /// The order-0 moment `M₀ = Σ mᵢ` (real).
+    pub strength: f64,
+    /// Complex moments `M_k` for `k ≥ 1`; `coeffs[i]` is `M_{i+1}`.
     pub coeffs: Vec<Complex<f64>>,
 }
 
 impl Multipole {
-    /// An order-0 multipole: a single aggregate monopole of `strength`.
+    /// Expand `sources` about `center` up to `order` (`coeffs` has `order`
+    /// entries `M_1..=M_order`; M₀ in [`strength`](Self::strength)),
+    /// `M_k = Σ mᵢ (zᵢ − center)ᵏ`.
     ///
     /// # Arguments
-    /// * `center` - expansion centre.
-    /// * `strength` - total (order-0) moment.
-    pub fn monopole(center: Point2D, strength: f64) -> Self {
-        Self { center, coeffs: vec![Complex::new(strength, 0.0)] }
-    }
-
-    /// Expand `sources` about `center` up to `order` (`coeffs` has `order + 1`
-    /// entries), `M_k = Σ mᵢ (zᵢ − center)ᵏ`.
-    ///
-    /// # Arguments
-    /// * `sources` - the cluster's monopoles.
+    /// * `sources` - the monopoles.
     /// * `center` - expansion centre.
     /// * `order` - highest moment retained.
     pub fn from_monopoles(sources: &[Monopole], center: Point2D, order: usize) -> Self {
         let zc = center.to_complex();
-        let mut coeffs = vec![Complex::new(0.0, 0.0); order + 1];
+        let mut strength = 0.0;
+        let mut coeffs = vec![Complex::new(0.0, 0.0); order];
         for s in sources {
             let t = s.position.to_complex() - zc;
-            let mut tk = Complex::new(1.0, 0.0); // t^0
+            strength += s.strength; // M₀
+            let mut tk = t; // t^1
             for c in coeffs.iter_mut() {
-                *c += tk * s.strength;
+                *c += tk * s.strength; // M_k = Σ mᵢ tᵢᵏ
                 tk *= t;
             }
         }
-        Self { center, coeffs }
+        Self { center, strength, coeffs }
     }
 
     /// Evaluate the far-field jet this expansion induces at `theta`.
     ///
-    /// Valid only outside the cluster (`|theta − center|` beyond its radius);
+    /// Valid only outside the field (`|theta − center|` beyond its radius);
     /// returns a zero jet exactly at the centre, where the series has a pole.
     ///
     /// # Arguments
@@ -67,14 +63,14 @@ impl Multipole {
             return PotentialJet::default();
         }
         let inv_w = w.inv();
-        let m0 = self.coeffs[0];
+        let m0 = Complex::new(self.strength, 0.0);
         // Φ, Φ', Φ'' as Laurent sums (prefactor 1/π folded in at the end).
         let mut phi = m0 * w.ln();
         let mut dphi = m0 * inv_w;
         let mut ddphi = -m0 * inv_w * inv_w;
         let mut wk = inv_w; // w^{-k}, k starting at 1
-        for (k, &mk) in self.coeffs.iter().enumerate().skip(1) {
-            let kf = k as f64;
+        for (i, &mk) in self.coeffs.iter().enumerate() {
+            let kf = (i + 1) as f64; // coeffs[i] = M_{i+1}
             phi -= mk * wk / kf;
             dphi += mk * wk * inv_w;
             ddphi -= mk * wk * inv_w * inv_w * (kf + 1.0);
@@ -105,7 +101,7 @@ mod tests {
     fn monopole_constructor_matches_a_single_source() {
         // Centred on the source, the order-0 expansion is exact, not approximate.
         let s = Monopole::new(Point2D::new(0.1, -0.2), 0.7);
-        let mp = Multipole::monopole(s.position, s.strength);
+        let mp = Multipole::from_monopoles(&[s], s.position, 0);
         let direct = DirectSum::build(&[s], SolverConfig::default());
         let theta = Point2D::new(3.0, 1.0);
         let a = mp.eval_jet(theta);
