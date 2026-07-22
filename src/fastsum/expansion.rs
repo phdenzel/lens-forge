@@ -6,10 +6,10 @@
 //! Taylor expansion of the holomorphic potential Φ about a source-free centre
 //! `z_t`: with `s_i = z_i − z_t` and `w = z − z_t`,
 //! Φ = (1/π)[Σ mᵢ ln(−sᵢ) − Σ_{k≥1} (1/k)(Σ mᵢ sᵢ^{−k}) wᵏ] = Σ bₖ wᵏ. The
-//! [`PotentialJet`] is the order-≤2 truncation — b₀, b₁, b₂ give ψ, α, H — so
+//! [`Jet`] is the order-≤2 truncation — b₀, b₁, b₂ give ψ, α, H — so
 //! this is the general-order form of the field-attribute abstraction.
 
-use crate::fastsum::{Monopole, PotentialJet};
+use crate::fastsum::{Monopole, Jet};
 use crate::grid::Point2D;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
@@ -61,7 +61,7 @@ impl LocalExpansion {
     ///
     /// # Arguments
     /// * `theta` - query point (near the centre).
-    pub fn eval_jet(&self, theta: Point2D) -> PotentialJet {
+    pub fn eval_jet(&self, theta: Point2D) -> Jet {
         let w = theta.to_complex() - self.center.to_complex();
         let mut phi = Complex::new(0.0, 0.0);
         let mut dphi = Complex::new(0.0, 0.0);
@@ -82,7 +82,7 @@ impl LocalExpansion {
             wk1 = wk;
             wk *= w;
         }
-        PotentialJet::from_holomorphic(phi, dphi, ddphi)
+        Jet::from_holomorphic(phi, dphi, ddphi)
     }
 }
 
@@ -112,9 +112,9 @@ mod tests {
         let le = LocalExpansion::from_monopoles(&bodies, center, 2);
         let direct = DirectSum::build(&bodies, SolverConfig::default());
         let a = le.eval_jet(center);
-        let b = direct.field(center);
-        assert!(a.deflection.distance(&b.deflection) < 1e-12);
-        assert!((a.potential - b.potential).abs() < 1e-12);
+        let b = direct.jet(center);
+        assert!(a.gradient.distance(&b.gradient) < 1e-12);
+        assert!((a.scalar - b.scalar).abs() < 1e-12);
         for r in 0..2 {
             for c in 0..2 {
                 assert!((a.hessian[r][c] - b.hessian[r][c]).abs() < 1e-12);
@@ -128,12 +128,12 @@ mod tests {
         let bodies = far_ring(24, 0x22, 5.0);
         let direct = DirectSum::build(&bodies, SolverConfig::default());
         let theta = Point2D::new(0.4, 0.3);
-        let exact = direct.field(theta);
+        let exact = direct.jet(theta);
         let err = |order: usize| {
             LocalExpansion::from_monopoles(&bodies, Point2D::origin(), order)
                 .eval_jet(theta)
-                .deflection
-                .distance(&exact.deflection)
+                .gradient
+                .distance(&exact.gradient)
         };
         let (e1, e4, e8) = (err(1), err(4), err(8));
         assert!(e4 < e1 && e8 < e4, "not monotone: {e1}, {e4}, {e8}");

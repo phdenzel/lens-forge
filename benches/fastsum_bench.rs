@@ -72,7 +72,7 @@ fn bench_backends(c: &mut Criterion) {
         for &kind in kinds {
             let solver = build_solver(kind, &src, cfg);
             group.bench_with_input(BenchmarkId::new(solver.name(), n), &query, |b, q| {
-                b.iter(|| black_box(solver.field_batch(black_box(q))));
+                b.iter(|| black_box(solver.jet_batch(black_box(q))));
             });
         }
         group.finish();

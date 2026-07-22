@@ -4,28 +4,28 @@
 //! Exact $O(N^2)$ direct summation — the accuracy oracle for the other backends.
 
 use crate::grid::Point2D;
-use crate::fastsum::{FieldSolver, Monopole, PotentialJet, SolverConfig};
+use crate::fastsum::{FieldSolver, Monopole, Jet, SolverConfig};
 
 /// Brute-force summation over all source elements. Exact (up to summation order),
 /// used to validate and benchmark the accelerated backends.
 #[derive(Debug, Clone)]
 pub struct DirectSum {
-    bodies: Vec<Monopole>,
+    elements: Vec<Monopole>,
     eps2: f64,
 }
 
 impl FieldSolver for DirectSum {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
         Self {
-            bodies: sources.to_vec(),
+            elements: sources.to_vec(),
             eps2: cfg.eps2,
         }
     }
 
-    fn field(&self, theta: Point2D) -> PotentialJet {
-        let mut f = PotentialJet::default();
-        for b in &self.bodies {
-            f.add_monopole(theta, b.position, b.strength, self.eps2);
+    fn jet(&self, theta: Point2D) -> Jet {
+        let mut f = Jet::default();
+        for e in &self.elements {
+            f.add_monopole(theta, e.position, e.strength, self.eps2);
         }
         f
     }

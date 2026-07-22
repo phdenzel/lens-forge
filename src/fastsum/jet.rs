@@ -1,28 +1,27 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The [`PotentialJet`]: the potential and its derivatives at a query point.
+//! The [`Jet`]: the potential and its derivatives at a query point.
 //!
 //! Holds the 2-jet of ψ — value, gradient (deflection) and Hessian — the
 //! order-≤2 truncation of a [`LocalExpansion`](super::expansion::LocalExpansion).
-//! The lensing observables κ, shear and magnification are derived from it.
 
 use crate::grid::Point2D;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
-/// The potential ψ and its derivatives (deflection, Hessian) at one point.
+/// The scalar potential ψ and its derivatives (gradient, Hessian) at one point.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct PotentialJet {
-    /// Potential ψ.
-    pub potential: f64,
-    /// Deflection α = ∇ψ.
-    pub deflection: Point2D,
+pub struct Jet {
+    /// Scalar value ψ.
+    pub scalar: f64,
+    /// Gradient ∇ψ.
+    pub gradient: Point2D,
     /// Row-major Hessian $\begin{bmatrix} \psi_{xx} & \psi_{xy} \\\\ \psi_{yx} & \psi_{yy} \end{bmatrix}$ (symmetric).
     pub hessian: [[f64; 2]; 2],
 }
 
-impl PotentialJet {
+impl Jet {
     /// Accumulate the contribution of a (softened) monopole at `source`.
     ///
     /// The shared near-field / leaf kernel used by every backend, so they stay
@@ -43,9 +42,9 @@ impl PotentialJet {
         }
         let inv = 1.0 / r2;
         let k = strength * FRAC_1_PI;
-        self.potential += 0.5 * k * r2.ln();
-        self.deflection.x += k * dx * inv;
-        self.deflection.y += k * dy * inv;
+        self.scalar += 0.5 * k * r2.ln();
+        self.gradient.x += k * dx * inv;
+        self.gradient.y += k * dy * inv;
         let inv2 = inv * inv;
         let hxx = k * (inv - 2.0 * dx * dx * inv2);
         let hxy = k * (-2.0 * dx * dy * inv2);
@@ -57,10 +56,7 @@ impl PotentialJet {
     }
 
     /// Build the jet from the holomorphic potential Φ and its derivatives at a
-    /// source-free point (κ = 0): ψ = Re Φ, α = conj Φ′, shear = conj Φ″.
-    ///
-    /// The bridge shared by the [`Multipole`](super::multipole::Multipole) and
-    /// [`LocalExpansion`](super::expansion::LocalExpansion) evaluators.
+    /// source-free point.
     ///
     /// # Arguments
     /// * `phi` - Φ(θ).
@@ -72,27 +68,29 @@ impl PotentialJet {
         ddphi: Complex<f64>,
     ) -> Self {
         Self {
-            potential: phi.re,
-            deflection: Point2D::from_complex(dphi.conj()),
+            scalar: phi.re,
+            gradient: Point2D::from_complex(dphi.conj()),
             hessian: [[ddphi.re, -ddphi.im], [-ddphi.im, -ddphi.re]],
         }
     }
 
-    /// Convergence κ = ½∇²ψ = ½ tr H.
+    /// Isotropic part of the Hessian, ½ tr H = ½∇²ψ.
     #[inline]
-    pub fn convergence(&self) -> f64 {
+    pub fn isotropic(&self) -> f64 {
         0.5 * (self.hessian[0][0] + self.hessian[1][1])
     }
 
-    /// Shear `(γ₁, γ₂) = (½(ψxx − ψyy), ψxy)`.
+    /// Deviatoric (trace-free symmetric) part of the Hessian,
+    /// `(½(ψxx − ψyy), ψxy)`.
     #[inline]
-    pub fn shear(&self) -> (f64, f64) {
+    pub fn deviatoric(&self) -> (f64, f64) {
         (0.5 * (self.hessian[0][0] - self.hessian[1][1]), self.hessian[0][1])
     }
 
-    /// Signed magnification μ = 1/det(A) with A = I − H.
+    /// Reciprocal Jacobian determinant of the gradient map φ = θ − ∇ψ,
+    /// `1/det(I − H)`.
     #[inline]
-    pub fn magnification(&self) -> f64 {
+    pub fn inv_jacobian_det(&self) -> f64 {
         let a11 = 1.0 - self.hessian[0][0];
         let a22 = 1.0 - self.hessian[1][1];
         1.0 / (a11 * a22 - self.hessian[0][1] * self.hessian[1][0])
@@ -106,20 +104,20 @@ mod tests {
     #[test]
     fn derived_observables_match_the_hessian() {
         // A jet with a known Hessian: κ, shear and μ follow directly.
-        let mut j = PotentialJet::default();
+        let mut j = Jet::default();
         j.hessian = [[0.3, 0.1], [0.1, -0.1]];
-        assert!((j.convergence() - 0.1).abs() < 1e-15);
-        let (g1, g2) = j.shear();
-        assert!((g1 - 0.2).abs() < 1e-15 && (g2 - 0.1).abs() < 1e-15);
+        assert!((j.isotropic() - 0.1).abs() < 1e-15);
+        let (d1, d2) = j.deviatoric();
+        assert!((d1 - 0.2).abs() < 1e-15 && (d2 - 0.1).abs() < 1e-15);
         // det(A) = (1-0.3)(1+0.1) - 0.1² = 0.77 - 0.01 = 0.76.
-        assert!((j.magnification() - 1.0 / 0.76).abs() < 1e-12);
+        assert!((j.inv_jacobian_det() - 1.0 / 0.76).abs() < 1e-12);
     }
 
     #[test]
     fn single_monopole_is_trace_free_away_from_the_source() {
         // Away from the (unsoftened) source ∇²ψ = 0, so κ = ½ tr H = 0.
-        let mut j = PotentialJet::default();
+        let mut j = Jet::default();
         j.add_monopole(Point2D::new(3.0, -2.0), Point2D::origin(), 0.5, 0.0);
-        assert!(j.convergence().abs() < 1e-15);
+        assert!(j.isotropic().abs() < 1e-15);
     }
 }

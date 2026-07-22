@@ -9,25 +9,25 @@
 //! field is read from Φ (ψ = Re Φ, α = conj Φ′, shear = conj Φ″). It is the
 //! order-0 case (`M₀` only) that the Barnes–Hut node acceptance already uses.
 
-use crate::fastsum::{Monopole, PotentialJet};
+use crate::fastsum::{Monopole, Jet};
 use crate::grid::Point2D;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
 /// A source's multipole (Laurent) expansion of Φ about [`center`](Self::center):
-/// the real M₀ lives in [`strength`](Self::strength); `coeffs[i]` is `M_{i+1}`.
+/// the real M₀ lives in [`strength`](Self::strength); `moments[i]` is `M_{i+1}`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Multipole {
     /// Expansion centre.
     pub center: Point2D,
     /// The order-0 moment `M₀ = Σ mᵢ` (real).
     pub strength: f64,
-    /// Complex moments `M_k` for `k ≥ 1`; `coeffs[i]` is `M_{i+1}`.
-    pub coeffs: Vec<Complex<f64>>,
+    /// Complex moments `M_k` for `k ≥ 1`; `moments[i]` is `M_{i+1}`.
+    pub moments: Vec<Complex<f64>>,
 }
 
 impl Multipole {
-    /// Expand `sources` about `center` up to `order` (`coeffs` has `order`
+    /// Expand `sources` about `center` up to `order` (`moments` has `order`
     /// entries `M_1..=M_order`; M₀ in [`strength`](Self::strength)),
     /// `M_k = Σ mᵢ (zᵢ − center)ᵏ`.
     ///
@@ -38,17 +38,17 @@ impl Multipole {
     pub fn from_monopoles(sources: &[Monopole], center: Point2D, order: usize) -> Self {
         let zc = center.to_complex();
         let mut strength = 0.0;
-        let mut coeffs = vec![Complex::new(0.0, 0.0); order];
+        let mut moments = vec![Complex::new(0.0, 0.0); order];
         for s in sources {
             let t = s.position.to_complex() - zc;
             strength += s.strength; // M₀
             let mut tk = t; // t^1
-            for c in coeffs.iter_mut() {
+            for c in moments.iter_mut() {
                 *c += tk * s.strength; // M_k = Σ mᵢ tᵢᵏ
                 tk *= t;
             }
         }
-        Self { center, strength, coeffs }
+        Self { center, strength, moments }
     }
 
     /// Evaluate the far-field jet this expansion induces at `theta`.
@@ -58,10 +58,10 @@ impl Multipole {
     ///
     /// # Arguments
     /// * `theta` - query point.
-    pub fn eval_jet(&self, theta: Point2D) -> PotentialJet {
+    pub fn eval_jet(&self, theta: Point2D) -> Jet {
         let w = theta.to_complex() - self.center.to_complex();
         if w.norm_sqr() == 0.0 {
-            return PotentialJet::default();
+            return Jet::default();
         }
         let inv_w = w.inv();
         let m0 = Complex::new(self.strength, 0.0);
@@ -70,21 +70,21 @@ impl Multipole {
         let mut dphi = m0 * inv_w;
         let mut ddphi = -m0 * inv_w * inv_w;
         let mut wk = inv_w; // w^{-k}, k starting at 1
-        for (i, &mk) in self.coeffs.iter().enumerate() {
-            let kf = (i + 1) as f64; // coeffs[i] = M_{i+1}
+        for (i, &mk) in self.moments.iter().enumerate() {
+            let kf = (i + 1) as f64; // moments[i] = M_{i+1}
             phi -= mk * wk / kf;
             dphi += mk * wk * inv_w;
             ddphi -= mk * wk * inv_w * inv_w * (kf + 1.0);
             wk *= inv_w;
         }
-        PotentialJet::from_holomorphic(phi * FRAC_1_PI, dphi * FRAC_1_PI, ddphi * FRAC_1_PI)
+        Jet::from_holomorphic(phi * FRAC_1_PI, dphi * FRAC_1_PI, ddphi * FRAC_1_PI)
     }
 }
 
 impl From<Monopole> for Multipole {
     /// Promote a point mass to an order-0 multipole centred on itself.
     fn from(m: Monopole) -> Self {
-        Self { center: m.position, strength: m.strength, coeffs: Vec::new() }
+        Self { center: m.position, strength: m.strength, moments: Vec::new() }
     }
 }
 
@@ -95,7 +95,7 @@ impl TryFrom<Multipole> for Monopole {
     /// Collapse an order-0 multipole to its point mass; fails (lossy) if any
     /// higher moment is present.
     fn try_from(m: Multipole) -> Result<Self, Self::Error> {
-        if m.coeffs.is_empty() {
+        if m.moments.is_empty() {
             Ok(Monopole::new(m.center, m.strength))
         } else {
             Err(m)
@@ -128,10 +128,10 @@ mod tests {
         let direct = DirectSum::build(&[s], SolverConfig::default());
         let theta = Point2D::new(3.0, 1.0);
         let a = mp.eval_jet(theta);
-        let b = direct.field(theta);
-        assert!(a.deflection.distance(&b.deflection) < 1e-12);
-        assert!((a.potential - b.potential).abs() < 1e-12);
-        assert!(a.convergence().abs() < 1e-12); // trace-free away from the source
+        let b = direct.jet(theta);
+        assert!(a.gradient.distance(&b.gradient) < 1e-12);
+        assert!((a.scalar - b.scalar).abs() < 1e-12);
+        assert!(a.isotropic().abs() < 1e-12); // trace-free away from the source
     }
 
     #[test]
@@ -151,17 +151,17 @@ mod tests {
         let bodies = cluster(40, 0xB19, 0.3);
         let direct = DirectSum::build(&bodies, SolverConfig::default());
         let theta = Point2D::new(5.0, 3.0);
-        let exact = direct.field(theta);
+        let exact = direct.jet(theta);
         let err = |order: usize| {
             Multipole::from_monopoles(&bodies, Point2D::origin(), order)
                 .eval_jet(theta)
-                .deflection
-                .distance(&exact.deflection)
+                .gradient
+                .distance(&exact.gradient)
         };
         let (e1, e4, e8) = (err(1), err(4), err(8));
         assert!(e4 < e1 && e8 < e4, "not monotone: {e1}, {e4}, {e8}");
         assert!(e8 < 1e-8, "order-8 error {e8} too large");
         let hi = Multipole::from_monopoles(&bodies, Point2D::origin(), 14).eval_jet(theta);
-        assert!((hi.potential - exact.potential).abs() < 1e-8);
+        assert!((hi.scalar - exact.scalar).abs() < 1e-8);
     }
 }

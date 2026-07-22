@@ -5,8 +5,8 @@
 
 use crate::grid::Point2D;
 
-/// A point source — the order-0 multipole. In lensing it is a cell reduced to
-/// its monopole, `strength = κ · area`.
+/// A point source — the order-0 multipole; e.g. a cell reduced to
+/// its monopole with `strength = density · area`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Monopole {
     /// Source position.

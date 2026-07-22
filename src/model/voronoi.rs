@@ -126,15 +126,15 @@ impl LensModel for VoronoiLens {
     }
 
     fn deflection(&self, theta: Point2D) -> Point2D {
-        self.solver.deflection(theta)
+        self.solver.gradient(theta)
     }
 
     fn potential(&self, theta: Point2D) -> f64 {
-        self.solver.field(theta).potential
+        self.solver.jet(theta).scalar
     }
 
     fn hessian(&self, theta: Point2D) -> [[f64; 2]; 2] {
-        self.solver.field(theta).hessian
+        self.solver.jet(theta).hessian
     }
 }
 

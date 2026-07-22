@@ -5,7 +5,7 @@
 //!
 //! Given a set of [`Monopole`] sources (order-0 multipoles; in lensing
 //! $\mathrm{strength} = \kappa_i \cdot \mathrm{area}_i$), every backend evaluates
-//! the same [`PotentialJet`] — ψ and its derivatives — at a query point $\theta$:
+//! the same [`Jet`] — ψ and its derivatives — at a query point $\theta$:
 //!
 //! $$ \psi(\theta) = \frac{1}{\pi} \sum_i m_i \tfrac{1}{2} \ln\left( \lvert \theta - \theta_i \rvert^2 + \varepsilon^2 \right) $$
 //!
@@ -35,7 +35,7 @@ pub mod multipole;
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use expansion::LocalExpansion;
-pub use jet::PotentialJet;
+pub use jet::Jet;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
 
@@ -98,28 +98,28 @@ impl SolverConfig {
     }
 }
 
-/// A fast-summation backend for the 2D lensing Green's function.
+/// A fast-summation backend for 2D Green's functions.
 pub trait FieldSolver {
     /// Build the backend from source elements and a configuration.
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self
     where
         Self: Sized;
 
-    /// Full field (ψ, α, H) at `theta`.
-    fn field(&self, theta: Point2D) -> PotentialJet;
+    /// The field's full 2-jet (scalar, gradient, hessian) at `theta`.
+    fn jet(&self, theta: Point2D) -> Jet;
 
-    /// Deflection only — the hot path for ray tracing.
-    fn deflection(&self, theta: Point2D) -> Point2D {
-        self.field(theta).deflection
+    /// Gradient only from the 2-jet.
+    fn gradient(&self, theta: Point2D) -> Point2D {
+        self.jet(theta).gradient
     }
 
-    /// Evaluate the full field at many targets. Backends with a cheaper batched
-    /// path (e.g. FMM target trees) may override this.
-    fn field_batch(&self, thetas: &[Point2D]) -> Vec<PotentialJet> {
-        thetas.iter().map(|&t| self.field(t)).collect()
+    /// Evaluate the full field jets at many targets. Backends with a cheaper
+    /// batched path (e.g. FMM target trees) may override this.
+    fn jet_batch(&self, thetas: &[Point2D]) -> Vec<Jet> {
+        thetas.iter().map(|&t| self.jet(t)).collect()
     }
 
-    /// Short identifier used in benchmarks/reports.
+    /// Short identifier of the type of solver.
     fn name(&self) -> &'static str;
 }
 
