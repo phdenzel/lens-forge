@@ -7,9 +7,9 @@
 //! It holds the generating sites, a half-plane-clipped Voronoi cell per site
 //! (polygon, area, centroid), and the site adjacency.
 
-use super::kdtree::KdTree;
 use super::triangulate::triangulate;
 use crate::grid::{BBox, Point2D};
+use crate::tree::KdTree;
 use crate::{LensForgeError, Result};
 
 /// The Voronoi cell polygons held in compressed-sparse-row (CSR) form.

@@ -15,7 +15,6 @@
 //!   site adjacency, and Lloyd relaxation.
 //! * `generators` — site-layout constructors (lattice, hexagonal, concentric,
 //!   density-graded).
-//! * `kdtree` — nearest-site point location.
 //! * `meshgrid` — [`MeshGrid`], the public Voronoi field type.
 //! * `faces` — shared Voronoi facet lengths, the geometry the finite-volume
 //!   operators discretize over.
@@ -25,7 +24,6 @@
 //! * `poisson` — conjugate-gradient Poisson solver ($\nabla^2 \psi = f$).
 
 mod generators;
-mod kdtree;
 mod predicates;
 mod triangulate;
 mod voronoi;
