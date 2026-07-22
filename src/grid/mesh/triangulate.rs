@@ -10,18 +10,19 @@
 //! opposite vertex fails an [`incircle`] test. Triangles store vertex indices and
 //! per-edge neighbour links, so later insertion (refinement) stays local.
 //!
-//! Resource: Berg et al., Computational Geometry (Ch. 9.3),
-//! DOI:10.1007/978-3-540-77974-2
+//! Resource: Berg et al., Computational Geometry (Ch. 9.3), DOI:10.1007/978-3-540-77974-2
 //!
-//! Design note: [`Triangulation`] is the finalized, immutable snapshot
-//! (super-triangle removed, indices remapped); the working state for further
-//! insertion is dropped by [`finalize`]. Refinement will promote that state into
-//! a persistent mutable mesh reusing [`locate`]/[`insert_inside`]/
-//! [`insert_on_edge`]/[`legalize`]; moving-mesh (Lloyd/CVT) regularization
-//! rebuilds from scratch instead.
+//! [`TriangulationBuilder`] holds the mutable working state (coordinates behind an
+//! enclosing super-triangle) and supports
+//! [`insert`](TriangulationBuilder::insert) one site at a time — for the initial
+//! build or later local refinement — reusing
+//! [`locate`]/[`insert_inside`]/[`insert_on_edge`]/[`legalize`].
+//! [`finalize`](TriangulationBuilder::finalize) snapshots it into the read-only
+//! [`Triangulation`] (super-triangle removed, indices remapped) without consuming
+//! the builder. Moving-mesh (Lloyd/CVT) regularization rebuilds from scratch.
 
 use super::predicates::{incircle, orient2d};
-use crate::grid::Point2D;
+use crate::grid::{BBox, Point2D};
 
 /// Sentinel for "no adjacent triangle" (a hull edge).
 pub(crate) const NO_NEIGHBOR: usize = usize::MAX;
@@ -40,6 +41,79 @@ struct Triangle {
 pub(crate) struct Triangulation {
     pub triangles: Vec<[usize; 3]>,
     pub neighbors: Vec<[usize; 3]>,
+}
+
+/// Mutable Delaunay triangulation state for incremental construction and local
+/// refinement.
+///
+/// Holds the site coordinates behind an enclosing super-triangle plus the working
+/// triangle list, so [`insert`](Self::insert) can add one site at a time — during
+/// the initial build or later, to refine locally — reusing
+/// [`locate`]/[`insert_inside`]/[`insert_on_edge`]/[`legalize`].
+/// [`finalize`](Self::finalize) snapshots it into a read-only [`Triangulation`]
+/// without consuming the builder, so refinement can continue afterwards.
+pub(crate) struct TriangulationBuilder {
+    /// Super-triangle vertices at `[0, 1, 2]`, inserted sites at `[3..]`.
+    coords: Vec<Point2D>,
+    /// Working triangles over `coords` (still including the super-triangle).
+    tris: Vec<Triangle>,
+    /// Last-touched triangle, warm-starting the next [`locate`] walk.
+    last: usize,
+    /// Reused legalization work list.
+    stack: Vec<(usize, usize)>,
+}
+
+impl TriangulationBuilder {
+    /// Create an empty triangulation whose super-triangle encloses `domain`.
+    ///
+    /// # Arguments
+    /// * `domain` - a box containing every point that will later be inserted; the
+    ///   super-triangle is sized generously around it.
+    pub(crate) fn new(domain: BBox) -> Self {
+        let dmax = domain.width().max(domain.height()).max(1.0);
+        let c = domain.center();
+        let m = 1000.0 * dmax;
+        // super-triangle (bottom-left, bottom-right, top) is counter-clockwise
+        let coords = vec![
+            Point2D::new(c.x - m, c.y - m),
+            Point2D::new(c.x + m, c.y - m),
+            Point2D::new(c.x, c.y + m),
+        ];
+        let tris = vec![Triangle {
+            vertices: [0, 1, 2],
+            neighbors: [NO_NEIGHBOR; 3],
+        }];
+        Self { coords, tris, last: 0, stack: Vec::new() }
+    }
+
+    /// Insert `p`, restore the Delaunay property, and return the site index
+    /// assigned to it (dense, in insertion order).
+    ///
+    /// `p` must lie within the `domain` passed to [`new`](Self::new). A point
+    /// coinciding with an existing site is not triangulated; its returned index is
+    /// then an orphan carrying no triangle (the handling [`triangulate`] gives
+    /// duplicate inputs).
+    ///
+    /// # Arguments
+    /// * `p` - the site to insert.
+    pub(crate) fn insert(&mut self, p: Point2D) -> usize {
+        let pidx = self.coords.len();
+        self.coords.push(p);
+        self.last = match locate(&self.tris, &self.coords, p, self.last) {
+            Located::Inside(t) => insert_inside(&mut self.tris, t, pidx, &mut self.stack),
+            Located::Edge(t, e) => insert_on_edge(&mut self.tris, t, e, pidx, &mut self.stack),
+            Located::Vertex => self.last, // duplicate: orphan coord, mesh unchanged
+        };
+        legalize(&mut self.tris, &self.coords, &mut self.stack);
+        pidx - 3
+    }
+
+    /// Snapshot the current triangulation over the inserted sites as a read-only
+    /// [`Triangulation`], dropping the super-triangle and remapping vertex indices
+    /// to site indices. Leaves the builder intact for further insertion.
+    pub(crate) fn finalize(&self) -> Triangulation {
+        finalize(&self.tris)
+    }
 }
 
 /// Point locations relative to triangles.
@@ -475,15 +549,8 @@ fn locate(tris: &[Triangle], coords: &[Point2D], p: Point2D, start: usize) -> Lo
     }
 }
 
-/// Seed the working triangulation state with a large enclosing super-triangle.
-///
-/// # Arguments
-/// * `points` - the input sites; copied into the returned coordinates unchanged.
-///
-/// Returns `(coords, tris)`: the input points followed by the three super-triangle
-/// vertices, and a one-element triangle list for the (counter-clockwise) super-triangle.
-fn initialize_super_triangle(points: &[Point2D]) -> (Vec<Point2D>, Vec<Triangle>) {
-    let n = points.len();
+/// Axis-aligned bounding box of `points` (assumed non-empty).
+fn initialize_domain(points: &[Point2D]) -> BBox {
     let (mut minx, mut miny) = (f64::INFINITY, f64::INFINITY);
     let (mut maxx, mut maxy) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
     for p in points {
@@ -492,37 +559,21 @@ fn initialize_super_triangle(points: &[Point2D]) -> (Vec<Point2D>, Vec<Triangle>
         maxx = maxx.max(p.x);
         maxy = maxy.max(p.y);
     }
-    let dmax = (maxx - minx).max(maxy - miny).max(1.0);
-    let cx = 0.5 * (minx + maxx);
-    let cy = 0.5 * (miny + maxy);
-    let m = 1000.0 * dmax;
-
-    let mut coords: Vec<Point2D> = points.to_vec();
-    coords.push(Point2D::new(cx - m, cy - m));
-    coords.push(Point2D::new(cx + m, cy - m));
-    coords.push(Point2D::new(cx, cy + m));
-
-    // super-triangle (bottom-left, bottom-right, top) is counter-clockwise
-    let tris = vec![Triangle {
-        vertices: [n, n + 1, n + 2],
-        neighbors: [NO_NEIGHBOR, NO_NEIGHBOR, NO_NEIGHBOR],
-    }];
-    (coords, tris)
+    BBox::from_lims(minx, maxx, miny, maxy)
 }
 
-/// Drop super-triangle triangles and remap neighbour indices as hull edge.
+/// Snapshot `tris` into a [`Triangulation`] over the sites: drop every triangle
+/// still touching the super-triangle (any vertex `< 3`), remap the remaining
+/// vertices to site indices (`v - 3`), and turn links to dropped triangles into
+/// [`NO_NEIGHBOR`] hull edges.
 ///
 /// # Arguments
-/// * `tris` - the finished triangle list, still holding the super-triangle.
-/// * `n` - number of input points; vertices `>= n` are super-triangle vertices.
-///
-/// Returns the [`Triangulation`] over the input points, with links to dropped
-/// triangles turned into [`NO_NEIGHBOR`] hull edges.
-fn finalize(tris: &[Triangle], n: usize) -> Triangulation {
+/// * `tris` - the working triangle list, super-triangle at vertices `[0, 1, 2]`.
+fn finalize(tris: &[Triangle]) -> Triangulation {
     let mut new_index: Vec<Option<usize>> = vec![None; tris.len()];
     let mut count = 0usize;
     for (i, t) in tris.iter().enumerate() {
-        if t.vertices.iter().all(|&v| v < n) {
+        if t.vertices.iter().all(|&v| v >= 3) {
             new_index[i] = Some(count);
             count += 1;
         }
@@ -534,23 +585,18 @@ fn finalize(tris: &[Triangle], n: usize) -> Triangulation {
         if new_index[i].is_none() {
             continue;
         }
-	// Write triangle vertices
-        triangles.push(t.vertices);
-        // Neighbors of dropped vertices become a hull edges
+        // Site indices drop the three super-triangle vertices.
+        triangles.push([t.vertices[0] - 3, t.vertices[1] - 3, t.vertices[2] - 3]);
+        // Links to dropped triangles become hull edges.
         let mut nb = [NO_NEIGHBOR; 3];
         for k in 0..3 {
             if t.neighbors[k] != NO_NEIGHBOR {
                 nb[k] = new_index[t.neighbors[k]].unwrap_or(NO_NEIGHBOR);
             }
         }
-	// Write neighbours
         neighbors.push(nb);
     }
-    // Build final triangulation struct
-    Triangulation {
-        triangles,
-        neighbors,
-    }
+    Triangulation { triangles, neighbors }
 }
 
 /// Build the Delaunay triangulation of `points` by incremental insertion.
@@ -562,29 +608,18 @@ fn finalize(tris: &[Triangle], n: usize) -> Triangulation {
 /// neighbour links); empty when fewer than three points are given.
 pub(crate) fn triangulate(points: &[Point2D]) -> Triangulation {
     // Only triangulate with enough points
-    let n = points.len();
-    if n < 3 {
+    if points.len() < 3 {
         return Triangulation {
             triangles: Vec::new(),
             neighbors: Vec::new(),
         };
     }
-    // Initialize all-encompassing super triangle
-    let (coords, mut tris) = initialize_super_triangle(points);
-    let mut stack: Vec<(usize, usize)> = Vec::new();
-    let mut last = 0usize;
-    // Build new triangles depending on location, and check Delaunay property
-    for pidx in 0..n {
-        let p = coords[pidx];
-        last = match locate(&tris, &coords, p, last) {
-            Located::Inside(t) => insert_inside(&mut tris, t, pidx, &mut stack),
-            Located::Edge(t, e) => insert_on_edge(&mut tris, t, e, pidx, &mut stack),
-            Located::Vertex => continue, // duplicate site
-        };
-        legalize(&mut tris, &coords, &mut stack);
+    // Insert every point into a builder sized to enclose them, then snapshot.
+    let mut builder = TriangulationBuilder::new(initialize_domain(points));
+    for &p in points {
+        builder.insert(p);
     }
-    // Remove super triangle
-    finalize(&tris, n)
+    builder.finalize()
 }
 
 #[cfg(test)]
@@ -736,5 +771,52 @@ mod tests {
             let t = triangulate(pts);
             assert!(t.triangles.is_empty() && t.neighbors.is_empty());
         }
+    }
+
+    #[test]
+    fn insert_after_finalize_refines_locally() {
+        // Build a coarse mesh, snapshot it, then keep inserting sites into the same
+        // builder (local refinement). Each snapshot stays Delaunay over its sites,
+        // and finalize does not consume the builder.
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        let mut b = TriangulationBuilder::new(bbox);
+        let mut all: Vec<Point2D> = Vec::new();
+        for &q in &[p(0.05, 0.05), p(0.95, 0.05), p(0.95, 0.95), p(0.05, 0.95), p(0.5, 0.5)] {
+            b.insert(q);
+            all.push(q);
+        }
+        let coarse = b.finalize();
+        assert_delaunay(&all, &coarse);
+
+        // Refine near one corner; the warm-started walk re-enters the built mesh.
+        for &q in &[p(0.2, 0.2), p(0.3, 0.25), p(0.25, 0.35)] {
+            let idx = b.insert(q);
+            assert_eq!(idx, all.len()); // dense site index in insertion order
+            all.push(q);
+        }
+        let refined = b.finalize();
+        assert!(refined.triangles.len() > coarse.triangles.len());
+        assert_delaunay(&all, &refined);
+        assert_neighbor_symmetry(&refined);
+        for v in 0..all.len() {
+            assert!(refined.triangles.iter().any(|tri| tri.contains(&v)), "site {v} missing");
+        }
+    }
+
+    #[test]
+    fn reinserting_an_existing_site_is_a_noop() {
+        // A point coinciding with an existing site is located as a vertex and left
+        // out (the `insert` duplicate path), so the mesh is unchanged.
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        let sites = [p(0.1, 0.1), p(0.9, 0.1), p(0.9, 0.9), p(0.1, 0.9), p(0.5, 0.5)];
+        let mut b = TriangulationBuilder::new(bbox);
+        for &q in &sites {
+            b.insert(q);
+        }
+        let before = b.finalize();
+        b.insert(p(0.5, 0.5)); // duplicate of site 4
+        let after = b.finalize();
+        assert_eq!(before.triangles, after.triangles, "duplicate insert changed the mesh");
+        assert_delaunay(&sites, &after);
     }
 }
