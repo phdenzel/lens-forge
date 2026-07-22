@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Basic 2D point type
 
+use num::complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A point in the 2D plane.
@@ -63,6 +64,21 @@ impl Point2D {
             x: r * theta.cos(),
             y: r * theta.sin(),
         }
+    }
+
+    /// View the point as the complex number `x + iy`
+    #[inline]
+    pub fn to_complex(&self) -> Complex<f64> {
+        Complex::new(self.x, self.y)
+    }
+
+    /// Create a point from the complex number `re + i·im`
+    ///
+    /// # Arguments
+    /// * `c` - complex value mapped to `(re, im)`
+    #[inline]
+    pub fn from_complex(c: Complex<f64>) -> Self {
+        Self { x: c.re, y: c.im }
     }
 
     /// Compute the Euclidean norm
@@ -1684,5 +1700,13 @@ mod tests {
         let p = Point2D::new(-3.0, 4.0);
         assert!(approx_eq(p.norm(), 5.0));
         assert!(approx_eq(p.norm_l1(), 7.0));
+    }
+
+    #[test]
+    fn test_complex_roundtrip() {
+        let p = Point2D::new(-1.5, 2.25);
+        let c = p.to_complex();
+        assert!(approx_eq(c.re, -1.5) && approx_eq(c.im, 2.25));
+        assert_eq!(Point2D::from_complex(c), p);
     }
 }
