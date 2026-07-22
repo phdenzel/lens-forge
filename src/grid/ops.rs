@@ -21,9 +21,9 @@ use crate::{Result, SolveInfo};
 /// ([`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg) and
 /// [`MeshGrid::poisson_cg`](crate::grid::MeshGrid::poisson_cg)).
 ///
-/// Shared by both representations: the mesh solver reads only `tol` and
-/// `max_iter` (its boundary is always the natural zero-flux one), while the grid
-/// solver also honours `bc`.
+/// Shared by both representations: the mesh solver reads `tol`, `max_iter` and
+/// the `Dirichlet`/non-`Dirichlet` split of `bc` (pinned box vs. natural
+/// zero-flux boundary), while the grid solver honours the full `bc`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PoissonConfig {
     /// Relative residual tolerance $\lVert r \rVert / \lVert b \rVert$ at which
@@ -33,8 +33,9 @@ pub struct PoissonConfig {
     pub max_iter: usize,
     /// Boundary condition for the discrete Laplacian. Must be symmetric;
     /// `Natural` is rejected by
-    /// [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg). Ignored by
-    /// the mesh solver, which always uses a natural zero-flux boundary.
+    /// [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg). The mesh
+    /// solver reads only the `Dirichlet`/non-`Dirichlet` split: `Dirichlet` pins
+    /// $\psi = 0$ on the box, any other value keeps its natural zero-flux boundary.
     pub bc: BoundaryCondition,
 }
 

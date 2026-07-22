@@ -125,6 +125,53 @@ pub(super) fn directed_facet_lengths(
     }
 }
 
+/// Per-cell homogeneous-Dirichlet boundary transmissibility `Σ ℓ_b / d_b` over
+/// the domain-box facets, with `d_b` the perpendicular site-to-box distance;
+/// cells with no box facet get `0`.
+///
+/// # Arguments
+/// * `mesh` - the tessellation supplying polygons, sites and the domain box.
+pub(super) fn boundary_transmissibilities(mesh: &VoronoiMesh) -> Vec<f64> {
+    let (x0, x1) = mesh.extent_x();
+    let (y0, y1) = mesh.extent_y();
+    let eps = 1e-9 * (x1 - x0).max(y1 - y0).max(1e-300);
+    let n = mesh.n_cells();
+    let mut out = vec![0.0f64; n];
+    for (i, o) in out.iter_mut().enumerate() {
+        let site = mesh.site(i);
+        let poly = mesh.cell_polygon(i);
+        let m = poly.len();
+        if m < 2 {
+            continue;
+        }
+        let mut acc = 0.0;
+        for e in 0..m {
+            let a = poly[e];
+            let b = poly[(e + 1) % m];
+            // A box facet has both endpoints on one axis-aligned box side; its
+            // ghost lies at twice the perpendicular site-to-side distance.
+            let dist = if (a.x - x0).abs() < eps && (b.x - x0).abs() < eps {
+                site.x - x0
+            } else if (a.x - x1).abs() < eps && (b.x - x1).abs() < eps {
+                x1 - site.x
+            } else if (a.y - y0).abs() < eps && (b.y - y0).abs() < eps {
+                site.y - y0
+            } else if (a.y - y1).abs() < eps && (b.y - y1).abs() < eps {
+                y1 - site.y
+            } else {
+                continue;
+            };
+            // Boundary value sits on the box face, so d is the site-to-face
+            // distance (one-sided Dirichlet), not a doubled mirror-ghost distance.
+            if dist > 0.0 {
+                acc += a.distance(&b) / dist;
+            }
+        }
+        *o = acc;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

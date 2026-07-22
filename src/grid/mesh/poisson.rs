@@ -8,16 +8,19 @@
 //! gradient on the symmetric two-point-flux stiffness matrix (`apply_stiffness`
 //! in [`diff`](super::diff)), with this grid's field as the source $f$.
 //!
-//! Box facets carry no flux — a **natural zero-flux (Neumann)** boundary — so the
-//! problem is singular: the source is projected to a zero area-weighted mean
-//! (solvability) and $\psi$ is returned with a zero area-weighted mean (the gauge
-//! freedom). For lensing, pass $f = 2\kappa$. [`PoissonConfig`] is shared with the
-//! uniform solver; only `tol` and `max_iter` apply here.
+//! The default boundary is **natural zero-flux (Neumann)** — box facets carry no
+//! flux — so the problem is singular: the source is projected to a zero
+//! area-weighted mean (solvability) and $\psi$ is returned with a zero
+//! area-weighted mean (the gauge freedom). Setting `cfg.bc = Dirichlet` instead
+//! pins $\psi = 0$ on the box (one-sided box-facet fluxes), giving a unique,
+//! non-singular solution; every other `bc` value keeps the Neumann default. For
+//! lensing, pass $f = 2\kappa$. [`PoissonConfig`] is shared with the uniform
+//! solver; only `tol`, `max_iter` and the Dirichlet/Neumann split of `bc` apply.
 
 use super::diff::apply_stiffness;
-use super::faces::FaceGeometry;
+use super::faces::{boundary_transmissibilities, FaceGeometry};
 use super::meshgrid::MeshGrid;
-use crate::grid::{FieldArray1D, PoissonConfig};
+use crate::grid::{BoundaryCondition, FieldArray1D, PoissonConfig};
 use crate::{Result, SolveInfo};
 
 /// Dot product of two equal-length slices.
@@ -31,15 +34,15 @@ impl MeshGrid {
     /// as the source $f$ and returning the potential $\psi$ as a mesh grid
     /// sharing this geometry.
     ///
-    /// The boundary is the natural zero-flux (Neumann) one, so the problem is
+    /// With the default natural zero-flux (Neumann) boundary the problem is
     /// singular: the source is projected to a zero area-weighted mean and the
-    /// returned $\psi$ likewise has a zero area-weighted mean. Returns the
-    /// solution together with a [`SolveInfo`] (iterations, relative residual,
-    /// convergence flag).
+    /// returned $\psi$ likewise has one. `cfg.bc = Dirichlet` instead pins
+    /// $\psi = 0$ on the box for a unique solution. Returns the solution together
+    /// with a [`SolveInfo`] (iterations, relative residual, convergence flag).
     ///
     /// # Arguments
-    /// * `cfg` - solver configuration; only `tol` and `max_iter` are used
-    ///   (defaults if `None`).
+    /// * `cfg` - solver configuration; only `tol`, `max_iter` and the
+    ///   Dirichlet/Neumann split of `bc` are used (defaults if `None`).
     pub fn poisson_cg(
         &self,
         cfg: impl Into<Option<PoissonConfig>>,
@@ -57,9 +60,18 @@ impl MeshGrid {
         let areas: Vec<f64> = (0..n).map(|i| self.area(i)).collect();
         let total_area: f64 = areas.iter().sum();
 
-        // Solvability: project the source to a zero area-weighted mean, forming
-        // b = -Aᵢ(fᵢ - f̄) so A = -K is PSD and b ⟂ constants (K's null space).
-        let fbar = if total_area > 0.0 {
+        // Dirichlet pins ψ = 0 on the box (one-sided fluxes) so A = -K + diag(w)
+        // is positive definite; any other bc keeps the singular zero-flux boundary.
+        let dirichlet = cfg.bc == BoundaryCondition::Dirichlet;
+        let bweight = if dirichlet {
+            boundary_transmissibilities(self.mesh())
+        } else {
+            Vec::new()
+        };
+
+        // RHS b = -Aᵢ(fᵢ - f̄). Neumann projects f to a zero area-weighted mean
+        // for solvability (b ⟂ K's null space); Dirichlet is non-singular, f̄ = 0.
+        let fbar = if !dirichlet && total_area > 0.0 {
             (0..n).map(|i| areas[i] * self.value(i)).sum::<f64>() / total_area
         } else {
             0.0
@@ -74,23 +86,30 @@ impl MeshGrid {
         }
         let thresh = cfg.tol * cfg.tol * bnorm2;
 
-        // Standard CG with A p = -K p.
+        // Standard CG with A p = -K p (+ diag(w) p for Dirichlet).
         let mut r = b;
         let mut p = r.clone();
         let mut kp = vec![0.0f64; n];
+        let mut ap = vec![0.0f64; n];
         let mut rs = dot(&r, &r);
         let mut iterations = 0;
         let mut converged = rs <= thresh;
         while iterations < cfg.max_iter && !converged {
             apply_stiffness(self, &faces, &p, &mut kp);
-            let pap: f64 = p.iter().zip(&kp).map(|(pi, ki)| -pi * ki).sum();
+            for k in 0..n {
+                ap[k] = -kp[k];
+                if dirichlet {
+                    ap[k] += bweight[k] * p[k];
+                }
+            }
+            let pap = dot(&p, &ap);
             if pap <= 0.0 {
                 break; // constant (null-space) direction; nothing more to resolve
             }
             let alpha = rs / pap;
             for k in 0..n {
                 x[k] += alpha * p[k];
-                r[k] += alpha * kp[k]; // r -= alpha * A p, with A p = -K p
+                r[k] -= alpha * ap[k];
             }
             let rs_new = dot(&r, &r);
             iterations += 1;
@@ -106,8 +125,9 @@ impl MeshGrid {
             rs = rs_new;
         }
 
-        // Fix the additive-constant gauge: zero area-weighted mean.
-        if total_area > 0.0 {
+        // Neumann is singular: fix the additive-constant gauge (zero area-weighted
+        // mean). Dirichlet is unique, so the solution is kept as solved.
+        if !dirichlet && total_area > 0.0 {
             let mean = (0..n).map(|i| areas[i] * x[i]).sum::<f64>() / total_area;
             for xi in &mut x {
                 *xi -= mean;
@@ -179,6 +199,45 @@ mod tests {
             }
         }
         assert!(max_err < 0.05, "max interior error {max_err}");
+    }
+
+    #[test]
+    fn dirichlet_recovers_a_manufactured_potential() {
+        // ψ = sin(πx)sin(πy) vanishes on the box (homogeneous Dirichlet) and
+        // solves ∇²ψ = -2π²ψ, so the pinned-box solve recovers it uniquely.
+        use std::f64::consts::PI;
+        let psi_exact = |x: f64, y: f64| (PI * x).sin() * (PI * y).sin();
+        let m = mesh_from(|x, y| -2.0 * PI * PI * psi_exact(x, y));
+        let cfg = PoissonConfig::default()
+            .with_bc(crate::grid::BoundaryCondition::Dirichlet)
+            .with_tol(1e-10);
+        let (psi, info) = m.poisson_cg(cfg).unwrap();
+        assert!(info.converged, "did not converge: {info:?}");
+
+        // The one-sided box facets are first-order, so error concentrates near the
+        // boundary; the interior recovers ψ to the same tolerance as the Neumann case.
+        let mut max_err = 0.0f64;
+        for i in 0..m.len() {
+            if is_interior(&m, i) {
+                let want = psi_exact(m.site(i).x, m.site(i).y);
+                max_err = max_err.max((psi.value(i) - want).abs());
+            }
+        }
+        assert!(max_err < 0.05, "max interior error {max_err}");
+    }
+
+    #[test]
+    fn dirichlet_solution_is_not_mean_zero() {
+        // A single-signed source pins a non-zero potential on the box, so unlike
+        // the Neumann solve the Dirichlet solution keeps a non-zero mean.
+        let m = mesh_from(|_, _| 1.0);
+        let cfg = PoissonConfig::default()
+            .with_bc(crate::grid::BoundaryCondition::Dirichlet)
+            .with_tol(1e-10);
+        let (psi, info) = m.poisson_cg(cfg).unwrap();
+        assert!(info.converged);
+        let mean = (0..m.len()).map(|i| m.area(i) * psi.value(i)).sum::<f64>() / m.total_area();
+        assert!(mean.abs() > 1e-3, "expected non-zero mean, got {mean}");
     }
 
     #[test]
