@@ -11,7 +11,7 @@
 //! direct sum, and — planned — FMM / KIFMM / ℋ-matrix).
 
 use crate::grid::Point2D;
-use crate::fastsum::{FieldSolver, MassElement, SolverConfig, SolverKind, build_solver};
+use crate::fastsum::{FieldSolver, Monopole, SolverConfig, SolverKind, build_solver};
 use crate::model::lens::LensModel;
 use crate::{LensForgeError, Result};
 
@@ -85,9 +85,9 @@ impl VoronoiLens {
 
         let sites: Vec<Point2D> = cells.iter().map(|c| c.center).collect();
         let kappa: Vec<f64> = cells.iter().map(|c| c.kappa).collect();
-        let sources: Vec<MassElement> = cells
+        let sources: Vec<Monopole> = cells
             .iter()
-            .map(|c| MassElement::new(c.center, c.mass()))
+            .map(|c| Monopole::new(c.center, c.mass()))
             .collect();
         let solver = build_solver(kind, &sources, cfg);
         Ok(Self { sites, kappa, solver })

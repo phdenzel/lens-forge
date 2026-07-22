@@ -27,27 +27,14 @@
 
 pub mod barnes_hut;
 pub mod direct;
+pub mod monopole;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
+pub use monopole::Monopole;
 
 use crate::grid::Point2D;
 use std::f64::consts::FRAC_1_PI;
-
-/// A point-mass element: a lens cell reduced to its monopole
-/// $\mathrm{mass} = \kappa \cdot \mathrm{area}$.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MassElement {
-    pub pos: Point2D,
-    pub mass: f64,
-}
-
-impl MassElement {
-    #[inline]
-    pub fn new(pos: Point2D, mass: f64) -> Self {
-        Self { pos, mass }
-    }
-}
 
 /// Field quantities (potential, deflection, Hessian) at a query point.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -147,7 +134,7 @@ impl SolverConfig {
 /// A fast-summation backend for the 2D lensing Green's function.
 pub trait FieldSolver {
     /// Build the backend from source elements and a configuration.
-    fn build(sources: &[MassElement], cfg: SolverConfig) -> Self
+    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self
     where
         Self: Sized;
 
@@ -187,7 +174,7 @@ impl SolverKind {
 /// Build a boxed backend by kind.
 pub fn build_solver(
     kind: SolverKind,
-    sources: &[MassElement],
+    sources: &[Monopole],
     cfg: SolverConfig,
 ) -> Box<dyn FieldSolver + Send + Sync> {
     match kind {

@@ -11,7 +11,7 @@
 //! directly. $\theta_\mathrm{bh} = 0$ never accepts, recovering the exact sum.
 
 use crate::grid::Point2D;
-use crate::fastsum::{Field, FieldSolver, MassElement, SolverConfig};
+use crate::fastsum::{Field, FieldSolver, Monopole, SolverConfig};
 
 const MAX_DEPTH: usize = 64;
 
@@ -34,7 +34,7 @@ impl QNode {
 /// Barnes–Hut backend.
 #[derive(Debug)]
 pub struct BarnesHut {
-    bodies: Vec<MassElement>,
+    bodies: Vec<Monopole>,
     nodes: Vec<QNode>,
     root: usize,
     theta2: f64,
@@ -44,7 +44,7 @@ pub struct BarnesHut {
 
 impl BarnesHut {
     /// Build the quadtree over `bodies`, returning `(nodes, root_index)`.
-    fn build_tree(bodies: &[MassElement], leaf_size: usize) -> (Vec<QNode>, usize) {
+    fn build_tree(bodies: &[Monopole], leaf_size: usize) -> (Vec<QNode>, usize) {
         let mut nodes = Vec::new();
         if bodies.is_empty() {
             nodes.push(QNode {
@@ -57,7 +57,7 @@ impl BarnesHut {
             return (nodes, 0);
         }
 
-        let positions: Vec<Point2D> = bodies.iter().map(|b| b.pos).collect();
+        let positions: Vec<Point2D> = bodies.iter().map(|b| b.position).collect();
         let (lo, hi) = Point2D::bounding_box(&positions).expect("non-empty");
         let center = lo.midpoint(&hi);
         let mut half = 0.5 * (hi.x - lo.x).max(hi.y - lo.y);
@@ -73,7 +73,7 @@ impl BarnesHut {
 
     fn build_node(
         nodes: &mut Vec<QNode>,
-        bodies: &[MassElement],
+        bodies: &[Monopole],
         idx: &[usize],
         center: Point2D,
         half: f64,
@@ -85,9 +85,9 @@ impl BarnesHut {
         let mut cy = 0.0;
         for &b in idx {
             let e = bodies[b];
-            m += e.mass;
-            cx += e.mass * e.pos.x;
-            cy += e.mass * e.pos.y;
+            m += e.strength;
+            cx += e.strength * e.position.x;
+            cy += e.strength * e.position.y;
         }
         let com = if m != 0.0 {
             Point2D::new(cx / m, cy / m)
@@ -111,7 +111,7 @@ impl BarnesHut {
 
         let mut quads: [Vec<usize>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
         for &b in idx {
-            let p = bodies[b].pos;
+            let p = bodies[b].position;
             let q = usize::from(p.x >= center.x) | (usize::from(p.y >= center.y) << 1);
             quads[q].push(b);
         }
@@ -141,7 +141,7 @@ impl BarnesHut {
         if node.is_leaf() {
             for &b in &node.bodies {
                 let e = self.bodies[b];
-                field.add_point(theta, e.pos, e.mass, self.eps2);
+                field.add_point(theta, e.position, e.strength, self.eps2);
             }
             return;
         }
@@ -160,7 +160,7 @@ impl BarnesHut {
 }
 
 impl FieldSolver for BarnesHut {
-    fn build(sources: &[MassElement], cfg: SolverConfig) -> Self {
+    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
         let (nodes, root) = Self::build_tree(sources, cfg.leaf_size.max(1));
         Self {
             bodies: sources.to_vec(),
@@ -190,11 +190,11 @@ mod tests {
     use crate::utils::rng::Lcg;
     use std::f64::consts::FRAC_1_PI;
 
-    fn random_bodies(n: usize, seed: u64) -> Vec<MassElement> {
+    fn random_bodies(n: usize, seed: u64) -> Vec<Monopole> {
         let mut rng = Lcg::new(seed);
         (0..n)
             .map(|_| {
-                MassElement::new(
+                Monopole::new(
                     Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)),
                     rng.range(0.0, 0.5),
                 )
@@ -206,7 +206,7 @@ mod tests {
     fn single_mass_matches_analytic() {
         let m = 0.4;
         let bh = BarnesHut::build(
-            &[MassElement::new(Point2D::origin(), m)],
+            &[Monopole::new(Point2D::origin(), m)],
             SolverConfig::default(),
         );
         let a = bh.deflection(Point2D::new(2.0, 0.0));

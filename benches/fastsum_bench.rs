@@ -12,7 +12,7 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use lens_forge::grid::Point2D;
-use lens_forge::fastsum::{build_solver, MassElement, SolverConfig, SolverKind};
+use lens_forge::fastsum::{build_solver, Monopole, SolverConfig, SolverKind};
 
 /// Deterministic LCG so benches are reproducible without an rng dependency.
 struct Lcg(u64);
@@ -29,11 +29,11 @@ impl Lcg {
     }
 }
 
-fn sources(n: usize) -> Vec<MassElement> {
+fn sources(n: usize) -> Vec<Monopole> {
     let mut rng = Lcg(0xC0FFEE);
     (0..n)
         .map(|_| {
-            MassElement::new(
+            Monopole::new(
                 Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)),
                 rng.range(0.0, 0.5),
             )
