@@ -9,51 +9,47 @@
 //!
 //! # Geometry primitives
 //!
+//! The coordinate geometry, holding no field data:
+//!
 //! * [`Point2D`] — a point in the plane, with the vector arithmetic
-//!   (add/sub/scale, dot, norm, polar, bounding box, …) used throughout.
-//! * [`Grid2D`] (module `uniform`) — the coordinate geometry of a regular grid:
-//!   pixel counts, physical extents, and derived pixel sizes. Coordinate arrays
-//!   (coordinate matrices, radius maps) are computed lazily on demand. Holds no
-//!   field data itself; it backs [`PixelGrid`], the structured analogue of the
-//!   mesh's `VoronoiMesh`.
+//!   (add/sub/scale, dot, norm, polar, …) used throughout.
+//! * [`BBox`] — an axis-aligned bounding box, i.e. a rectangular domain extent.
+//! * [`Grid2D`] (module `uniform`) — the structured geometry of a regular grid:
+//!   pixel counts, physical extents, derived pixel sizes, and lazily-computed
+//!   coordinate/radius arrays. Backs [`PixelGrid`].
+//! * [`VoronoiMesh`] (module `mesh`) — the unstructured analogue of [`Grid2D`]:
+//!   generating sites, clipped Voronoi cells (polygon, area, centroid), and site
+//!   adjacency. Backs [`MeshGrid`].
 //!
 //! # Scalar fields
 //!
-//! [`ScalarField2D`] is the object-safe trait that unifies the field
-//! representations: cell count, per-cell value/centre/area, domain bounds, and
-//! pointwise [`sample`](ScalarField2D::sample), plus default aggregates (flux,
-//! sum, mean, min, max). Downstream code can accept `&dyn ScalarField2D` and
-//! treat either representation identically. [`FieldOps`] extends it with the
-//! operator workflow — continuous interpolation, gradient, Laplacian and the
-//! Poisson solve — for generic (`T: FieldOps`) code that must run on either
-//! representation; being `Self`-valued it is a generic bound, not a trait
-//! object. Two implementations:
+//! A scalar field pairs one of the geometries above with a value per cell.
+//! [`ScalarField2D`] is the object-safe trait unifying the representations: cell
+//! count, per-cell value/centre/area, domain bounds, and pointwise
+//! [`sample`](ScalarField2D::sample), plus default aggregates (flux, sum, mean,
+//! min, max). Downstream code can accept `&dyn ScalarField2D` and treat either
+//! identically. Two implementations:
 //!
 //! * [`PixelGrid`] (module `uniform`) — a [`Grid2D`] paired with a
-//!   [`FieldArray2D`] of samples: a scalar field on a regular grid. The main
-//!   workhorse (constructors, element access, statistics, resampling,
-//!   interpolation) and the only fully-featured representation.
+//!   [`FieldArray2D`] of samples: a field on a regular grid, and the main
+//!   workhorse (constructors, element access, statistics, resampling).
 //! * [`MeshGrid`] (module `mesh`) — the unstructured counterpart: one value per
-//!   cell of a Voronoi tessellation, with the geometry shared via `Arc` so
-//!   value-producing operations clone cheaply. A work in progress. Fully
-//!   adaptive (moving-mesh) grids are planned but not yet implemented.
+//!   Voronoi cell, with the geometry shared via `Arc` so value-producing
+//!   operations clone cheaply. A work in progress; fully adaptive (moving-mesh)
+//!   grids are planned but not yet implemented.
 //!
-//! # Operators on [`PixelGrid`]
+//! # Operators
 //!
-//! [`PixelGrid`] gains operators from sibling submodules under `uniform`, all
-//! inherent `PixelGrid` methods:
-//!
-//! * **Finite differences** — [`PixelGrid::gradient`], [`PixelGrid::laplacian`],
-//!   and their field/parallel variants, with a selectable
-//!   [`DerivativeStencil`] (central 2nd/4th/6th order).
-//! * **Spectral (FFT)** — [`PixelGrid::fft2d`] / [`PixelGrid::ifft2d`] plus
-//!   `k`-space derivatives ([`PixelGrid::gradient_spectral`],
-//!   [`PixelGrid::laplacian_spectral`]).
-//! * **Poisson** — [`PixelGrid::poisson_spectral`] / [`PixelGrid::poisson_cg`]
-//!   (configured via [`PoissonConfig`]) solve $\nabla^2 \psi = f$; passing
-//!   $f = 2\kappa$ recovers the lens potential of the pixelated lens.
-//! * **Interpolation** — [`BilinearKernel`], precomputed indices and weights for
-//!   bilinear sampling at an arbitrary point (see [`Grid2D::bilinear_interp`]).
+//! [`FieldOps`] extends [`ScalarField2D`] with the operator workflow shared by
+//! both representations: continuous interpolation, gradient (and gradient
+//! magnitude), Laplacian, and the Poisson solve $\nabla^2 \psi = f$ (configured
+//! via [`PoissonConfig`]; passing $f = 2\kappa$ recovers the lens potential).
+//! Each implementation uses its natural discretization — finite differences / FFT
+//! for the grid, finite volume for the mesh — behind the common contract, so
+//! generic `T: FieldOps` code runs on either. Being `Self`-valued it is a generic
+//! bound, not a trait object. Representation-specific extras (selectable
+//! [`DerivativeStencil`] orders, spectral transforms, the [`BilinearKernel`]) are
+//! inherent methods on [`PixelGrid`].
 //!
 //! # Type aliases
 //!

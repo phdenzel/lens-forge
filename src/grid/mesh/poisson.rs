@@ -4,23 +4,15 @@
 //! Poisson solver for [`MeshGrid`]: solve $\nabla^2 \psi = f$ on the mesh.
 //!
 //! The unstructured counterpart to
-//! [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg). Conjugate
-//! gradient on the symmetric two-point-flux stiffness matrix
-//! (`apply_stiffness` in [`diff`](super::diff)), taking this grid's field as the
-//! source $f$ and returning the potential $\psi$.
+//! [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg): conjugate
+//! gradient on the symmetric two-point-flux stiffness matrix (`apply_stiffness`
+//! in [`diff`](super::diff)), with this grid's field as the source $f$.
 //!
-//! The discretization integrates $\nabla^2\psi = f$ over each Voronoi cell, so
-//! the linear system is `K ψ = Aᵢ fᵢ` with `K` the (negative-semidefinite)
-//! stiffness matrix and `Aᵢ` the cell areas. Boundary facets on the domain box
-//! carry no flux, i.e. a **natural zero-flux (Neumann)** boundary — the singular
-//! case: the source is projected to a zero area-weighted mean (the solvability
-//! condition) and the solution is returned with a zero area-weighted mean (the
-//! remaining additive-constant gauge). For lensing, pass $f = 2\kappa$ to
-//! recover the potential from the convergence.
-//!
-//! [`PoissonConfig`] is shared with the uniform solver; only its `tol` and
-//! `max_iter` fields apply here (the boundary condition is always the natural
-//! zero-flux one).
+//! Box facets carry no flux — a **natural zero-flux (Neumann)** boundary — so the
+//! problem is singular: the source is projected to a zero area-weighted mean
+//! (solvability) and $\psi$ is returned with a zero area-weighted mean (the gauge
+//! freedom). For lensing, pass $f = 2\kappa$. [`PoissonConfig`] is shared with the
+//! uniform solver; only `tol` and `max_iter` apply here.
 
 use super::diff::apply_stiffness;
 use super::faces::FaceGeometry;
@@ -65,9 +57,8 @@ impl MeshGrid {
         let areas: Vec<f64> = (0..n).map(|i| self.area(i)).collect();
         let total_area: f64 = areas.iter().sum();
 
-        // Solvability: project the source to a zero area-weighted mean, then form
-        // the right-hand side b = -Aᵢ(fᵢ - f̄) so that A = -K is positive
-        // semidefinite and b ⟂ constants (the null space of K).
+        // Solvability: project the source to a zero area-weighted mean, forming
+        // b = -Aᵢ(fᵢ - f̄) so A = -K is PSD and b ⟂ constants (K's null space).
         let fbar = if total_area > 0.0 {
             (0..n).map(|i| areas[i] * self.value(i)).sum::<f64>() / total_area
         } else {
@@ -166,9 +157,8 @@ mod tests {
 
     #[test]
     fn recovers_a_manufactured_potential() {
-        // ψ = cos(πx)cos(πy) satisfies ∇²ψ = -2π²ψ and ∂ψ/∂n = 0 on the unit box
-        // (a genuine Neumann eigenfunction). Solving ∇²ψ = f with f the sampled
-        // Laplacian must recover ψ up to the mean-zero gauge.
+        // ψ = cos(πx)cos(πy) is a Neumann eigenfunction (∇²ψ = -2π²ψ, ∂ψ/∂n = 0 on
+        // the unit box); solving ∇²ψ = f must recover ψ up to the mean-zero gauge.
         use std::f64::consts::PI;
         let psi_exact = |x: f64, y: f64| (PI * x).cos() * (PI * y).cos();
         let m = mesh_from(|x, y| -2.0 * PI * PI * psi_exact(x, y));

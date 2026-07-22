@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Finite-difference differentiation for [`PixelGrid`] (gradient, Laplacian).
 
-use crate::grid::{FieldArray2D, PixelGrid, Point2D, VectorField2D};
 use crate::Result;
+use crate::grid::{FieldArray2D, PixelGrid, Point2D, VectorField2D};
 use ndarray::{Array2, Zip, s};
 
 macro_rules! zip3_for_each {
@@ -607,9 +607,8 @@ impl PixelGrid {
                     }
                 }
 
-                // boundary fallbacks on x axis
-                //   (forward, 2nd central, 4th/2nd central2,
-                //    4th/2nd central, 2nd central, backward)
+                // boundary fallbacks on x axis (forward, 2nd central, 4th/2nd
+                // central2, 4th/2nd central, 2nd central, backward)
                 if nx >= 2 {
                     {
                         let mut out = dvdx.slice_mut(s![.., 0..1]);
@@ -694,9 +693,8 @@ impl PixelGrid {
                     }
                 }
 
-                // boundary fallbacks on y axis
-                //   (forward, 2nd central, 4th/2nd central2,
-                //    4th/2nd central, 2nd central, backward)
+                // boundary fallbacks on y axis (forward, 2nd central, 4th/2nd
+                // central2, 4th/2nd central, 2nd central, backward)
                 if ny >= 2 {
                     {
                         let mut out = dvdy.slice_mut(s![0..1, ..]);
@@ -1067,9 +1065,8 @@ impl PixelGrid {
         let stencil = stencil.into().unwrap_or_default();
         let dx = self.grid.dx();
         let dy = self.grid.dy();
-        // Same 1-D second-derivative weights as the on-grid Laplacian; here the
-        // samples come from bilinear interpolation at offset points rather than
-        // array indices.
+        // Same 1-D second-derivative weights as the on-grid Laplacian, but sampled
+        // by bilinear interpolation at offset points rather than array indices.
         let (num_x, den_x) = stencil_second_deriv(stencil, |o| {
             self.interpolate(Point2D::new(p.x + o as f64 * dx, p.y))
         });
@@ -1101,10 +1098,8 @@ impl PixelGrid {
             return Ok(laplace);
         }
 
-        // Ghost-cell boundary conditions are computed per-pixel via the shared
-        // order-generic path; the interior needs no ghosts so this stays exact,
-        // and the boundary bands simply read substituted neighbours. The
-        // `Natural` (one-sided fallback) operator keeps the vectorised paths below.
+        // Ghost-cell BCs are computed per-pixel via the order-generic path (interior
+        // needs none); `Natural` (one-sided) keeps the vectorised paths below.
         if bc != BoundaryCondition::Natural {
             if PAR {
                 ndarray::Zip::indexed(&mut laplace)
@@ -1672,7 +1667,6 @@ impl PixelGrid {
     }
 }
 
-
 /* ================ Derivative methods =============================== */
 /// Discrete derivative stencil type.
 ///
@@ -1712,8 +1706,7 @@ fn stencil_second_deriv(stencil: DerivativeStencil, s: impl Fn(isize) -> f64) ->
             12.0,
         ),
         DerivativeStencil::Central6 => (
-            2.0 * s(-3) - 27.0 * s(-2) + 270.0 * s(-1) - 490.0 * s(0) + 270.0 * s(1)
-                - 27.0 * s(2)
+            2.0 * s(-3) - 27.0 * s(-2) + 270.0 * s(-1) - 490.0 * s(0) + 270.0 * s(1) - 27.0 * s(2)
                 + 2.0 * s(3),
             180.0,
         ),
@@ -1836,7 +1829,9 @@ mod tests {
         // Quadratic function: Laplacian should be constant
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
 
-        let lap = pg.laplacian(4, 4, DerivativeStencil::Central, None).unwrap();
+        let lap = pg
+            .laplacian(4, 4, DerivativeStencil::Central, None)
+            .unwrap();
         assert!(approx_eq(lap, 4.0, 1e-12));
     }
 
@@ -1858,10 +1853,8 @@ mod tests {
 
     #[test]
     fn laplacian_interp_matches_on_grid() {
-        // At a pixel centre, interpolation returns the stored value, so the
-        // interpolated Laplacian must equal the on-grid (Natural) Laplacian for
-        // every stencil — a lock-in that the `stencil_second_deriv` reuse in
-        // `laplacian_interp` preserves the original per-order formulas.
+        // At a pixel centre, interpolation returns the stored value, so the interp
+        // Laplacian must equal the on-grid (Natural) one for every stencil.
         let grid = Grid2D::square(16, 3.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| (0.6 * x).sin() * (0.4 * y).cos() + 0.2 * x * y);
         let (i, j) = (7, 9);
@@ -1903,9 +1896,8 @@ mod tests {
     #[test]
     fn laplacian_field_periodic_matches_analytic() {
         use std::f64::consts::PI;
-        // sin(x)cos(y) has period 2π; on the [-π,π) periodic grid its Laplacian is
-        // -2 sin(x)cos(y) *everywhere*, edges included — unlike the Natural
-        // one-sided fallback which loses order at the boundary.
+        // On the [-π,π) periodic grid, ∇²(sin x cos y) = -2 sin x cos y everywhere,
+        // edges included — unlike the Natural fallback, which loses order there.
         let grid = Grid2D::square(64, PI).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
         let expected = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
@@ -1996,9 +1988,8 @@ mod tests {
 
     #[test]
     fn gradient_point_exact_for_linear_all_stencils() {
-        // Every stencil (interior and one-sided edge fallbacks) is exact for a
-        // linear field, so the pixel gradient is (2, 3) everywhere. Sweeping the
-        // whole 8×8 grid hits the i==0/1, interior, nx-2/nx-1 branches.
+        // Every stencil is exact for a linear field, so the gradient is (2,3)
+        // everywhere; the 8×8 sweep hits the i==0/1, interior, nx-2/nx-1 branches.
         let grid = Grid2D::square(8, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x + 3.0 * y);
         for stencil in ALL_STENCILS {
@@ -2028,10 +2019,8 @@ mod tests {
 
     #[test]
     fn gradient_field_matches_point_and_parallel_all_sizes() {
-        // The vectorised field path must agree with the per-pixel gradient for
-        // every stencil, and the parallel path must match the serial one. Sweeping
-        // sizes 2..=9 exercises the nx>=3/5/7 interior guards and their edge
-        // fallbacks (including the nx==4 vs nx>4 Central6 branch split).
+        // Vectorised field path must match the per-pixel gradient (and parallel the
+        // serial) for every stencil; sizes 2..=9 exercise all interior/edge guards.
         for n in 2..=9usize {
             let grid = Grid2D::square(n, 2.0).unwrap();
             let pg = smooth(grid);
@@ -2077,10 +2066,8 @@ mod tests {
 
     #[test]
     fn laplacian_field_par_matches_serial_all_sizes() {
-        // The parallel and serial field paths differ only in the const-generic
-        // PAR flag, so they must produce identical results for every stencil,
-        // boundary condition and grid size. Sweeping sizes 2..=9 executes all the
-        // interior guards and edge fallbacks (Natural and every ghost BC).
+        // Parallel and serial field paths differ only in the const-generic PAR flag,
+        // so must match for every stencil/BC/size; sizes 2..=9 cover all branches.
         for n in 2..=9usize {
             let grid = Grid2D::square(n, 2.0).unwrap();
             let pg = smooth(grid);
@@ -2104,10 +2091,8 @@ mod tests {
 
     #[test]
     fn laplacian_field_natural_matches_point_all_sizes() {
-        // The vectorised Natural field path must reproduce the per-pixel laplacian
-        // for every stencil at every size. Small grids (n = 3, 5) previously
-        // double-applied the Central4/Central6 boundary bands; this is the
-        // regression guard for that fix.
+        // Vectorised Natural field path must reproduce the per-pixel laplacian at
+        // every size — regression guard for the n=3,5 double-applied boundary bands.
         for n in 2..=12usize {
             let grid = Grid2D::square(n, 2.0).unwrap();
             let pg = smooth(grid);
@@ -2142,7 +2127,10 @@ mod tests {
             for stencil in ALL_STENCILS {
                 let field = pg.laplacian_field(stencil, bc).unwrap();
                 let par = pg.par_laplacian_field(stencil, bc).unwrap();
-                assert!(max_field_diff(&field, &par) < 1e-12, "{bc:?} {stencil:?} par");
+                assert!(
+                    max_field_diff(&field, &par) < 1e-12,
+                    "{bc:?} {stencil:?} par"
+                );
                 for j in 0..grid.ny {
                     for i in 0..grid.nx {
                         let point = pg.laplacian(i, j, stencil, bc).unwrap();
@@ -2178,9 +2166,8 @@ mod tests {
 
     #[test]
     fn degenerate_single_pixel_grids() {
-        // A 1×1 grid can apply no stencil: the point laplacian falls through to the
-        // zero fallbacks for every stencil, and the field operators leave the
-        // (nx<2 / ny<2) guarded bands untouched. Exercises the degenerate branches.
+        // A 1×1 grid applies no stencil: the point laplacian hits the zero fallbacks
+        // and field operators leave the (nx<2/ny<2) guarded bands untouched.
         let tiny = Grid2D::square(1, 1.0).unwrap();
         let pg = PixelGrid::constant(tiny, 2.0);
         for stencil in ALL_STENCILS {

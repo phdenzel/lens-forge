@@ -689,9 +689,8 @@ mod tests {
 
     #[test]
     fn gradient_spectral_all_stencils_match_linear_interior() {
-        // Every FD stencil is exact for a linear field, and the spectral (circular)
-        // evaluation reproduces the FD stencil, so the non-wrapped interior recovers
-        // the analytic gradient for all stencil orders (covers fourier_symbols_fd1).
+        // The spectral (circular) evaluation reproduces each FD stencil, exact for a
+        // linear field, so the interior recovers ∇ for all orders (fourier_symbols_fd1).
         let grid = Grid2D::square(64, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
         for stencil in ALL_STENCILS {
@@ -707,9 +706,8 @@ mod tests {
 
     #[test]
     fn laplacian_spectral_all_stencils_match_quadratic_interior() {
-        // Every fourier_symbols_fd2 stencil reproduces its finite-difference
-        // 2nd-derivative, which is exact for a quadratic, so ∇²(x²+y²)=4 in the
-        // non-wrapped interior. Regression guard for the fd2 symbol coefficients.
+        // Each fourier_symbols_fd2 stencil reproduces its FD 2nd-derivative (exact
+        // for a quadratic), so ∇²(x²+y²)=4 in the interior — guards the fd2 coeffs.
         let size = 64usize;
         let grid = Grid2D::square(size, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| x * x + y * y);
@@ -725,9 +723,8 @@ mod tests {
 
     #[test]
     fn fd2_symbols_vanish_at_dc() {
-        // The k=0 (DC) Fourier symbol of any consistent 2nd-derivative stencil must
-        // be zero: ∇² annihilates constants. A non-zero DC term was the signature
-        // of the earlier fd2 coefficient bug.
+        // The k=0 (DC) symbol of any consistent 2nd-derivative stencil must be zero
+        // (∇² annihilates constants); a non-zero DC term signalled the old fd2 bug.
         let grid = Grid2D::square(8, 2.0).unwrap();
         let pg = PixelGrid::ones(grid);
         for stencil in ALL_STENCILS {
@@ -741,10 +738,8 @@ mod tests {
     #[test]
     fn laplacian_spectral_higher_order_beats_second_order() {
         use std::f64::consts::PI;
-        // On a smooth periodic field the FD-equivalent spectral Laplacian carries
-        // the truncation error of its stencil, so Central6 must be markedly more
-        // accurate than Central. This checks the fd2 symbols are truly higher order
-        // (not merely DC-consistent) — a stronger guard than the interior value.
+        // On a smooth periodic field the FD-equivalent spectral Laplacian carries its
+        // stencil's truncation error, so Central6 must beat Central (truly higher order).
         let grid = Grid2D::square(32, PI).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| x.sin() * y.cos());
         let analytic = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());

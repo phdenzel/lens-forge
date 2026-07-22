@@ -4,10 +4,9 @@
 //! [`FieldOps`] for [`MeshGrid`]: expose its inherent operators through the
 //! shared, representation-agnostic contract.
 //!
-//! The mesh operators are already `Self`-valued and infallible, so the adapters
-//! are trivial `Ok`-wraps. Each body delegates to the inherent method of the
-//! same name (inherent methods take method-resolution priority over trait
-//! methods), keeping this a thin adapter over the finite-volume operators.
+//! The mesh operators are already `Self`-valued and infallible, so each adapter
+//! is a trivial `Ok`-wrap delegating to the inherent method of the same name
+//! (inherent methods win method resolution over trait methods).
 
 use super::meshgrid::MeshGrid;
 use crate::grid::{FieldOps, Point2D, PoissonConfig};

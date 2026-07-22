@@ -5,25 +5,20 @@
 //!
 //! Points are inserted one at a time into a triangulation seeded with a large
 //! enclosing super-triangle. Each insertion locates the containing triangle by
-//! walking the neighbour graph and splits it: 1→3 for interior points, or
-//! 2→4 for edge points, 1→2 on the hull; the Delaunay property is
-//! restored by flipping edges whose opposite vertex fails an [`incircle`] test.
-//! The mesh is stored as triangles with vertex indices and per-edge neighbour
-//! links, so inserting further points later (refinement) is a local operation.
+//! walking the neighbour graph and splits it (1→3 interior, 2→4 on an edge,
+//! 1→2 on the hull); the Delaunay property is restored by flipping edges whose
+//! opposite vertex fails an [`incircle`] test. Triangles store vertex indices and
+//! per-edge neighbour links, so later insertion (refinement) stays local.
 //!
-//! Resource:
-//! Berg et al., Computational Geometry (Ch. 9.3), DOI:10.1007/978-3-540-77974-2
+//! Resource: Berg et al., Computational Geometry (Ch. 9.3),
+//! DOI:10.1007/978-3-540-77974-2
 //!
-//! Design note (refinement): [`Triangulation`] is the *finalized, immutable*
-//! snapshot — super-triangle removed, indices remapped to the input points — and
-//! is intentionally not mutable in place. The working state needed to insert more
-//! points (the coordinates and the enclosing super-triangle) is dropped by
-//! [`finalize`]. When refinement lands, the plan is to promote that working state
-//! into a persistent mutable mesh type owning `Vec<Triangle>` + coordinates, with
-//! an `insert` method reusing [`locate`]/[`insert_inside`]/[`insert_on_edge`]/
-//! [`legalize`], and a `finalize` producing the read-only [`Triangulation`] for
-//! consumers. Moving-mesh regularization (Lloyd/CVT), by contrast, is expected to
-//! rebuild from scratch each step rather than mutate.
+//! Design note: [`Triangulation`] is the finalized, immutable snapshot
+//! (super-triangle removed, indices remapped); the working state for further
+//! insertion is dropped by [`finalize`]. Refinement will promote that state into
+//! a persistent mutable mesh reusing [`locate`]/[`insert_inside`]/
+//! [`insert_on_edge`]/[`legalize`]; moving-mesh (Lloyd/CVT) regularization
+//! rebuilds from scratch instead.
 
 use super::predicates::{incircle, orient2d};
 use crate::grid::Point2D;
@@ -700,9 +695,8 @@ mod tests {
 
     #[test]
     fn point_exactly_on_edge_triggers_split() {
-        // The last point lies exactly on the interior edge (0,0)-(2,0), so it is
-        // located as `Edge` and inserted via the on-edge (2→4) split rather than
-        // the interior 1→3 fan.
+        // The last point lies on the interior edge (0,0)-(2,0), so it is located as
+        // `Edge` and inserted via the on-edge (2→4) split, not the interior 1→3 fan.
         let pts = [
             p(0.0, 0.0),
             p(2.0, 0.0),

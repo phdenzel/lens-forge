@@ -3,13 +3,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Robust geometric predicates for Delaunay triangulation.
 //!
-//! [`orient2d`] and [`incircle`] each evaluate a determinant. They first try a
-//! plain `f64` computation, and only when the sign is numerically uncertain (the
-//! magnitude is within a relative error bound of zero) fall back to an
-//! error-free-transformation (double-double) recomputation using fused
-//! multiply-add. This keeps the common case cheap while staying reliable on the
-//! near-collinear / near-cocircular inputs a naive determinant would
-//! misclassify — the failure mode that otherwise corrupts the triangulation.
+//! [`orient2d`] and [`incircle`] each evaluate a determinant sign. They try plain
+//! `f64` first and fall back to an error-free (double-double, FMA) recomputation
+//! only when the sign is numerically uncertain — cheap in the common case, yet
+//! reliable on the near-collinear / near-cocircular inputs that would otherwise
+//! corrupt the triangulation.
 
 use crate::grid::Point2D;
 use crate::utils::double_double::{dd_add, dd_diff, dd_mul, dd_sqr, dd_sub};

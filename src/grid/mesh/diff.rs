@@ -3,31 +3,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Finite-volume differential operators on a [`MeshGrid`].
 //!
-//! The unstructured analogues of the finite-difference operators on
-//! [`PixelGrid`](crate::grid::PixelGrid), each in a pointwise (per-cell) form and
-//! a whole-field `_field` form, mirroring the grid's naming:
-//!
 //! * [`MeshGrid::gradient`] / [`MeshGrid::gradient_field`] — a per-cell
-//!   **least-squares** gradient fitted to the Voronoi 1-ring. It reproduces
-//!   linear fields exactly on any (irregular) mesh, and degrades gracefully at
-//!   boundary cells with a short 1-ring.
+//!   **least-squares** gradient over the Voronoi 1-ring, exact for linear fields
+//!   and degrading gracefully at short-ring boundary cells.
 //! * [`MeshGrid::laplacian`] / [`MeshGrid::laplacian_field`] — the
-//!   **two-point-flux approximation (TPFA)** Laplacian, the standard
-//!   finite-volume Voronoi discretization
-//!   `(∇²v)ᵢ = (1/Aᵢ) Σ_j (ℓ_ij / d_ij)(v_j − vᵢ)`, summing the flux `ℓ_ij/d_ij`
-//!   across each shared facet (see [`FaceGeometry`](super::faces)). Boundary
-//!   facets on the domain box carry no flux (a natural zero-flux boundary).
+//!   **two-point-flux (TPFA)** Laplacian
+//!   `(∇²v)ᵢ = (1/Aᵢ) Σ_j (ℓ_ij / d_ij)(v_j − vᵢ)`, summing the flux across each
+//!   shared facet (see [`FaceGeometry`](super::faces)); box facets carry no flux.
 //!
-//! The pointwise forms evaluate one cell locally (`O(deg)`); the `_field` forms
-//! evaluate every cell. The pointwise Laplacian uses the directed facet lengths
-//! of the cell's own polygon, whereas [`MeshGrid::laplacian_field`] symmetrizes
-//! them (via [`FaceGeometry`](super::faces)) so its stiffness operator matches
-//! the one the Poisson solver applies; the two agree to rounding on interior
-//! cells.
-//!
-//! The stiffness sum `Σ_j (ℓ_ij/d_ij)(v_j − vᵢ)` — the Laplacian before dividing
-//! by the cell area — is the symmetric operator the Poisson solver applies; it
-//! lives here as [`apply_stiffness`] so both share one implementation.
+//! The area-free stiffness sum is the symmetric operator the Poisson solver
+//! applies; see [`apply_stiffness`].
 
 use super::faces::{directed_facet_lengths, FaceGeometry};
 use super::meshgrid::MeshGrid;

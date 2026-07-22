@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Voronoi / Delaunay mesh grid — the free-form, unstructured counterpart to
-//! [`PixelGrid`](crate::grid::PixelGrid).
+//! Voronoi mesh grid — a free-form tessellation partitioning a plane into
+//! polygonal cells.
 //!
-//! Work in progress. The end goal is `MeshGrid`: a set of sites carrying a
-//! scalar value per Voronoi cell, plus the geometry (cell areas, adjacency,
-//! point location) and operators needed to match `PixelGrid` usage behind a
-//! shared scalar-field trait.
+//! [`MeshGrid`] carries a scalar value per Voronoi cell, along with the geometry
+//! (cell areas, adjacency, point location) and operators behind the shared
+//! scalar-field trait.
 //!
-//! Built bottom-up. Implemented so far:
 //! * `predicates` — robust orientation and in-circle tests, the numerical
 //!   foundation of the Delaunay triangulation.
 //! * `triangulate` — incremental Delaunay triangulation with Lawson edge-flips.
@@ -29,7 +27,6 @@
 mod generators;
 mod kdtree;
 mod predicates;
-#[allow(dead_code)]
 mod triangulate;
 mod voronoi;
 pub use voronoi::VoronoiMesh;

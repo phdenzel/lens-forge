@@ -3,22 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared Voronoi face geometry: per-cell facet lengths and site distances.
 //!
-//! The finite-volume operators (the two-point-flux Laplacian in `diff`, and the
-//! Poisson solver built on it) discretize a face integral over each Voronoi
-//! cell. The transmissibility across the facet shared by adjacent cells `i` and
-//! `j` is `ℓ_ij / d_ij`, where `ℓ_ij` is the length of the shared Voronoi facet
-//! and `d_ij = |sᵢ − sⱼ|` the distance between the two generating sites.
-//!
-//! [`FaceGeometry`] precomputes those facet lengths once so an iterative solver
-//! can reuse them across every matrix–vector product. Lengths are recovered from
-//! the already-clipped cell polygons: each polygon edge lies either on the
-//! perpendicular bisector of the site and one Voronoi neighbour (an interior
-//! facet) or on the domain box (a boundary edge, which carries no flux). An
-//! edge is attributed to the neighbour whose site is nearest — hence equidistant
-//! with the owning site — to the edge midpoint. The two directed lengths `ℓ_ij`
-//! and `ℓ_ji` recovered from cells `i` and `j` are averaged, so the resulting
-//! stiffness operator is exactly symmetric (a requirement for conjugate
-//! gradient).
+//! The finite-volume operators (the TPFA Laplacian in `diff` and the Poisson
+//! solver built on it) discretize a face integral over each Voronoi cell. The
+//! transmissibility across the facet shared by cells `i` and `j` is `ℓ_ij / d_ij`
+//! — facet length over site distance `d_ij = |sᵢ − sⱼ|`.
 
 use super::voronoi::VoronoiMesh;
 
@@ -165,10 +153,8 @@ mod tests {
 
     #[test]
     fn quadrant_facets_are_half_the_box() {
-        // Four symmetric quadrants: each axis-adjacent facet is a half-edge of
-        // length 0.5 (box centre to a box side). The diagonal Delaunay pair
-        // (across the split diagonal) meets only at the box centre, so its shared
-        // facet degenerates to zero length.
+        // Four symmetric quadrants: axis-adjacent facets are half-edges of length
+        // 0.5; the diagonal Delaunay pair meets only at the centre (zero length).
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
         let m = VoronoiMesh::new(&sites, unit()).unwrap();
         let fg = FaceGeometry::build(&m);

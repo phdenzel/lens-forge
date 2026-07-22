@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens models.
 //!
-//! Every lens — analytic (parametric) or pixelated/adaptive (free-form) —
-//! implements [`LensModel`], exposing the four quantities the rest of the
-//! library needs: convergence κ, deflection α, potential ψ, and the Hessian
-//! ∂α/∂θ. Consumers (solver, magnification, rendering) are written against the
-//! trait and are agnostic to the underlying representation.
+//! Every lens — parametric or free-form — implements [`LensModel`], exposing the
+//! four quantities the rest of the library needs (convergence κ, deflection α,
+//! potential ψ, Hessian ∂α/∂θ); consumers (solver, magnification, rendering) are
+//! written against the trait, agnostic to the representation.
 //!
 //! Conventions (scaled/dimensionless angular units):
 //! * lens equation:  β = θ − α(θ)

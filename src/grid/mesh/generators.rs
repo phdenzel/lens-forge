@@ -251,9 +251,8 @@ mod tests {
 
     #[test]
     fn hexagonal_interior_cells_are_regular_hexagons() {
-        // Aspect chosen so row height = column spacing · √3⁄2: dx = 1, dy = √3⁄2,
-        // giving unit nearest-neighbour spacing and regular hexagon cells of area
-        // √3⁄2. rx = nx·dx/2 = 3, ry = ny·dy/2 = √3.
+        // Aspect dx = 1, dy = √3⁄2 gives unit nearest-neighbour spacing and regular
+        // hexagons of area √3⁄2; rx = nx·dx/2 = 3, ry = ny·dy/2 = √3.
         let m = VoronoiMesh::hexagonal(6, 4, 3.0, 3.0_f64.sqrt()).unwrap();
         assert!((m.total_area() - 12.0 * 3.0_f64.sqrt()).abs() < 1e-9, "area {}", m.total_area());
         let hex_area = 3.0_f64.sqrt() / 2.0;

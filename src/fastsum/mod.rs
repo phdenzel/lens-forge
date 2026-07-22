@@ -174,9 +174,7 @@ pub trait FieldSolver {
 pub enum SolverKind {
     Direct,
     BarnesHut,
-    // Fmm,     // planned
-    // Kifmm,   // planned
-    // HMatrix, // planned
+    // planned: Fmm, Kifmm, HMatrix
 }
 
 impl SolverKind {

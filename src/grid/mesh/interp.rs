@@ -1,38 +1,23 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Continuous interpolation of a [`MeshGrid`] at arbitrary points.
-//!
-//! The [`ScalarField2D::sample`](crate::grid::ScalarField2D::sample) trait method
-//! is piecewise-constant (the nearest cell's value). These inherent methods add
-//! a *continuous* interpolant, the unstructured analogue of
-//! [`PixelGrid::interpolate`](crate::grid::PixelGrid::interpolate).
+//! Continuous interpolation of a [`MeshGrid`] at arbitrary points — the
+//! unstructured analogue of
+//! [`PixelGrid::interpolate`](crate::grid::PixelGrid::interpolate), unlike the
+//! piecewise-constant
+//! [`ScalarField2D::sample`](crate::grid::ScalarField2D::sample).
 //!
 //! The primary scheme is **Laplace (non-Sibsonian) natural-neighbour
-//! interpolation**. Conceptually the query point `p` is inserted into the
-//! tessellation; each site `i` whose cell would border the new cell of `p` is a
-//! *natural neighbour* and contributes with weight
+//! interpolation**: each site `i` whose cell would border the inserted cell of
+//! the query point `p` contributes with weight `λ_i = ℓ_i / d_i`, giving
+//! `value(p) = Σ λ_i v_i / Σ λ_i`, where `d_i = |p − sᵢ|` and `ℓ_i` is the shared
+//! Voronoi facet length. It is exact for linear fields and C¹ away from the
+//! sites, and needs only facet lengths — no re-tessellation.
 //!
-//! ```text
-//! λ_i = ℓ_i / d_i,   value(p) = Σ λ_i · v_i / Σ λ_i,
-//! ```
-//!
-//! where `d_i = |p − sᵢ|` and `ℓ_i` is the length of the Voronoi facet that the
-//! inserted cell of `p` would share with cell `i`. The interpolant is exact for
-//! linear fields and C¹-continuous away from the sites, yet — unlike Sibson's
-//! area-stealing weights — needs only facet *lengths*, so no re-tessellation is
-//! required: the virtual cell of `p` is obtained by clipping the domain box with
-//! the perpendicular bisectors of `p` and its candidate sites (reusing the same
-//! half-plane clip as the mesh builder), and the candidate set is grown until it
-//! provably contains every natural neighbour.
-//!
-//! Natural-neighbour weights are only well-posed where `p` is fully enclosed by
-//! its natural neighbours. At or beyond the edge of the site cloud the virtual
-//! cell of `p` borders the domain box, and the weights would extrapolate; there
-//! the interpolant falls back to **barycentric-linear** interpolation over the
-//! enclosing Delaunay triangle (still exact for linear fields), and finally — for
-//! points outside the site convex hull, which no triangle encloses — to the
-//! nearest cell value.
+//! Where `p` is not fully enclosed by its natural neighbours (at or beyond the
+//! edge of the site cloud) the weights would extrapolate, so the interpolant
+//! falls back to **barycentric-linear** over the enclosing Delaunay triangle,
+//! and finally — outside the convex hull — to the nearest cell value.
 
 use super::meshgrid::MeshGrid;
 use super::voronoi::clip_halfplane;
@@ -99,9 +84,8 @@ impl MeshGrid {
             return Some(self.value(seed));
         }
 
-        // Grow the candidate set until the virtual cell of `p` is exact: every
-        // facet of the clipped cell is attributable to a candidate site, i.e. no
-        // uncovered site is closer to a facet midpoint than `p` itself.
+        // Grow the candidate set until every facet of `p`'s clipped cell is owned
+        // by a candidate — no uncovered site closer to a facet midpoint than `p`.
         let mut candidates = vec![seed];
         candidates.extend_from_slice(self.neighbors(seed));
         candidates.sort_unstable();
@@ -131,11 +115,8 @@ impl MeshGrid {
             }
         }
 
-        // Accumulate facet lengths per natural neighbour, then weight by 1/d. A
-        // facet on the domain box (no owning site) means `p` is not fully
-        // enclosed by natural neighbours — it lies at or beyond the site cloud's
-        // edge, where these weights would extrapolate. Defer to the caller's
-        // fallback there rather than return an extrapolated value.
+        // Accumulate facet lengths per neighbour, weighted by 1/d. A box facet (no
+        // owning site) means `p` isn't enclosed; defer to the caller's fallback.
         let mut num = 0.0;
         let mut den = 0.0;
         for e in 0..cell.len() {
@@ -143,10 +124,8 @@ impl MeshGrid {
             let b = cell[(e + 1) % cell.len()];
             let mid = a.midpoint(&b);
             let dp = mid.distance(&p);
-            // Owning site: the candidate nearest the facet midpoint (the set
-            // always holds the seed cell, so this is well defined). On an
-            // interior facet it is equidistant with `p` (the bisector); on a
-            // domain-box edge every site is strictly farther than `p`.
+            // Owning site = candidate nearest the facet midpoint: equidistant with
+            // `p` on an interior facet (bisector), farther on a domain-box edge.
             let mut best = candidates[0];
             let mut best_d = mid.distance(&self.site(best));
             for &c in &candidates[1..] {
@@ -159,9 +138,8 @@ impl MeshGrid {
             if (best_d - dp).abs() > 1e-7 * dp.max(1e-300) {
                 return None; // domain-box facet: `p` is not fully surrounded
             }
-            // `d_i > 0`: a coincident query returned early, so no natural
-            // neighbour sits on `p`. A fully surrounded query has a
-            // non-degenerate cell, so `den` accrues at least one positive weight.
+            // `d_i > 0` (coincident queries returned early); a surrounded query has
+            // a non-degenerate cell, so `den` accrues a positive weight.
             let d_i = self.site(best).distance(&p);
             let lambda = a.distance(&b) / d_i;
             num += lambda * self.value(best);
@@ -315,9 +293,8 @@ mod tests {
 
     #[test]
     fn near_boundary_query_uses_barycentric_fallback() {
-        // Just inside the site cloud's edge, `p`'s virtual cell borders the
-        // domain box, so Laplace NN bails and the barycentric fallback takes
-        // over. Both are exact for the linear field, so the value still holds.
+        // Just inside the cloud's edge, Laplace NN bails (cell borders the box) and
+        // the barycentric fallback takes over — both exact for the linear field.
         let m = linear_mesh();
         let q = p(0.06, 0.5);
         assert!(m.laplace_nn(q).is_none(), "expected Laplace NN to defer near the edge");
@@ -328,9 +305,8 @@ mod tests {
 
     #[test]
     fn outside_hull_falls_back_to_nearest() {
-        // A cluster of sites away from the box corners; a query in an empty
-        // corner is inside the domain but outside the site convex hull. Neither
-        // Laplace NN nor barycentric applies, so it resolves to the nearest cell.
+        // A query in an empty corner is inside the domain but outside the site
+        // convex hull, so neither NN nor barycentric applies: nearest-cell result.
         let sites = [p(0.4, 0.4), p(0.6, 0.4), p(0.5, 0.6), p(0.5, 0.5)];
         let vals = FieldArray1D::from_vec(vec![10.0, 20.0, 30.0, 40.0]);
         let m = MeshGrid::new(&sites, unit(), vals).unwrap();

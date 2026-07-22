@@ -1,36 +1,15 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Raster adapters and rasterization interfaces for rendering grids.
-//! This module implements a single canonical `RasterField` that can be
-//! retrieved from several conversion patterns.
+//! Raster adapters for rendering grids into a single canonical `RasterField`.
 //!
-//! # Key types
-//!
-//! * `TryFrom<&G> for RasterField` if supported by grids (such as `PixelGrid`):
-//!     - direct borrowing the underlying slice if contiguous (copy-on-write)
-//!     - falls back to copying if not contiguous
-//!
-//! * `ToRaster` trait for rasterization of already dense grids like `PixelGrid`:
-//!     - implementation for grids that intrinsically provide rasterization parameters
-//!
-//! * `RasterizeToField` trait with `RasterizeParams` for grids that are not inherently uniform:
-//!     - allows configuring target resolution, bounds, and sampling methods
-//!
-//! # Typical entrypoint usage
-//!
-//! `rasterize` and `rasterize_with` are provided as a top-level entrypoints.
-//!
-//! For dense grids, use:
-//! ```ignore
-//! let rf = rasterize(&pixel_grid)?; // no parameters needed
-//! ```
-//!
-//! For non-uniform grids (that require sampling):
-//! ```ignore
-//! let params = RasterizeParams::from_dims(512, 512);
-//! let rf = rasterize_with(&adaptive_grid, &params)?;
-//! ```
+//! * `TryFrom<&G> for RasterField` — borrows a dense grid's contiguous slice
+//!   (copy-on-write), copying only when non-contiguous.
+//! * `ToRaster` — rasterizes dense grids that carry their own parameters (e.g.
+//!   `PixelGrid`); the entrypoint `rasterize(&grid)?` needs no parameters.
+//! * `RasterizeToField` with `RasterizeParams` — for non-uniform grids that must
+//!   be sampled onto a target resolution/bounds via `rasterize_with(&grid,
+//!   &params)?`.
 
 use crate::grid::{BBox, MeshGrid, PixelGrid, Point2D, ScalarField2D};
 use crate::viz::render::RenderBounds;
@@ -333,11 +312,8 @@ impl RasterizeToField for MeshGrid {
         let dx = (max.x - min.x) / w as f64;
         let dy = (max.y - min.y) / h as f64;
 
-        // Point location by warm-started walk (see `MeshGrid::cell_of_walk`):
-        // each pixel seeds its walk with the previous pixel's cell, each row with
-        // the previous row's first cell. Consecutive pixels share or neighbour a
-        // cell, so each walk is ~O(1) — far cheaper than a cold k-d tree query
-        // per pixel over the whole scan. The first pixel is located cold to seed.
+        // Warm-started walk (see `MeshGrid::cell_of_walk`): each pixel seeds from the
+        // previous pixel's cell, each row from the previous row's — ~O(1) per pixel.
         let mut values = vec![0.0f64; w * h];
         let mut row_seed = self.cell_of(Point2D::new(min.x + 0.5 * dx, min.y + 0.5 * dy));
         for j in 0..h {

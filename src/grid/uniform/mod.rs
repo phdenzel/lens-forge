@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Uniform (regular pixel) grid — the structured counterpart to
-//! [`MeshGrid`](crate::grid::MeshGrid).
+//! Uniform (regular pixel) grid — a lattice of uniform and square cells.
 //!
-//! [`PixelGrid`] carries the grid geometry and its sampled field; its operators
-//! live in sibling submodules as inherent `PixelGrid` methods:
+//! [`PixelGrid`] carries the grid geometry and its sampled field, along with the
+//! operators behind the shared scalar-field trait.
+//!
 //! * `grid2d` — [`Grid2D`], the regular-grid coordinate geometry backing
 //!   [`PixelGrid`] (the structured analogue of `VoronoiMesh` in `mesh`).
 //! * `pixelgrid` — [`PixelGrid`], the public uniform field type.

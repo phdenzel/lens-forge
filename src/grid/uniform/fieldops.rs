@@ -4,12 +4,11 @@
 //! [`FieldOps`] for [`PixelGrid`]: adapt its inherent operators to the shared,
 //! representation-agnostic contract.
 //!
-//! The whole-field inherent operators return raw [`FieldArray2D`] data with
-//! selectable stencils and boundary conditions; here they are called with their
-//! defaults and rewrapped as [`PixelGrid`]s so generic `FieldOps` code sees the
-//! same `Self`-valued results as the mesh. Each body delegates to the inherent
-//! method of the same name (inherent methods take method-resolution priority
-//! over trait methods), so this layer stays a thin adapter.
+//! The inherent operators return raw [`FieldArray2D`] data with selectable
+//! stencils and boundary conditions; here they are called with their defaults and
+//! rewrapped as [`PixelGrid`]s, so generic `FieldOps` code sees the same
+//! `Self`-valued results as the mesh. Each body delegates to the inherent method
+//! of the same name (inherent methods win method resolution over trait methods).
 
 use super::pixelgrid::PixelGrid;
 use crate::grid::{FieldOps, Point2D, PoissonConfig};

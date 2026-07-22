@@ -483,11 +483,8 @@ impl ScalarField2D for MeshGrid {
     }
 
     fn sample_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        // Locate by warm-started walk: the first point cold (k-d tree), then each
-        // subsequent point seeded with the previous result. ~O(1) per query when
-        // `points` are spatially coherent (a raster scan, a path); still exact for
-        // any order, but scattered inputs are better served point-wise by
-        // `sample`/`cell_of` (an unconditional O(log n) k-d tree query).
+        // Warm-started walk: first point cold (k-d tree), each next seeded with the
+        // previous. ~O(1) for spatially coherent inputs; exact for any order.
         let mut out = Vec::with_capacity(points.len());
         let mut hint = None;
         for &p in points {
