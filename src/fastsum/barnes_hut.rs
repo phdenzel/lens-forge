@@ -11,7 +11,7 @@
 //! directly. $\theta_\mathrm{bh} = 0$ never accepts, recovering the exact sum.
 
 use crate::grid::Point2D;
-use crate::fastsum::{Field, FieldSolver, Monopole, SolverConfig};
+use crate::fastsum::{FieldSolver, Monopole, PotentialJet, SolverConfig};
 
 const MAX_DEPTH: usize = 64;
 
@@ -136,12 +136,12 @@ impl BarnesHut {
         node_idx
     }
 
-    fn accumulate(&self, node_idx: usize, theta: Point2D, field: &mut Field) {
+    fn accumulate(&self, node_idx: usize, theta: Point2D, field: &mut PotentialJet) {
         let node = &self.nodes[node_idx];
         if node.is_leaf() {
             for &b in &node.bodies {
                 let e = self.bodies[b];
-                field.add_point(theta, e.position, e.strength, self.eps2);
+                field.add_monopole(theta, e.position, e.strength, self.eps2);
             }
             return;
         }
@@ -150,7 +150,8 @@ impl BarnesHut {
         let d2 = dx * dx + dy * dy;
         let size = 2.0 * node.half;
         if d2 > 0.0 && size * size < self.theta2 * d2 {
-            field.add_point(theta, node.com, node.mass, self.eps2);
+            // Accept the node as its order-0 multipole (aggregate monopole).
+            field.add_monopole(theta, node.com, node.mass, self.eps2);
         } else {
             for &child in node.children.iter().flatten() {
                 self.accumulate(child, theta, field);
@@ -172,8 +173,8 @@ impl FieldSolver for BarnesHut {
         }
     }
 
-    fn field(&self, theta: Point2D) -> Field {
-        let mut f = Field::default();
+    fn field(&self, theta: Point2D) -> PotentialJet {
+        let mut f = PotentialJet::default();
         self.accumulate(self.root, theta, &mut f);
         f
     }

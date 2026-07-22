@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Fast-summation backends for the 2D lensing Green's function.
 //!
-//! Given a set of point-mass elements $m_i = \kappa_i \cdot \mathrm{area}_i$
-//! (e.g. Voronoi cells reduced to their monopole), every backend evaluates the
-//! same field quantities at a query point $\theta$:
+//! Given a set of [`Monopole`] sources (order-0 multipoles; in lensing
+//! $\mathrm{strength} = \kappa_i \cdot \mathrm{area}_i$), every backend evaluates
+//! the same [`PotentialJet`] — ψ and its derivatives — at a query point $\theta$:
 //!
 //! $$ \psi(\theta) = \frac{1}{\pi} \sum_i m_i \tfrac{1}{2} \ln\left( \lvert \theta - \theta_i \rvert^2 + \varepsilon^2 \right) $$
 //!
@@ -27,52 +27,15 @@
 
 pub mod barnes_hut;
 pub mod direct;
+pub mod jet;
 pub mod monopole;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
+pub use jet::PotentialJet;
 pub use monopole::Monopole;
 
 use crate::grid::Point2D;
-use std::f64::consts::FRAC_1_PI;
-
-/// Field quantities (potential, deflection, Hessian) at a query point.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct Field {
-    pub psi: f64,
-    pub alpha: Point2D,
-    /// Row-major $\begin{bmatrix} \psi_{xx} & \psi_{xy} \\\\ \psi_{yx} & \psi_{yy} \end{bmatrix}$ (symmetric).
-    pub hessian: [[f64; 2]; 2],
-}
-
-impl Field {
-    /// Accumulate the contribution of a (softened) point mass at `com`.
-    ///
-    /// This is the shared kernel used by every backend for near-field / leaf /
-    /// monopole terms, so they are numerically consistent.
-    #[inline]
-    pub fn add_point(&mut self, theta: Point2D, com: Point2D, mass: f64, eps2: f64) {
-        let dx = theta.x - com.x;
-        let dy = theta.y - com.y;
-        let r2 = dx * dx + dy * dy + eps2;
-        if r2 <= 0.0 {
-            return; // coincident with an un-softened mass: skip the singularity
-        }
-        let inv = 1.0 / r2;
-        let k = mass * FRAC_1_PI;
-        self.psi += 0.5 * k * r2.ln();
-        self.alpha.x += k * dx * inv;
-        self.alpha.y += k * dy * inv;
-        let inv2 = inv * inv;
-        let hxx = k * (inv - 2.0 * dx * dx * inv2);
-        let hxy = k * (-2.0 * dx * dy * inv2);
-        let hyy = k * (inv - 2.0 * dy * dy * inv2);
-        self.hessian[0][0] += hxx;
-        self.hessian[0][1] += hxy;
-        self.hessian[1][0] += hxy;
-        self.hessian[1][1] += hyy;
-    }
-}
 
 /// Shared configuration for the fast-summation backends. Not every field is used
 /// by every backend (e.g. `order` is ignored by [`DirectSum`]).
@@ -139,16 +102,16 @@ pub trait FieldSolver {
         Self: Sized;
 
     /// Full field (ψ, α, H) at `theta`.
-    fn field(&self, theta: Point2D) -> Field;
+    fn field(&self, theta: Point2D) -> PotentialJet;
 
     /// Deflection only — the hot path for ray tracing.
     fn deflection(&self, theta: Point2D) -> Point2D {
-        self.field(theta).alpha
+        self.field(theta).deflection
     }
 
     /// Evaluate the full field at many targets. Backends with a cheaper batched
     /// path (e.g. FMM target trees) may override this.
-    fn field_batch(&self, thetas: &[Point2D]) -> Vec<Field> {
+    fn field_batch(&self, thetas: &[Point2D]) -> Vec<PotentialJet> {
         thetas.iter().map(|&t| self.field(t)).collect()
     }
 
