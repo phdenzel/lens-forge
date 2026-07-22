@@ -12,132 +12,58 @@
 
 use crate::grid::Point2D;
 use crate::fastsum::{FieldSolver, Monopole, Jet, SolverConfig};
-
-const MAX_DEPTH: usize = 64;
-
-#[derive(Debug)]
-struct QNode {
-    mass: f64,
-    com: Point2D,
-    half: f64,
-    children: [Option<usize>; 4],
-    indices: Vec<usize>, // non-empty only for leaves
-}
-
-impl QNode {
-    #[inline]
-    fn is_leaf(&self) -> bool {
-        self.children.iter().all(Option::is_none)
-    }
-}
+use crate::tree::QuadTree;
 
 /// Barnes–Hut backend.
 #[derive(Debug)]
 pub struct BarnesHut {
     elements: Vec<Monopole>,
-    nodes: Vec<QNode>,
-    root: usize,
+    tree: QuadTree,
+    mass: Vec<f64>,    // aggregate strength per node, indexed by node id
+    com: Vec<Point2D>, // centre of mass per node, indexed by node id
     theta2: f64,
     eps2: f64,
-    leaf_size: usize,
 }
 
 impl BarnesHut {
-    /// Build the quadtree over `elements`, returning `(nodes, root_index)`.
-    fn build_tree(elements: &[Monopole], leaf_size: usize) -> (Vec<QNode>, usize) {
-        let mut nodes = Vec::new();
-        if elements.is_empty() {
-            nodes.push(QNode {
-                mass: 0.0,
-                com: Point2D::origin(),
-                half: 1.0,
-                children: [None; 4],
-                indices: Vec::new(),
-            });
-            return (nodes, 0);
-        }
-
-        let positions: Vec<Point2D> = elements.iter().map(|b| b.position).collect();
-        let (lo, hi) = Point2D::bounding_box(&positions).expect("non-empty");
-        let center = lo.midpoint(&hi);
-        let mut half = 0.5 * (hi.x - lo.x).max(hi.y - lo.y);
-        if !(half > 0.0) {
-            half = 1.0; // all points coincide
-        }
-        half *= 1.0 + 1e-9;
-
-        let all: Vec<usize> = (0..elements.len()).collect();
-        let root = Self::build_node(&mut nodes, elements, &all, center, half, 0, leaf_size);
-        (nodes, root)
-    }
-
-    fn build_node(
-        nodes: &mut Vec<QNode>,
-        elements: &[Monopole],
-        idx: &[usize],
-        center: Point2D,
-        half: f64,
-        depth: usize,
-        leaf_size: usize,
-    ) -> usize {
-        let mut m = 0.0;
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        for &b in idx {
-            let e = elements[b];
-            m += e.strength;
-            cx += e.strength * e.position.x;
-            cy += e.strength * e.position.y;
-        }
-        let com = if m != 0.0 {
-            Point2D::new(cx / m, cy / m)
-        } else {
-            center
-        };
-
-        let node_idx = nodes.len();
-        nodes.push(QNode {
-            mass: m,
-            com,
-            half,
-            children: [None; 4],
-            indices: Vec::new(),
-        });
-
-        if idx.len() <= leaf_size || depth >= MAX_DEPTH {
-            nodes[node_idx].indices = idx.to_vec();
-            return node_idx;
-        }
-
-        let mut quads: [Vec<usize>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
-        for &b in idx {
-            let p = elements[b].position;
-            let q = usize::from(p.x >= center.x) | (usize::from(p.y >= center.y) << 1);
-            quads[q].push(b);
-        }
-
-        let hh = 0.5 * half;
-        let offs = [
-            Point2D::new(-hh, -hh),
-            Point2D::new(hh, -hh),
-            Point2D::new(-hh, hh),
-            Point2D::new(hh, hh),
-        ];
-        let mut children = [None; 4];
-        for (q, quad) in quads.iter().enumerate() {
-            if !quad.is_empty() {
-                let cc = center + offs[q];
-                children[q] = Some(Self::build_node(
-                    nodes, elements, quad, cc, hh, depth + 1, leaf_size,
-                ));
+    /// Aggregate each node's monopole (total mass and centre of mass).
+    ///
+    /// Nodes are pushed parent-before-children, so a reverse pass visits every
+    /// child before its parent: leaves sum their bodies, internal nodes sum
+    /// their children.
+    fn aggregate(tree: &QuadTree, elements: &[Monopole]) -> (Vec<f64>, Vec<Point2D>) {
+        let n = tree.nodes.len();
+        let mut mass = vec![0.0; n];
+        let mut com = vec![Point2D::origin(); n];
+        for i in (0..n).rev() {
+            let node = &tree.nodes[i];
+            let (mut m, mut cx, mut cy) = (0.0, 0.0, 0.0);
+            if node.is_leaf() {
+                for &b in &node.indices {
+                    let e = elements[b];
+                    m += e.strength;
+                    cx += e.strength * e.position.x;
+                    cy += e.strength * e.position.y;
+                }
+            } else {
+                for &c in node.children.iter().flatten() {
+                    m += mass[c];
+                    cx += mass[c] * com[c].x;
+                    cy += mass[c] * com[c].y;
+                }
             }
+            mass[i] = m;
+            com[i] = if m != 0.0 {
+                Point2D::new(cx / m, cy / m)
+            } else {
+                node.center
+            };
         }
-        nodes[node_idx].children = children;
-        node_idx
+        (mass, com)
     }
 
     fn accumulate(&self, node_idx: usize, theta: Point2D, field: &mut Jet) {
-        let node = &self.nodes[node_idx];
+        let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &b in &node.indices {
                 let e = self.elements[b];
@@ -145,13 +71,14 @@ impl BarnesHut {
             }
             return;
         }
-        let dx = theta.x - node.com.x;
-        let dy = theta.y - node.com.y;
+        let com = self.com[node_idx];
+        let dx = theta.x - com.x;
+        let dy = theta.y - com.y;
         let d2 = dx * dx + dy * dy;
         let size = 2.0 * node.half;
         if d2 > 0.0 && size * size < self.theta2 * d2 {
             // Accept the node as its order-0 multipole (aggregate monopole).
-            field.add_monopole(theta, node.com, node.mass, self.eps2);
+            field.add_monopole(theta, com, self.mass[node_idx], self.eps2);
         } else {
             for &child in node.children.iter().flatten() {
                 self.accumulate(child, theta, field);
@@ -162,20 +89,22 @@ impl BarnesHut {
 
 impl FieldSolver for BarnesHut {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
-        let (nodes, root) = Self::build_tree(sources, cfg.leaf_size.max(1));
+        let positions: Vec<Point2D> = sources.iter().map(|b| b.position).collect();
+        let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
+        let (mass, com) = Self::aggregate(&tree, sources);
         Self {
             elements: sources.to_vec(),
-            nodes,
-            root,
+            tree,
+            mass,
+            com,
             theta2: cfg.theta_bh * cfg.theta_bh,
             eps2: cfg.eps2,
-            leaf_size: cfg.leaf_size.max(1),
         }
     }
 
     fn jet(&self, theta: Point2D) -> Jet {
         let mut f = Jet::default();
-        self.accumulate(self.root, theta, &mut f);
+        self.accumulate(self.tree.root, theta, &mut f);
         f
     }
 
