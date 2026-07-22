@@ -4,9 +4,10 @@
 //! Poisson solver for [`MeshGrid`]: solve $\nabla^2 \psi = f$ on the mesh.
 //!
 //! The unstructured counterpart to
-//! [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg): conjugate
-//! gradient on the symmetric two-point-flux stiffness matrix (`apply_stiffness`
-//! in [`diff`](super::diff)), with this grid's field as the source $f$.
+//! [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg): Jacobi
+//! (diagonal) preconditioned conjugate gradient on the symmetric two-point-flux
+//! stiffness matrix (`apply_stiffness` in [`diff`](super::diff)), with this
+//! grid's field as the source $f$.
 //!
 //! The default boundary is **natural zero-flux (Neumann)** — box facets carry no
 //! flux — so the problem is singular: the source is projected to a zero
@@ -86,12 +87,38 @@ impl MeshGrid {
         }
         let thresh = cfg.tol * cfg.tol * bnorm2;
 
-        // Standard CG with A p = -K p (+ diag(w) p for Dirichlet).
+        // Jacobi preconditioner M = diag(A): the per-cell transmissibility sum
+        // (plus the Dirichlet boundary term). Positive on any connected cell; the
+        // fallback keeps an isolated cell non-singular.
+        let diag: Vec<f64> = (0..n)
+            .map(|i| {
+                let site = self.site(i);
+                let mut d = 0.0;
+                for &(j, len) in faces.faces_of(i) {
+                    let dist = site.distance(&self.site(j));
+                    if dist > 0.0 {
+                        d += len / dist;
+                    }
+                }
+                if dirichlet {
+                    d += bweight[i];
+                }
+                if d > 0.0 {
+                    d
+                } else {
+                    1.0
+                }
+            })
+            .collect();
+
+        // Jacobi-preconditioned CG with A p = -K p (+ diag(w) p for Dirichlet).
         let mut r = b;
-        let mut p = r.clone();
+        let mut z: Vec<f64> = (0..n).map(|k| r[k] / diag[k]).collect();
+        let mut p = z.clone();
         let mut kp = vec![0.0f64; n];
         let mut ap = vec![0.0f64; n];
         let mut rs = dot(&r, &r);
+        let mut rz = dot(&r, &z);
         let mut iterations = 0;
         let mut converged = rs <= thresh;
         while iterations < cfg.max_iter && !converged {
@@ -106,7 +133,7 @@ impl MeshGrid {
             if pap <= 0.0 {
                 break; // constant (null-space) direction; nothing more to resolve
             }
-            let alpha = rs / pap;
+            let alpha = rz / pap;
             for k in 0..n {
                 x[k] += alpha * p[k];
                 r[k] -= alpha * ap[k];
@@ -118,10 +145,15 @@ impl MeshGrid {
                 converged = true;
                 break;
             }
-            let beta = rs_new / rs;
             for k in 0..n {
-                p[k] = r[k] + beta * p[k];
+                z[k] = r[k] / diag[k];
             }
+            let rz_new = dot(&r, &z);
+            let beta = rz_new / rz;
+            for k in 0..n {
+                p[k] = z[k] + beta * p[k];
+            }
+            rz = rz_new;
             rs = rs_new;
         }
 
@@ -246,6 +278,43 @@ mod tests {
         let (psi, _) = m.poisson_cg(None).unwrap();
         let mean = (0..m.len()).map(|i| m.area(i) * psi.value(i)).sum::<f64>() / m.total_area();
         assert!(mean.abs() < 1e-8, "mean {mean}");
+    }
+
+    #[test]
+    fn converges_on_an_anisotropic_mesh() {
+        // Cells stretched 8:1 make the operator ill-conditioned; the Jacobi
+        // preconditioner keeps CG converging and recovering the potential.
+        use std::f64::consts::PI;
+        let mut rng = Lcg::new(0x0A15);
+        let bbox = BBox::from_lims(0.0, 8.0, 0.0, 1.0);
+        let mut sites = Vec::new();
+        for gy in 0..14 {
+            for gx in 0..14 {
+                let x = 8.0 * (0.5 + gx as f64) / 14.0 + 0.05 * (rng.f() - 0.5);
+                let y = (0.5 + gy as f64) / 14.0 + 0.006 * (rng.f() - 0.5);
+                sites.push(p(x, y));
+            }
+        }
+        // ψ = cos(πx/8)cos(πy) is a Neumann eigenfunction on this box.
+        let psi_exact = |x: f64, y: f64| (PI * x / 8.0).cos() * (PI * y).cos();
+        let lambda = PI * PI / 64.0 + PI * PI;
+        let m = MeshGrid::from_func(&sites, bbox, |x, y| -lambda * psi_exact(x, y)).unwrap();
+        let (psi, info) = m.poisson_cg(PoissonConfig::default().with_tol(1e-9)).unwrap();
+        assert!(info.converged, "did not converge: {info:?}");
+        assert!(info.iterations < m.len(), "too many iterations: {}", info.iterations);
+
+        let mean = (0..m.len())
+            .map(|i| m.area(i) * psi_exact(m.site(i).x, m.site(i).y))
+            .sum::<f64>()
+            / m.total_area();
+        let mut max_err = 0.0f64;
+        for i in 0..m.len() {
+            if is_interior(&m, i) {
+                let want = psi_exact(m.site(i).x, m.site(i).y) - mean;
+                max_err = max_err.max((psi.value(i) - want).abs());
+            }
+        }
+        assert!(max_err < 0.1, "max interior error {max_err}");
     }
 
     #[test]
