@@ -87,9 +87,7 @@ mod mesh;
 pub use point::Point2D;
 pub use bbox::BBox;
 pub use field::ScalarField2D;
-pub use ops::FieldOps;
-pub use uniform::{
-    BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, PoissonConfig,
-};
+pub use ops::{FieldOps, PoissonConfig};
+pub use uniform::{BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid};
 // pub use adaptive::AdaGrid;
 pub use mesh::{MeshGrid, VoronoiMesh};

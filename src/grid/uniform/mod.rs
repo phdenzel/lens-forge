@@ -26,4 +26,3 @@ pub use grid2d::Grid2D;
 pub use pixelgrid::PixelGrid;
 pub use interp::BilinearKernel;
 pub use diff::{BoundaryCondition, DerivativeStencil};
-pub use poisson::PoissonConfig;

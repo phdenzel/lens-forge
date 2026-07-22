@@ -4,36 +4,82 @@
 //! [`FieldOps`]: the representation-agnostic operator surface shared by
 //! [`PixelGrid`](crate::grid::PixelGrid) and [`MeshGrid`](crate::grid::MeshGrid).
 //!
-//! [`ScalarField2D`] is the object-safe *data* trait (cell access, nearest-cell
-//! sampling, aggregates). [`FieldOps`] extends it with the *operator* workflow
-//! that differs by representation but shares a common contract: continuous
-//! interpolation, the differential operators (gradient, Laplacian), and the
-//! Poisson solve. Generic code bounded on `T: FieldOps` therefore runs
-//! unchanged on either the structured grid or the unstructured mesh.
+//! [`ScalarField2D`] is the object-safe *data* trait (cell access, sampling,
+//! aggregates); [`FieldOps`] extends it with the *operator* workflow — continuous
+//! interpolation, gradient, Laplacian, and the Poisson solve — so generic
+//! `T: FieldOps` code runs unchanged on either representation. It is `Self`-valued
+//! and thus a generic bound, not a trait object.
 //!
-//! Because the operators return field-valued results (`Self`, `(Self, Self)`),
-//! `FieldOps` is `Sized` and not object-safe — use it as a generic bound
-//! (`fn f<T: FieldOps>(…)`), not as `&dyn FieldOps`; reach for
-//! [`ScalarField2D`] where trait objects are needed.
-//!
-//! # Representation-specific semantics
-//!
-//! The contract is the *operation*, not bit-identical numerics. Each
-//! implementation uses its natural discretization and boundary handling: the
-//! grid uses finite differences (default central stencil) with the
-//! [`poisson_cg`](crate::grid::PixelGrid::poisson_cg) boundary condition, while
-//! the mesh uses finite-volume operators with a natural zero-flux (Neumann)
-//! boundary. Results agree in the continuum limit, not to the last bit.
+//! The shared [`PoissonConfig`] configures both Poisson solvers, so it lives here
+//! rather than in either representation's module; the mesh solver reads only its
+//! `tol` and `max_iter`.
 
-use crate::grid::{Point2D, PoissonConfig, ScalarField2D};
+use crate::grid::{BoundaryCondition, Point2D, ScalarField2D};
 use crate::{Result, SolveInfo};
+
+/// Configuration for the iterative conjugate-gradient Poisson solvers
+/// ([`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg) and
+/// [`MeshGrid::poisson_cg`](crate::grid::MeshGrid::poisson_cg)).
+///
+/// Shared by both representations: the mesh solver reads only `tol` and
+/// `max_iter` (its boundary is always the natural zero-flux one), while the grid
+/// solver also honours `bc`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PoissonConfig {
+    /// Relative residual tolerance $\lVert r \rVert / \lVert b \rVert$ at which
+    /// the solve is considered converged.
+    pub tol: f64,
+    /// Maximum number of conjugate-gradient iterations.
+    pub max_iter: usize,
+    /// Boundary condition for the discrete Laplacian. Must be symmetric;
+    /// `Natural` is rejected by
+    /// [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg). Ignored by
+    /// the mesh solver, which always uses a natural zero-flux boundary.
+    pub bc: BoundaryCondition,
+}
+
+impl Default for PoissonConfig {
+    fn default() -> Self {
+        Self {
+            tol: 1e-8,
+            max_iter: 10_000,
+            bc: BoundaryCondition::Periodic,
+        }
+    }
+}
+
+impl PoissonConfig {
+    /// Set the relative residual tolerance.
+    ///
+    /// # Arguments
+    /// * `tol` - relative residual tolerance
+    #[inline]
+    pub fn with_tol(mut self, tol: f64) -> Self {
+        self.tol = tol;
+        self
+    }
+    /// Set the maximum iteration count.
+    ///
+    /// # Arguments
+    /// * `max_iter` - maximum number of CG iterations
+    #[inline]
+    pub fn with_max_iter(mut self, max_iter: usize) -> Self {
+        self.max_iter = max_iter;
+        self
+    }
+    /// Set the boundary condition.
+    ///
+    /// # Arguments
+    /// * `bc` - boundary condition for the discrete Laplacian
+    #[inline]
+    pub fn with_bc(mut self, bc: BoundaryCondition) -> Self {
+        self.bc = bc;
+        self
+    }
+}
 
 /// The continuous-interpolation and differential/Poisson operators shared by the
 /// scalar-field representations.
-///
-/// A supertrait of [`ScalarField2D`]; see the [module docs](self) for why it is
-/// `Sized` (and thus generic-only, not a trait object) and how the numerics vary
-/// by representation.
 pub trait FieldOps: ScalarField2D + Sized {
     /// Continuously interpolate the field at `p`, returning `default` outside the
     /// domain.
@@ -89,11 +135,23 @@ pub trait FieldOps: ScalarField2D + Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid::{BBox, MeshGrid, PixelGrid, Point2D};
+    use crate::grid::{BBox, BoundaryCondition, MeshGrid, PixelGrid, Point2D};
     use crate::utils::rng::Lcg;
 
     fn plane(x: f64, y: f64) -> f64 {
         2.0 * x - 3.0 * y + 5.0
+    }
+
+    #[test]
+    fn poisson_config_builders() {
+        // Exercise the builder chain, including with_max_iter.
+        let cfg = PoissonConfig::default()
+            .with_tol(1e-6)
+            .with_max_iter(42)
+            .with_bc(BoundaryCondition::Dirichlet);
+        assert_eq!(cfg.tol, 1e-6);
+        assert_eq!(cfg.max_iter, 42);
+        assert_eq!(cfg.bc, BoundaryCondition::Dirichlet);
     }
 
     /// A generic routine written once against `FieldOps`, run on both

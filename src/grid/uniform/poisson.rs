@@ -4,82 +4,23 @@
 //! Poisson solvers for [`PixelGrid`]: solve $\nabla^2 \psi = f$.
 //!
 //! Two backends, both taking the grid's field as the source $f$ and returning
-//! the potential $\psi$ on a periodic domain:
+//! the potential $\psi$:
 //!
-//! * [`PixelGrid::poisson_spectral`] — one FFT divide-by-$-k^2$, $O(N \log N)$.
-//!   Exact for band-limited periodic data; the fast default.
-//! * [`PixelGrid::poisson_cg`] — conjugate gradient on the 5-point Laplacian,
-//!   $O(N)$ memory with iterative sweeps. Slower here, but the route that
-//!   generalizes to non-periodic boundary conditions where the FFT does not
-//!   apply.
+//! * [`PixelGrid::poisson_spectral`] — one FFT divide-by-$-k^2$, $O(N \log N)$;
+//!   exact for band-limited periodic data, the fast default. Always projects the
+//!   source to zero mean.
+//! * [`PixelGrid::poisson_cg`] — conjugate gradient on the 5-point Laplacian;
+//!   slower, but takes a [`BoundaryCondition`] and so generalizes to non-periodic
+//!   BCs, projecting to zero mean only for the singular cases (`Periodic`,
+//!   `Neumann`).
 //!
-//! The periodic problem needs a zero-mean source and is unique up to a constant.
-//! [`PixelGrid::poisson_spectral`] always projects to zero mean;
-//! [`PixelGrid::poisson_cg`] takes a [`BoundaryCondition`] and projects only for
-//! the singular cases (`Periodic`, `Neumann`), returning the unique solution for
-//! `Dirichlet`.
-//!
-//! For lensing, pass $f = 2\kappa$ to recover the potential from the
-//! convergence $\kappa$.
+//! For lensing, pass $f = 2\kappa$ to recover the potential from the convergence.
 
 use super::diff::{apply_laplacian_5pt_symm, BoundaryCondition};
-use crate::grid::{FieldArray2D, PixelGrid};
+use crate::grid::{FieldArray2D, PixelGrid, PoissonConfig};
 use crate::{LensForgeError, Result, SolveInfo};
 use ndarray::{Array2, Axis, Zip};
 use num::complex::Complex;
-
-/// Configuration for the iterative [`PixelGrid::poisson_cg`] solver.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PoissonConfig {
-    /// Relative residual tolerance $\lVert r \rVert / \lVert b \rVert$ at which
-    /// the solve is considered converged.
-    pub tol: f64,
-    /// Maximum number of conjugate-gradient iterations.
-    pub max_iter: usize,
-    /// Boundary condition for the discrete Laplacian. Must be symmetric;
-    /// `Natural` is rejected by [`PixelGrid::poisson_cg`].
-    pub bc: BoundaryCondition,
-}
-
-impl Default for PoissonConfig {
-    fn default() -> Self {
-        Self {
-            tol: 1e-8,
-            max_iter: 10_000,
-            bc: BoundaryCondition::Periodic,
-        }
-    }
-}
-
-impl PoissonConfig {
-    /// Set the relative residual tolerance.
-    ///
-    /// # Arguments
-    /// * `tol` - relative residual tolerance
-    #[inline]
-    pub fn with_tol(mut self, tol: f64) -> Self {
-        self.tol = tol;
-        self
-    }
-    /// Set the maximum iteration count.
-    ///
-    /// # Arguments
-    /// * `max_iter` - maximum number of CG iterations
-    #[inline]
-    pub fn with_max_iter(mut self, max_iter: usize) -> Self {
-        self.max_iter = max_iter;
-        self
-    }
-    /// Set the boundary condition.
-    ///
-    /// # Arguments
-    /// * `bc` - boundary condition for the discrete Laplacian
-    #[inline]
-    pub fn with_bc(mut self, bc: BoundaryCondition) -> Self {
-        self.bc = bc;
-        self
-    }
-}
 
 #[inline]
 fn dot(a: &[f64], b: &[f64]) -> f64 {
@@ -380,18 +321,6 @@ mod tests {
         // does not match ny*nx.
         assert!(to_field(vec![0.0; 3], 2, 2).is_err());
         assert!(to_field(vec![0.0; 4], 2, 2).is_ok());
-    }
-
-    #[test]
-    fn poisson_config_builders() {
-        // Exercise the builder chain, including with_max_iter.
-        let cfg = PoissonConfig::default()
-            .with_tol(1e-6)
-            .with_max_iter(42)
-            .with_bc(BoundaryCondition::Dirichlet);
-        assert_eq!(cfg.tol, 1e-6);
-        assert_eq!(cfg.max_iter, 42);
-        assert_eq!(cfg.bc, BoundaryCondition::Dirichlet);
     }
 
     #[test]
