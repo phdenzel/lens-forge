@@ -16,6 +16,7 @@ use std::f64::consts::FRAC_1_PI;
 
 /// A source's multipole (Laurent) expansion of Φ about [`center`](Self::center):
 /// the real M₀ lives in [`strength`](Self::strength); `coeffs[i]` is `M_{i+1}`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Multipole {
     /// Expansion centre.
     pub center: Point2D,
@@ -80,6 +81,28 @@ impl Multipole {
     }
 }
 
+impl From<Monopole> for Multipole {
+    /// Promote a point mass to an order-0 multipole centred on itself.
+    fn from(m: Monopole) -> Self {
+        Self { center: m.position, strength: m.strength, coeffs: Vec::new() }
+    }
+}
+
+impl TryFrom<Multipole> for Monopole {
+    /// The un-collapsed multipole, returned when it carries higher moments.
+    type Error = Multipole;
+
+    /// Collapse an order-0 multipole to its point mass; fails (lossy) if any
+    /// higher moment is present.
+    fn try_from(m: Multipole) -> Result<Self, Self::Error> {
+        if m.coeffs.is_empty() {
+            Ok(Monopole::new(m.center, m.strength))
+        } else {
+            Err(m)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,7 +124,7 @@ mod tests {
     fn monopole_constructor_matches_a_single_source() {
         // Centred on the source, the order-0 expansion is exact, not approximate.
         let s = Monopole::new(Point2D::new(0.1, -0.2), 0.7);
-        let mp = Multipole::from_monopoles(&[s], s.position, 0);
+        let mp = Multipole::from(s);
         let direct = DirectSum::build(&[s], SolverConfig::default());
         let theta = Point2D::new(3.0, 1.0);
         let a = mp.eval_jet(theta);
@@ -109,6 +132,17 @@ mod tests {
         assert!(a.deflection.distance(&b.deflection) < 1e-12);
         assert!((a.potential - b.potential).abs() < 1e-12);
         assert!(a.convergence().abs() < 1e-12); // trace-free away from the source
+    }
+
+    #[test]
+    fn monopole_multipole_round_trip() {
+        // Monopole → order-0 Multipole → Monopole is lossless; a multipole with
+        // higher moments refuses to collapse and is handed back.
+        let s = Monopole::new(Point2D::new(0.1, -0.2), 0.7);
+        let back = Monopole::try_from(Multipole::from(s)).unwrap();
+        assert_eq!(back, s);
+        let higher = Multipole::from_monopoles(&cluster(8, 0x5, 0.3), Point2D::origin(), 2);
+        assert!(Monopole::try_from(higher).is_err());
     }
 
     #[test]
