@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Square quadtree over a 2D point set (topology only).
+//! Spatial quadtree over a 2D point set.
 //!
-//! Stores just the spatial subdivision — square bounds and, for leaves, the
-//! indices of the points they hold. Callers attach their own per-node aggregates
-//! (e.g. Barnes–Hut monopoles) keyed by node index. Nodes are pushed
+//! Stores the spatial subdivision — square bounds and, for leaves, the indices
+//! of the points they hold. Callers attach their own per-node aggregates (e.g
+//! Barnes–Hut monopoles) keyed by node index. Nodes are pushed
 //! parent-before-children, so every descendant has a larger index than its
-//! parent — a single reverse pass over [`QuadTree::nodes`] visits children
-//! before parents.
+//! parent.
 
 use crate::grid::Point2D;
 
@@ -24,7 +23,7 @@ pub(crate) struct QuadNode {
     pub half: f64,
     /// Child node indices by quadrant (`x>=cx` bit 0, `y>=cy` bit 1), or `None`.
     pub children: [Option<usize>; 4],
-    /// Indices of the points held here; non-empty only for leaves.
+    /// Indices of the points held in this node; non-empty only for leaves.
     pub indices: Vec<usize>,
 }
 
@@ -36,7 +35,7 @@ impl QuadNode {
     }
 }
 
-/// A square quadtree over a fixed set of points, stored in an arena.
+/// A square quadtree over a fixed set of points.
 #[derive(Debug)]
 pub(crate) struct QuadTree {
     /// Arena of nodes; children and the root reference entries here by index.
