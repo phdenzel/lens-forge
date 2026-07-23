@@ -123,4 +123,111 @@ mod tests {
         let v = f.sample(Point2D::new(0.5, -0.5));
         assert!((v - (0.5 - 1.0)).abs() < 1e-9, "sample {v}");
     }
+
+    #[test]
+    fn pixelgrid_is_empty_and_sum() {
+        let grid = Grid2D::square(4, 1.0).unwrap();
+        let pg = PixelGrid::constant(grid, 2.0);
+        let f: &dyn ScalarField2D = &pg;
+        assert_eq!(f.len(), 16);
+        assert!(!f.is_empty());
+        assert!((f.sum() - 2.0 * 16.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pixelgrid_min_max() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        let f: &dyn ScalarField2D = &pg;
+        // On the symmetric domain [-2,2]², the linear field's extrema at pixel
+        // centres are ± of the largest |x + 2y|.
+        let n = f.len();
+        let expected_min = (0..n).map(|i| pg.value_at(i)).fold(f64::INFINITY, f64::min);
+        let expected_max =
+            (0..n).map(|i| pg.value_at(i)).fold(f64::NEG_INFINITY, f64::max);
+        assert!((f.min() - expected_min).abs() < 1e-12);
+        assert!((f.max() - expected_max).abs() < 1e-12);
+        assert!(f.min() < f.max());
+    }
+
+    #[test]
+    fn pixelgrid_center_area_bounds() {
+        let grid = Grid2D::square(4, 1.0).unwrap();
+        let pg = PixelGrid::constant(grid, 1.0);
+        let f: &dyn ScalarField2D = &pg;
+        // center(i) agrees with the grid's own pixel centre, area is uniform,
+        // and bounds match the grid bbox.
+        for i in 0..f.len() {
+            let (ix, jy) = pg.grid.unflatten_index(i);
+            assert_eq!(f.center(i), pg.grid.pixel_center(ix, jy));
+            assert!((f.cell_area(i) - pg.grid.pixel_area()).abs() < 1e-12);
+        }
+        assert_eq!(f.bounds(), pg.grid.bbox);
+    }
+
+    /// Minimal in-test field over an explicit list of values, used to exercise
+    /// the trait defaults on the empty case a non-empty `PixelGrid` can't reach.
+    struct VecField(Vec<f64>);
+
+    impl ScalarField2D for VecField {
+        fn len(&self) -> usize {
+            self.0.len()
+        }
+        fn value_at(&self, i: usize) -> f64 {
+            self.0[i]
+        }
+        fn center(&self, _i: usize) -> Point2D {
+            Point2D::new(0.0, 0.0)
+        }
+        fn cell_area(&self, _i: usize) -> f64 {
+            1.0
+        }
+        fn bounds(&self) -> BBox {
+            BBox::from_lims(0.0, 1.0, 0.0, 1.0)
+        }
+        fn sample(&self, _p: Point2D) -> f64 {
+            0.0
+        }
+    }
+
+    #[test]
+    fn empty_field_defaults() {
+        let f = VecField(vec![]);
+        assert_eq!(f.len(), 0);
+        assert!(f.is_empty());
+        assert_eq!(f.mean(), 0.0); // n == 0 branch
+        assert_eq!(f.sum(), 0.0);
+        assert_eq!(f.flux(), 0.0);
+        assert_eq!(f.min(), f64::INFINITY);
+        assert_eq!(f.max(), f64::NEG_INFINITY);
+    }
+
+    #[test]
+    fn vecfield_required_methods() {
+        // Exercise every VecField method so the helper impl is fully covered.
+        let f = VecField(vec![1.0, 4.0, 2.0]);
+        assert!(!f.is_empty());
+        assert_eq!(f.value_at(1), 4.0);
+        assert_eq!(f.center(0), Point2D::new(0.0, 0.0));
+        assert_eq!(f.cell_area(0), 1.0);
+        assert_eq!(f.bounds(), BBox::from_lims(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(f.sample(Point2D::new(0.5, 0.5)), 0.0);
+        assert_eq!(f.min(), 1.0);
+        assert_eq!(f.max(), 4.0);
+        assert_eq!(f.sum(), 7.0);
+        assert_eq!(f.mean(), 7.0 / 3.0); // n != 0 branch
+    }
+
+    #[test]
+    fn pixelgrid_sample_batch_matches_sample() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        let f: &dyn ScalarField2D = &pg;
+        let pts = [Point2D::new(0.5, -0.5), Point2D::new(-1.0, 0.25), Point2D::new(0.0, 0.0)];
+        let batch = f.sample_batch(&pts);
+        assert_eq!(batch.len(), pts.len());
+        for (b, &p) in batch.iter().zip(pts.iter()) {
+            assert!((b - f.sample(p)).abs() < 1e-12);
+        }
+    }
 }
