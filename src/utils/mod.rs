@@ -8,7 +8,9 @@
 //! * `double_double` — `hi + lo` compensated arithmetic built on error-free
 //!   transformations.
 //! * `rng` — a small seedable LCG for site sampling and test fixtures.
+//! * `binomial` — Pascal's-triangle binomial-coefficient table.
 
+pub(crate) mod binomial;
 pub(crate) mod double_double;
 pub(crate) mod error_free;
 pub(crate) mod rng;
