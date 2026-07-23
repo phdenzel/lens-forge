@@ -9,8 +9,9 @@
 //! field is read from Φ (ψ = Re Φ, α = conj Φ′, shear = conj Φ″). It is the
 //! order-0 case (`M₀` only) that the Barnes–Hut node acceptance already uses.
 
-use crate::fastsum::{Monopole, Jet};
+use crate::fastsum::{Monopole, Jet, LocalExpansion};
 use crate::grid::Point2D;
+use crate::utils::binomial::pascal;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
@@ -78,6 +79,82 @@ impl Multipole {
             wk *= inv_w;
         }
         Jet::from_holomorphic(phi * FRAC_1_PI, dphi * FRAC_1_PI, ddphi * FRAC_1_PI)
+    }
+
+    /// Shift this multipole to `new_center`, same order (M2M translation).
+    ///
+    /// With `d = center − new_center`, `M_l' = Σ_{k=0}^{l} C(l,k) d^{l−k} M_k`
+    /// (a lower-triangular binomial mix; the total mass `M₀` is preserved).
+    ///
+    /// # Arguments
+    /// * `new_center` - the target expansion centre.
+    pub fn translate(&self, new_center: Point2D) -> Multipole {
+        let p = self.moments.len();
+        let binom = pascal(p);
+        let d = self.center.to_complex() - new_center.to_complex();
+        let mut dpow = Vec::with_capacity(p + 1); // d^0..=d^p
+        let mut acc = Complex::new(1.0, 0.0);
+        for _ in 0..=p {
+            dpow.push(acc);
+            acc *= d;
+        }
+        let moment = |k: usize| {
+            if k == 0 {
+                Complex::new(self.strength, 0.0)
+            } else {
+                self.moments[k - 1]
+            }
+        };
+        let mut moments = vec![Complex::new(0.0, 0.0); p];
+        for l in 1..=p {
+            let mut sum = Complex::new(0.0, 0.0);
+            for k in 0..=l {
+                sum += dpow[l - k] * binom[l][k] * moment(k);
+            }
+            moments[l - 1] = sum;
+        }
+        Multipole { center: new_center, strength: self.strength, moments }
+    }
+
+    /// Convert this far-field multipole into a local (Taylor) expansion about a
+    /// well-separated `target` (M2L translation).
+    ///
+    /// With `D = target − center`: `b₀ = M₀ ln D − Σ_{k≥1} (M_k/k) D^{−k}` and,
+    /// for `l ≥ 1`, `b_l = (−1)^{l+1}[ M₀/(l D^l) + Σ_{k≥1} (M_k/k) C(k+l−1,l)
+    /// D^{−k−l} ]`. Valid only when the boxes are well separated (`|D|` beyond
+    /// both radii).
+    ///
+    /// # Arguments
+    /// * `target` - the local expansion centre.
+    pub fn to_local(&self, target: Point2D) -> LocalExpansion {
+        let p = self.moments.len();
+        let binom = pascal(2 * p);
+        let d = target.to_complex() - self.center.to_complex();
+        let inv_d = d.inv();
+        let mut dneg = Vec::with_capacity(2 * p + 1); // D^{−k}, k=0..=2p
+        let mut acc = Complex::new(1.0, 0.0);
+        for _ in 0..=2 * p {
+            dneg.push(acc);
+            acc *= inv_d;
+        }
+        let mut coeffs = vec![Complex::new(0.0, 0.0); p + 1];
+        let mut b0 = Complex::new(self.strength, 0.0) * d.ln();
+        for k in 1..=p {
+            b0 -= self.moments[k - 1] * dneg[k] / k as f64;
+        }
+        coeffs[0] = b0;
+        for l in 1..=p {
+            let mut inner = Complex::new(self.strength / l as f64, 0.0) * dneg[l];
+            for k in 1..=p {
+                inner += self.moments[k - 1] / k as f64 * binom[k + l - 1][l] * dneg[k + l];
+            }
+            let sign = if l % 2 == 0 { -1.0 } else { 1.0 }; // (−1)^{l+1}
+            coeffs[l] = inner * sign;
+        }
+        for c in coeffs.iter_mut() {
+            *c *= FRAC_1_PI;
+        }
+        LocalExpansion { center: target, coeffs }
     }
 }
 
@@ -163,5 +240,36 @@ mod tests {
         assert!(e8 < 1e-8, "order-8 error {e8} too large");
         let hi = Multipole::from_monopoles(&bodies, Point2D::origin(), 14).eval_jet(theta);
         assert!((hi.scalar - exact.scalar).abs() < 1e-8);
+    }
+
+    #[test]
+    fn m2m_preserves_the_far_field() {
+        // Shifting a multipole to a new centre (M2M) leaves the far field it
+        // induces unchanged, still matching the direct sum.
+        let bodies = cluster(30, 0x7, 0.3);
+        let mp1 = Multipole::from_monopoles(&bodies, Point2D::new(0.05, -0.02), 10);
+        let mp2 = mp1.translate(Point2D::new(-0.1, 0.08));
+        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let theta = Point2D::new(6.0, -4.0);
+        let a = mp2.eval_jet(theta);
+        let b = direct.jet(theta);
+        assert!(a.gradient.distance(&b.gradient) < 1e-8);
+        assert!((a.scalar - b.scalar).abs() < 1e-8);
+    }
+
+    #[test]
+    fn m2l_matches_direct_near_the_target() {
+        // A source cluster's multipole, converted to a local expansion about a
+        // well-separated target (M2L), matches the direct sum near that target.
+        let bodies = cluster(30, 0x9, 0.3); // about the origin
+        let mp = Multipole::from_monopoles(&bodies, Point2D::origin(), 12);
+        let target = Point2D::new(8.0, 0.0);
+        let le = mp.to_local(target);
+        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let theta = target + Point2D::new(0.3, -0.2);
+        let a = le.eval_jet(theta);
+        let b = direct.jet(theta);
+        assert!(a.gradient.distance(&b.gradient) < 1e-8, "grad mismatch");
+        assert!((a.scalar - b.scalar).abs() < 1e-8, "scalar mismatch");
     }
 }

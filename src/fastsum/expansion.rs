@@ -11,11 +11,13 @@
 
 use crate::fastsum::{Monopole, Jet};
 use crate::grid::Point2D;
+use crate::utils::binomial::pascal;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 
 /// A field's local (Taylor) expansion of Φ about [`center`](Self::center);
 /// `coeffs[k]` is the Taylor coefficient `b_k`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocalExpansion {
     /// Expansion centre.
     pub center: Point2D,
@@ -84,6 +86,34 @@ impl LocalExpansion {
         }
         Jet::from_holomorphic(phi, dphi, ddphi)
     }
+
+    /// Shift this local expansion to `new_center`, same order (L2L translation).
+    ///
+    /// With `e = new_center − center`, `b_l' = Σ_{k≥l} C(k,l) e^{k−l} b_k` (an
+    /// upper-triangular binomial mix; exact for the retained orders).
+    ///
+    /// # Arguments
+    /// * `new_center` - the target expansion centre.
+    pub fn translate(&self, new_center: Point2D) -> LocalExpansion {
+        let n = self.coeffs.len(); // p + 1
+        let binom = pascal(n.saturating_sub(1));
+        let e = new_center.to_complex() - self.center.to_complex();
+        let mut epow = Vec::with_capacity(n); // e^0..=e^p
+        let mut acc = Complex::new(1.0, 0.0);
+        for _ in 0..n {
+            epow.push(acc);
+            acc *= e;
+        }
+        let mut coeffs = vec![Complex::new(0.0, 0.0); n];
+        for l in 0..n {
+            let mut sum = Complex::new(0.0, 0.0);
+            for k in l..n {
+                sum += self.coeffs[k] * binom[k][l] * epow[k - l];
+            }
+            coeffs[l] = sum;
+        }
+        LocalExpansion { center: new_center, coeffs }
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +168,21 @@ mod tests {
         let (e1, e4, e8) = (err(1), err(4), err(8));
         assert!(e4 < e1 && e8 < e4, "not monotone: {e1}, {e4}, {e8}");
         assert!(e8 < 1e-6, "order-8 error {e8} too large");
+    }
+
+    #[test]
+    fn l2l_preserves_the_field_near_the_new_center() {
+        // Re-centring a local expansion (L2L) must reproduce the same field near
+        // the shifted centre, matching the direct sum.
+        let bodies = far_ring(24, 0x33, 6.0);
+        let le1 = LocalExpansion::from_monopoles(&bodies, Point2D::origin(), 12);
+        let t2 = Point2D::new(0.3, -0.2);
+        let le2 = le1.translate(t2);
+        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let theta = t2 + Point2D::new(0.1, 0.05);
+        let a = le2.eval_jet(theta);
+        let b = direct.jet(theta);
+        assert!(a.gradient.distance(&b.gradient) < 1e-6);
+        assert!((a.scalar - b.scalar).abs() < 1e-6);
     }
 }
