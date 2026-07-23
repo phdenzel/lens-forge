@@ -18,7 +18,7 @@
 //!
 //! * [`DirectSum`]  — exact $O(N^2)$ reference.
 //! * [`BarnesHut`]  — quadtree, monopole acceptance, $O(N \log N)$.
-//! * *(planned)* FMM — 2D analytic (complex/Cauchy) multipole+local expansions, $O(N)$.
+//! * [`Fmm`]        — 2D analytic (complex/Cauchy) multipole+local expansions, $O(N)$.
 //! * *(planned)* KIFMM — kernel-independent FMM (equivalent densities).
 //! * *(planned)* $\mathcal{H}$-matrix — hierarchical low-rank matrix (also invertible).
 //!
@@ -28,6 +28,7 @@
 pub mod barnes_hut;
 pub mod direct;
 pub mod expansion;
+pub mod fmm;
 pub mod jet;
 pub mod monopole;
 pub mod multipole;
@@ -36,6 +37,7 @@ pub mod solver;
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use expansion::LocalExpansion;
+pub use fmm::Fmm;
 pub use jet::Jet;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
