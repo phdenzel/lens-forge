@@ -7,8 +7,8 @@
 //! aggregate monopole (total mass and centre of mass). At a query point, a node
 //! whose region satisfies the opening criterion
 //! $\mathrm{size} / \mathrm{distance} < \theta_\mathrm{bh}$ is summarised by its
-//! monopole; otherwise its children are visited. Leaves sum their bodies
-//! directly. $\theta_\mathrm{bh} = 0$ never accepts, recovering the exact sum.
+//! monopole; otherwise its children are visited. Leaves sum their elements
+//! directly.
 
 use crate::grid::Point2D;
 use crate::fastsum::{FieldSolver, Monopole, Jet, SolverConfig};
@@ -17,11 +17,17 @@ use crate::tree::QuadTree;
 /// Barnes–Hut backend.
 #[derive(Debug)]
 pub struct BarnesHut {
+    /// Bodies in the simulation
     elements: Vec<Monopole>,
+    /// Spatial partitioning
     tree: QuadTree,
-    mass: Vec<f64>,    // aggregate strength per node, indexed by node id
-    com: Vec<Point2D>, // centre of mass per node, indexed by node id
+    /// Center of mass per node (indexed by node id)
+    com: Vec<Point2D>,
+    /// Total mass per node (indexed by node id)
+    mass: Vec<f64>,
+    /// opening angle (squared)
     theta2: f64,
+    /// softening (squared)
     eps2: f64,
 }
 
@@ -37,27 +43,21 @@ impl BarnesHut {
         let mut com = vec![Point2D::origin(); n];
         for i in (0..n).rev() {
             let node = &tree.nodes[i];
-            let (mut m, mut cx, mut cy) = (0.0, 0.0, 0.0);
+            let (mut m, mut c) = (0.0, Point2D::origin());
             if node.is_leaf() {
                 for &b in &node.indices {
                     let e = elements[b];
                     m += e.strength;
-                    cx += e.strength * e.position.x;
-                    cy += e.strength * e.position.y;
+                    c += e.position * e.strength;
                 }
             } else {
-                for &c in node.children.iter().flatten() {
-                    m += mass[c];
-                    cx += mass[c] * com[c].x;
-                    cy += mass[c] * com[c].y;
+                for &ch in node.children.iter().flatten() {
+                    m += mass[ch];
+                    c += com[ch] * mass[ch];
                 }
             }
             mass[i] = m;
-            com[i] = if m != 0.0 {
-                Point2D::new(cx / m, cy / m)
-            } else {
-                node.center
-            };
+            com[i] = if m != 0.0 { c / m } else { node.center };
         }
         (mass, com)
     }
@@ -72,9 +72,7 @@ impl BarnesHut {
             return;
         }
         let com = self.com[node_idx];
-        let dx = theta.x - com.x;
-        let dy = theta.y - com.y;
-        let d2 = dx * dx + dy * dy;
+        let d2 = theta.distance_squared(&com);
         let size = 2.0 * node.half;
         if d2 > 0.0 && size * size < self.theta2 * d2 {
             // Accept the node as its order-0 multipole (aggregate monopole).
