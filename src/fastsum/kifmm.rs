@@ -16,7 +16,9 @@
 //! the half side-length): an inner surface at `R_IN` enclosing the box's
 //! sources and an outer, well-separated surface at `R_OUT`. The upward pass
 //! uses the inner circle as its equivalent surface and the outer as its check
-//! surface; the downward pass swaps them.
+//! surface; the downward pass swaps them. Check surfaces are oversampled
+//! (`OVERSAMPLE`× the equivalent points) so each equivalent density is a
+//! least-squares fit rather than an exact interpolant.
 //!
 //! Because the equivalent densities are monopoles, evaluation (L2P / M2P) reuses
 //! the shared near-field kernel [`Jet::add_monopole`], yielding ψ, α and H in one
@@ -35,8 +37,10 @@ use std::f64::consts::TAU;
 const R_IN: f64 = 1.5;
 /// Outer (well-separated) proxy-circle radius, in units of the half side-length.
 const R_OUT: f64 = 3.0;
+/// Check points per equivalent point: an oversampled, overdetermined fit.
+const OVERSAMPLE: usize = 2;
 /// Tikhonov regularization for the check-from-equivalent pseudo-inverses.
-const LAMBDA: f64 = 1e-10;
+const LAMBDA: f64 = 1e-12;
 
 /// Equivalent monopole densities on a box-scaled proxy circle; carries the
 /// outgoing (inner circle) and incoming (outer circle) expansions alike.
@@ -46,15 +50,21 @@ pub(crate) struct EquivDensity {
     monos: Vec<Monopole>,
 }
 
-/// Precomputed proxy geometry and operator inverses for one tree level.
+/// Precomputed proxy geometry and operator inverses for one tree level. Each
+/// pass has an `n`-point equivalent surface and an oversampled `m`-point check
+/// surface; the pinvs are `n × m`.
 pub(crate) struct LevelOps {
-    /// Inner-circle offsets (radius `R_IN * half`): up-equivalent / down-check.
-    inner: Vec<Point2D>,
-    /// Outer-circle offsets (radius `R_OUT * half`): up-check / down-equivalent.
-    outer: Vec<Point2D>,
-    /// Up pass: outer-check → inner-equivalent map inverse (S2M, M2M).
+    /// Up-equivalent offsets: `n` points at `R_IN * half` (outgoing positions).
+    up_equiv: Vec<Point2D>,
+    /// Up-check offsets: `m` points at `R_OUT * half` (S2M, M2M).
+    up_check: Vec<Point2D>,
+    /// Down-equivalent offsets: `n` points at `R_OUT * half` (incoming positions).
+    down_equiv: Vec<Point2D>,
+    /// Down-check offsets: `m` points at `R_IN * half` (M2L, L2L, P2L).
+    down_check: Vec<Point2D>,
+    /// Up pass: up-check → up-equivalent map inverse (S2M, M2M).
     up_pinv: Array2<f64>,
-    /// Down pass: inner-check → outer-equivalent map inverse (M2L, L2L, P2L).
+    /// Down pass: down-check → down-equivalent map inverse (M2L, L2L, P2L).
     down_pinv: Array2<f64>,
 }
 
@@ -166,17 +176,19 @@ impl ExpansionOps for KiScheme {
 
     fn context(root_half: f64, max_depth: usize, order: usize, _eps2: f64) -> KiCtx {
         let n = (4 * order).max(16);
-        let unit = circle(n, 1.0);
+        let m = OVERSAMPLE * n;
+        let equiv_unit = circle(n, 1.0);
+        let check_unit = circle(m, 1.0);
         let level = (0..=max_depth)
             .map(|l| {
                 let h = root_half * 0.5f64.powi(l as i32);
-                let inner: Vec<Point2D> = unit.iter().map(|o| *o * (R_IN * h)).collect();
-                let outer: Vec<Point2D> = unit.iter().map(|o| *o * (R_OUT * h)).collect();
-                // Up: solve inner-equivalent from outer-check. Down: solve
-                // outer-equivalent from inner-check (the transposed geometry).
-                let up_pinv = pseudo_inverse(&kernel_matrix(&outer, &inner), LAMBDA);
-                let down_pinv = pseudo_inverse(&kernel_matrix(&inner, &outer), LAMBDA);
-                LevelOps { inner, outer, up_pinv, down_pinv }
+                let up_equiv: Vec<Point2D> = equiv_unit.iter().map(|o| *o * (R_IN * h)).collect();
+                let up_check: Vec<Point2D> = check_unit.iter().map(|o| *o * (R_OUT * h)).collect();
+                let down_equiv: Vec<Point2D> = equiv_unit.iter().map(|o| *o * (R_OUT * h)).collect();
+                let down_check: Vec<Point2D> = check_unit.iter().map(|o| *o * (R_IN * h)).collect();
+                let up_pinv = pseudo_inverse(&kernel_matrix(&up_check, &up_equiv), LAMBDA);
+                let down_pinv = pseudo_inverse(&kernel_matrix(&down_check, &down_equiv), LAMBDA);
+                LevelOps { up_equiv, up_check, down_equiv, down_check, up_pinv, down_pinv }
             })
             .collect();
         KiCtx { root_half, level }
@@ -184,16 +196,16 @@ impl ExpansionOps for KiScheme {
 
     fn s2m(ctx: &KiCtx, b: TreeBox, sources: &[Monopole]) -> EquivDensity {
         let lo = ctx.level_for(b.half);
-        let check: Vec<Point2D> = lo.outer.iter().map(|o| b.center + *o).collect();
+        let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
         let w = lo.up_pinv.dot(&check_potential(&check, sources));
-        EquivDensity { monos: density(b.center, &lo.inner, &w) }
+        EquivDensity { monos: density(b.center, &lo.up_equiv, &w) }
     }
 
     fn m2m(ctx: &KiCtx, b: TreeBox, child: &EquivDensity, acc: &mut Option<EquivDensity>) {
         let lo = ctx.level_for(b.half);
-        let check: Vec<Point2D> = lo.outer.iter().map(|o| b.center + *o).collect();
+        let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
         let w = lo.up_pinv.dot(&check_potential(&check, &child.monos));
-        let monos = density(b.center, &lo.inner, &w);
+        let monos = density(b.center, &lo.up_equiv, &w);
         match acc {
             None => *acc = Some(EquivDensity { monos }),
             Some(a) => {
@@ -206,27 +218,27 @@ impl ExpansionOps for KiScheme {
 
     fn zero_incoming(ctx: &KiCtx, b: TreeBox) -> EquivDensity {
         let lo = ctx.level_for(b.half);
-        let monos = lo.outer.iter().map(|o| Monopole::new(b.center + *o, 0.0)).collect();
+        let monos = lo.down_equiv.iter().map(|o| Monopole::new(b.center + *o, 0.0)).collect();
         EquivDensity { monos }
     }
 
     fn l2l(ctx: &KiCtx, b: TreeBox, parent: &EquivDensity, into: &mut EquivDensity) {
         let lo = ctx.level_for(b.half);
-        let check: Vec<Point2D> = lo.inner.iter().map(|o| b.center + *o).collect();
+        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, &parent.monos));
         add_weights(into, &w);
     }
 
     fn m2l(ctx: &KiCtx, b: TreeBox, _src: TreeBox, out: &EquivDensity, into: &mut EquivDensity) {
         let lo = ctx.level_for(b.half);
-        let check: Vec<Point2D> = lo.inner.iter().map(|o| b.center + *o).collect();
+        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, &out.monos));
         add_weights(into, &w);
     }
 
     fn p2l(ctx: &KiCtx, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
         let lo = ctx.level_for(b.half);
-        let check: Vec<Point2D> = lo.inner.iter().map(|o| b.center + *o).collect();
+        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, sources));
         add_weights(into, &w);
     }
@@ -300,7 +312,7 @@ mod tests {
             let a = ki.gradient(theta);
             let b = direct.gradient(theta);
             let rel = a.distance(&b) / b.norm().max(1e-6);
-            assert!(rel < 1e-3, "rel err {rel} too large");
+            assert!(rel < 1e-4, "rel err {rel} too large");
         }
     }
 
@@ -314,7 +326,7 @@ mod tests {
         let a = ki.jet(theta);
         let b = direct.jet(theta);
         let rel = a.gradient.distance(&b.gradient) / b.gradient.norm().max(1e-6);
-        assert!(rel < 1e-4, "rel err {rel} too large");
+        assert!(rel < 1e-5, "rel err {rel} too large");
     }
 
     #[test]
@@ -327,7 +339,7 @@ mod tests {
         let direct = DirectSum::build(&one, SolverConfig::default());
         let theta = Point2D::new(3.0, 2.0);
         let rel = ki.gradient(theta).distance(&direct.gradient(theta)) / direct.gradient(theta).norm();
-        assert!(rel < 1e-4, "rel err {rel} too large");
+        assert!(rel < 1e-6, "rel err {rel} too large");
     }
 
     #[test]
@@ -343,7 +355,7 @@ mod tests {
         let scale = b.iter().flatten().fold(0.0_f64, |m, &x| m.max(x.abs())).max(1e-6);
         for r in 0..2 {
             for c in 0..2 {
-                assert!((a[r][c] - b[r][c]).abs() < 1e-2 * scale, "H[{r}][{c}] mismatch");
+                assert!((a[r][c] - b[r][c]).abs() < 1e-3 * scale, "H[{r}][{c}] mismatch");
             }
         }
     }
@@ -381,7 +393,7 @@ mod tests {
             let a = ki.gradient(theta);
             let b = direct.gradient(theta);
             let rel = a.distance(&b) / b.norm().max(1e-6);
-            assert!(rel < 1e-3, "rel err {rel} too large");
+            assert!(rel < 1e-4, "rel err {rel} too large");
         }
     }
 }
