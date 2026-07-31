@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Analytic Carrier–Greengard–Rokhlin FMM: the [`Cauchy`] expansion scheme and
-//! the [`Fmm`] backend built on the generic [`TreeFmm`] driver, $O(N)$.
+//! Analytic Carrier–Greengard–Rokhlin FMM: the `Cauchy` expansion scheme and
+//! the [`Fmm`] backend built on the generic `TreeFmm` driver, $O(N)$.
 //!
 //! Resource: Carrier, Greengard & Rokhlin, A Fast Adaptive Multipole Algorithm
 //! for Particle Simulations, SIAM J. Sci. Stat. Comput. 9(4),
 //! [DOI:10.1137/0909044](https://doi.org/10.1137/0909044)
 //!
-//! [`Cauchy`] realizes the six [`ExpansionOps`] operators for the holomorphic
+//! `Cauchy` realizes the six `ExpansionOps` operators for the holomorphic
 //! log-kernel with closed-form complex expansions: [`Multipole`] (Laurent) as
 //! the outgoing carrier and [`LocalExpansion`] (Taylor) as the incoming one. The
 //! operators are scale-free, so the box half-size is unused; the context is just

@@ -19,7 +19,7 @@
 //! * [`DirectSum`]  — exact $O(N^2)$ reference.
 //! * [`BarnesHut`]  — quadtree, monopole acceptance, $O(N \log N)$.
 //! * [`Fmm`]        — 2D analytic (complex/Cauchy) multipole+local expansions, $O(N)$.
-//! * *(planned)* KIFMM — kernel-independent FMM (equivalent densities).
+//! * [`Kifmm`]      — kernel-independent FMM (equivalent densities), $O(N)$.
 //! * *(planned)* $\mathcal{H}$-matrix — hierarchical low-rank matrix (also invertible).
 //!
 //! All backends implement [`FieldSolver`], so the lens models and the benchmark
@@ -27,19 +27,21 @@
 
 pub mod barnes_hut;
 pub mod direct;
-pub mod expansion;
+pub(crate) mod expansion;
 pub mod fmm;
 pub mod jet;
+pub mod kifmm;
 pub mod local_expansion;
 pub mod monopole;
 pub mod multipole;
 pub mod solver;
-pub mod tree_fmm;
+pub(crate) mod tree_fmm;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use fmm::Fmm;
 pub use jet::Jet;
+pub use kifmm::Kifmm;
 pub use local_expansion::LocalExpansion;
 pub use monopole::Monopole;
 pub use multipole::Multipole;

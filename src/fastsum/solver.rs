@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Backend configuration, the [`FieldSolver`] trait, and runtime selection.
 
-use crate::fastsum::{BarnesHut, DirectSum, Fmm, Jet, Monopole};
+use crate::fastsum::{BarnesHut, DirectSum, Fmm, Jet, Kifmm, Monopole};
 use crate::grid::Point2D;
 
 /// Shared configuration for the fast-summation backends. Not every field is used
@@ -91,16 +91,21 @@ pub trait FieldSolver {
 /// Runtime selector over the available backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SolverKind {
+    /// Exact $O(N^2)$ direct summation.
     Direct,
+    /// Quadtree treecode with monopole acceptance, $O(N \log N)$.
     BarnesHut,
+    /// Analytic (Cauchy) multipole/local expansions, $O(N)$.
     Fmm,
-    // planned: Kifmm, HMatrix
+    /// Kernel-independent FMM with equivalent densities, $O(N)$.
+    Kifmm,
+    // planned: HMatrix
 }
 
 impl SolverKind {
     /// All currently-implemented backends (handy for comparison loops).
     pub fn implemented() -> &'static [SolverKind] {
-        &[SolverKind::Direct, SolverKind::BarnesHut, SolverKind::Fmm]
+        &[SolverKind::Direct, SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
     }
 }
 
@@ -114,6 +119,7 @@ pub fn build_solver(
         SolverKind::Direct => Box::new(DirectSum::build(sources, cfg)),
         SolverKind::BarnesHut => Box::new(BarnesHut::build(sources, cfg)),
         SolverKind::Fmm => Box::new(Fmm::build(sources, cfg)),
+        SolverKind::Kifmm => Box::new(Kifmm::build(sources, cfg)),
     }
 }
 
@@ -147,6 +153,7 @@ mod tests {
         assert!(ks.contains(&SolverKind::Direct));
         assert!(ks.contains(&SolverKind::BarnesHut));
         assert!(ks.contains(&SolverKind::Fmm));
+        assert!(ks.contains(&SolverKind::Kifmm));
     }
 
     #[test]
@@ -155,7 +162,7 @@ mod tests {
         let cfg = SolverConfig::default();
         let names: Vec<_> =
             SolverKind::implemented().iter().map(|&k| build_solver(k, &src, cfg).name()).collect();
-        assert_eq!(names, vec!["direct", "barnes-hut", "fmm"]);
+        assert_eq!(names, vec!["direct", "barnes-hut", "fmm", "kifmm"]);
     }
 
     #[test]

@@ -92,6 +92,7 @@ fn kind_name(kind: SolverKind) -> &'static str {
         SolverKind::Direct => "direct",
         SolverKind::BarnesHut => "barnes-hut",
         SolverKind::Fmm => "fmm",
+        SolverKind::Kifmm => "kifmm",
     }
 }
 
