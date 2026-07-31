@@ -14,6 +14,7 @@ use crate::grid::Point2D;
 use crate::utils::binomial::pascal;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
+use std::ops::Add;
 
 /// A source's multipole (Laurent) expansion of Φ about [`center`](Self::center):
 /// the real M₀ lives in [`strength`](Self::strength); `moments[i]` is `M_{i+1}`.
@@ -180,6 +181,25 @@ impl TryFrom<Multipole> for Monopole {
     }
 }
 
+impl Add for Multipole {
+    type Output = Multipole;
+
+    /// Superpose two expansions about the **same** centre (the M2M merge of
+    /// co-centred children); moments add term by term.
+    ///
+    /// # Arguments
+    /// * `rhs` - the multipole to add; must share `self`'s centre and order.
+    fn add(mut self, rhs: Multipole) -> Multipole {
+        debug_assert_eq!(self.center, rhs.center, "Multipole::add needs a shared centre");
+        debug_assert_eq!(self.moments.len(), rhs.moments.len(), "Multipole::add needs equal order");
+        self.strength += rhs.strength;
+        for (m, r) in self.moments.iter_mut().zip(rhs.moments.iter()) {
+            *m += *r;
+        }
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +260,25 @@ mod tests {
         assert!(e8 < 1e-8, "order-8 error {e8} too large");
         let hi = Multipole::from_monopoles(&bodies, Point2D::origin(), 14).eval_jet(theta);
         assert!((hi.scalar - exact.scalar).abs() < 1e-8);
+    }
+
+    #[test]
+    fn add_superposes_co_centred_expansions() {
+        // A shared-centre sum of two clusters' multipoles equals the multipole of
+        // their union (the M2M merge relies on this linearity).
+        let center = Point2D::new(0.1, -0.05);
+        let a = cluster(12, 0x1, 0.3);
+        let b = cluster(9, 0x2, 0.3);
+        let ma = Multipole::from_monopoles(&a, center, 8);
+        let mb = Multipole::from_monopoles(&b, center, 8);
+        let union: Vec<Monopole> = a.iter().chain(b.iter()).copied().collect();
+        let expected = Multipole::from_monopoles(&union, center, 8);
+        let sum = ma + mb;
+        assert_eq!(sum.center, expected.center);
+        assert!((sum.strength - expected.strength).abs() < 1e-12);
+        for (s, e) in sum.moments.iter().zip(expected.moments.iter()) {
+            assert!((s - e).norm() < 1e-12);
+        }
     }
 
     #[test]
