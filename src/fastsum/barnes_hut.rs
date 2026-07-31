@@ -18,7 +18,7 @@ use crate::tree::QuadTree;
 #[derive(Debug)]
 pub struct BarnesHut {
     /// Bodies in the simulation
-    elements: Vec<Monopole>,
+    sources: Vec<Monopole>,
     /// Spatial partitioning
     tree: QuadTree,
     /// Center of mass per node (indexed by node id)
@@ -37,7 +37,7 @@ impl BarnesHut {
     /// Nodes are pushed parent-before-children, so a reverse pass visits every
     /// child before its parent: leaves sum their bodies, internal nodes sum
     /// their children.
-    fn aggregate(tree: &QuadTree, elements: &[Monopole]) -> (Vec<f64>, Vec<Point2D>) {
+    fn aggregate(tree: &QuadTree, sources: &[Monopole]) -> (Vec<f64>, Vec<Point2D>) {
         let n = tree.nodes.len();
         let mut mass = vec![0.0; n];
         let mut com = vec![Point2D::origin(); n];
@@ -46,7 +46,7 @@ impl BarnesHut {
             let (mut m, mut c) = (0.0, Point2D::origin());
             if node.is_leaf() {
                 for &b in &node.indices {
-                    let e = elements[b];
+                    let e = sources[b];
                     m += e.strength;
                     c += e.position * e.strength;
                 }
@@ -66,7 +66,7 @@ impl BarnesHut {
         let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &b in &node.indices {
-                let e = self.elements[b];
+                let e = self.sources[b];
                 field.add_monopole(theta, e.position, e.strength, self.eps2);
             }
             return;
@@ -91,7 +91,7 @@ impl FieldSolver for BarnesHut {
         let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
         let (mass, com) = Self::aggregate(&tree, sources);
         Self {
-            elements: sources.to_vec(),
+            sources: sources.to_vec(),
             tree,
             mass,
             com,
