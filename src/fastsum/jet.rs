@@ -4,7 +4,7 @@
 //! The [`Jet`]: the potential and its derivatives at a query point.
 //!
 //! Holds the 2-jet of ψ — value, gradient (deflection) and Hessian — the
-//! order-≤2 truncation of a [`LocalExpansion`](super::expansion::LocalExpansion).
+//! order-≤2 truncation of a [`LocalExpansion`](super::local_expansion::LocalExpansion).
 
 use crate::grid::Point2D;
 use num::complex::Complex;

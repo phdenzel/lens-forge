@@ -30,15 +30,20 @@ pub mod direct;
 pub mod expansion;
 pub mod fmm;
 pub mod jet;
+pub mod local_expansion;
 pub mod monopole;
 pub mod multipole;
 pub mod solver;
+pub mod tree_fmm;
 
 pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
-pub use expansion::LocalExpansion;
 pub use fmm::Fmm;
 pub use jet::Jet;
+pub use local_expansion::LocalExpansion;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
 pub use solver::{build_solver, FieldSolver, SolverConfig, SolverKind};
+
+pub(crate) use expansion::ExpansionOps;
+pub(crate) use tree_fmm::TreeFmm;

@@ -1,273 +1,86 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Adaptive Carrier–Greengard–Rokhlin FMM on a [`QuadTree`], $O(N)$.
+//! Analytic Carrier–Greengard–Rokhlin FMM: the [`Cauchy`] expansion scheme and
+//! the [`Fmm`] backend built on the generic [`TreeFmm`] driver, $O(N)$.
 //!
 //! Resource: Carrier, Greengard & Rokhlin, A Fast Adaptive Multipole Algorithm
 //! for Particle Simulations, SIAM J. Sci. Stat. Comput. 9(4),
 //! [DOI:10.1137/0909044](https://doi.org/10.1137/0909044)
 //!
-//! Solves the holomorphic log-kernel on the same adaptive [`QuadTree`] as
-//! Barnes–Hut (leaves at mixed depths). Three source-only passes run once at
-//! [`build`](FieldSolver::build):
-//!
-//! * **upward** — build leaf multipoles ([`S2M`](Multipole::from_monopoles)),
-//!   then merge children into parents ([`M2M`](Multipole::translate)).
-//! * **colleagues** — each box's same-level adjacent neighbours.
-//! * **downward** — each box's local expansion is its parent's
-//!   ([`L2L`](LocalExpansion::translate)) plus well-separated same-level
-//!   multipoles ([`M2L`](Multipole::to_local), V-list) and coarse-leaf sources
-//!   ([`P2L`](LocalExpansion::from_monopoles), X-list).
-//!
-//! A multipole expansion *sends* a box's sources' influence outward, a local
-//! expansion *receives* it at a target; the operators above relay that
-//! information from senders to receivers. Only the sources in the query box,
-//! its neighbours, and adjacent coarser leaves are summed directly.
+//! [`Cauchy`] realizes the six [`ExpansionOps`] operators for the holomorphic
+//! log-kernel with closed-form complex expansions: [`Multipole`] (Laurent) as
+//! the outgoing carrier and [`LocalExpansion`] (Taylor) as the incoming one. The
+//! operators are scale-free, so the box half-size is unused; the context is just
+//! the expansion order.
 
-use crate::fastsum::{FieldSolver, Jet, LocalExpansion, Monopole, Multipole, SolverConfig};
-use crate::grid::{BBox, Point2D};
-use crate::tree::QuadTree;
+use crate::fastsum::{
+    ExpansionOps, FieldSolver, Jet, LocalExpansion, Monopole, Multipole, SolverConfig, TreeFmm,
+};
+use crate::grid::Point2D;
+use crate::tree::TreeBox;
 use num::complex::Complex;
 
-/// Fast Multipole Method backend (adaptive quadtree).
-#[derive(Debug)]
-pub struct Fmm {
-    /// Source bodies (for the direct near-field).
-    sources: Vec<Monopole>,
-    /// Spatial partitioning; leaves hold source indices into `sources`.
-    tree: QuadTree,
-    /// Precomputed local expansion per tree node.
-    locals: Vec<LocalExpansion>,
-    /// Same-level adjacent boxes per node (the colleague list).
-    colleagues: Vec<Vec<usize>>,
-    /// Root multipole, used for query points outside the root box.
-    root_multipole: Option<Multipole>,
-    /// Square, padded root box; queries outside it are pure far-field.
-    root_box: BBox,
-    /// Squared softening added to $r^2$ in the near field.
-    eps2: f64,
-    /// Whether the solver holds no sources.
-    empty: bool,
+/// Analytic multipole scheme for the 2D log kernel: Laurent multipoles and
+/// Taylor locals with the closed-form CGR translation operators.
+pub(crate) struct Cauchy;
+
+impl ExpansionOps for Cauchy {
+    type Outgoing = Multipole;
+    type Incoming = LocalExpansion;
+    type Ctx = usize; // the expansion order (operators are scale-free)
+
+    fn context(_root_half: f64, _max_depth: usize, order: usize, _eps2: f64) -> usize {
+        order
+    }
+
+    fn s2m(order: &usize, b: TreeBox, sources: &[Monopole]) -> Multipole {
+        Multipole::from_monopoles(sources, b.center, *order)
+    }
+
+    fn m2m(_order: &usize, b: TreeBox, child: &Multipole, acc: &mut Option<Multipole>) {
+        let shifted = child.translate(b.center);
+        *acc = Some(match acc.take() {
+            Some(a) => a + shifted,
+            None => shifted,
+        });
+    }
+
+    fn zero_incoming(order: &usize, b: TreeBox) -> LocalExpansion {
+        LocalExpansion { center: b.center, coeffs: vec![Complex::new(0.0, 0.0); order + 1] }
+    }
+
+    fn l2l(_order: &usize, b: TreeBox, parent: &LocalExpansion, into: &mut LocalExpansion) {
+        *into += &parent.translate(b.center);
+    }
+
+    fn m2l(_order: &usize, b: TreeBox, _src: TreeBox, out: &Multipole, into: &mut LocalExpansion) {
+        *into += &out.to_local(b.center);
+    }
+
+    fn p2l(order: &usize, b: TreeBox, sources: &[Monopole], into: &mut LocalExpansion) {
+        *into += &LocalExpansion::from_monopoles(sources, b.center, *order);
+    }
+
+    fn l2p(_order: &usize, inc: &LocalExpansion, theta: Point2D) -> Jet {
+        inc.eval_jet(theta)
+    }
+
+    fn m2p(_order: &usize, out: &Multipole, theta: Point2D) -> Jet {
+        out.eval_jet(theta)
+    }
 }
 
-/// All leaves adjacent to node `x`: its same-level leaf colleagues and the
-/// coarser leaves adjacent to it (colleagues of its ancestors). No duplicates —
-/// each leaf sits at a single level.
-///
-/// # Arguments
-/// * `tree` - the quadtree.
-/// * `colleagues` - same-level neighbour lists, indexed by node.
-/// * `x` - node whose adjacent leaves are collected.
-fn leaf_neighbors(tree: &QuadTree, colleagues: &[Vec<usize>], x: usize) -> Vec<usize> {
-    let mut out = Vec::new();
-    let nx = &tree.nodes[x];
-    for &c in &colleagues[x] {
-        if tree.nodes[c].is_leaf() {
-            out.push(c);
-        }
-    }
-    let mut ancestor = tree.nodes[x].parent;
-    while let Some(a) = ancestor {
-        for &c in &colleagues[a] {
-            let cn = &tree.nodes[c];
-            if cn.is_leaf() && cn.is_adjacent(nx) {
-                out.push(c);
-            }
-        }
-        ancestor = tree.nodes[a].parent;
-    }
-    out
-}
-
-impl Fmm {
-    /// Locate the deepest existing box containing `theta` (a leaf, or the box
-    /// whose target quadrant is empty).
-    ///
-    /// # Arguments
-    /// * `theta` - query point, assumed inside the root box.
-    fn locate(&self, theta: Point2D) -> usize {
-        let mut idx = self.tree.root;
-        loop {
-            let node = &self.tree.nodes[idx];
-            if node.is_leaf() {
-                return idx;
-            }
-            let c = node.center;
-            let q = usize::from(theta.x >= c.x) | (usize::from(theta.y >= c.y) << 1);
-            match node.children[q] {
-                Some(child) => idx = child,
-                None => return idx, // empty quadrant: stop here
-            }
-        }
-    }
-
-    /// Near-region seed boxes of `b`: `b` itself, its same-level neighbours, and
-    /// the coarser leaves adjacent to `b` (colleagues of `b`'s ancestors).
-    ///
-    /// # Arguments
-    /// * `b` - the box a query landed in.
-    fn near_seeds(&self, b: usize) -> Vec<usize> {
-        let mut seeds = vec![b];
-        seeds.extend_from_slice(&self.colleagues[b]);
-        let nb = &self.tree.nodes[b];
-        let mut ancestor = self.tree.nodes[b].parent;
-        while let Some(a) = ancestor {
-            for &c in &self.colleagues[a] {
-                let cn = &self.tree.nodes[c];
-                if cn.is_leaf() && !cn.indices.is_empty() && cn.is_adjacent(nb) {
-                    seeds.push(c);
-                }
-            }
-            ancestor = self.tree.nodes[a].parent;
-        }
-        seeds
-    }
-
-    /// Direct-sum every source in the subtree rooted at `node_idx` into `f`.
-    ///
-    /// # Arguments
-    /// * `node_idx` - subtree root.
-    /// * `theta` - query point.
-    /// * `f` - jet accumulator, updated in place.
-    fn sum_subtree(&self, node_idx: usize, theta: Point2D, f: &mut Jet) {
-        let node = &self.tree.nodes[node_idx];
-        if node.is_leaf() {
-            for &i in &node.indices {
-                let e = self.sources[i];
-                f.add_monopole(theta, e.position, e.strength, self.eps2);
-            }
-        } else {
-            for &c in node.children.iter().flatten() {
-                self.sum_subtree(c, theta, f);
-            }
-        }
-    }
-}
+/// Fast Multipole Method backend (adaptive quadtree, analytic log-kernel scheme).
+pub struct Fmm(TreeFmm<Cauchy>);
 
 impl FieldSolver for Fmm {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
-        let order = cfg.order;
-        let positions: Vec<Point2D> = sources.iter().map(|s| s.position).collect();
-        let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
-        let n = tree.nodes.len();
-        let root = &tree.nodes[tree.root];
-        let root_box = BBox::new(root.center - root.half, root.center + root.half);
-
-        // Upward pass: build multipoles for every node at every level (bottom-up)
-	// S2M at leaves, M2M up to the root
-        let mut mp: Vec<Option<Multipole>> = vec![None; n];
-        for i in (0..n).rev() {
-            let node = &tree.nodes[i];
-            if node.is_leaf() {
-		// S2M: build multipole directly from sources
-                if node.indices.is_empty() {
-                    continue;
-                }
-                let subset: Vec<Monopole> = node.indices.iter().map(|&k| sources[k]).collect();
-                mp[i] = Some(Multipole::from_monopoles(&subset, node.center, order));
-            } else {
-		// M2M: build multipole upwards from children (previously built)
-		// by shifting their center
-                mp[i] = node
-                    .children
-                    .iter()
-                    .flatten()
-                    .filter_map(|&ch| mp[ch].as_ref().map(|cm| cm.translate(node.center)))
-                    .reduce(|a, b| a + b);
-            }
-        }
-        let root_multipole = mp[tree.root].clone();
-
-        // Colleagues: same-level adjacent boxes
-        let mut colleagues: Vec<Vec<usize>> = vec![Vec::new(); n];
-        for b in 0..n {
-            let Some(p) = tree.nodes[b].parent else {
-                continue;
-            };
-	    // Candidates are all siblings of `b` (U-list) and children of its parent colleagues
-            let mut candidates: Vec<usize> = tree.nodes[p].children.iter().flatten().copied().collect();
-            for &pc in &colleagues[p] {
-                candidates.extend(tree.nodes[pc].children.iter().flatten().copied());
-            }
-	    // Only keep adjacent candidates as colleagues
-            let mut list = Vec::new();
-            for c in candidates {
-                if c != b && tree.nodes[c].is_adjacent(&tree.nodes[b]) {
-                    list.push(c);
-                }
-            }
-            colleagues[b] = list;
-        }
-
-        // Downward pass: build local expansions for every node (top-down)
-	// L2L from the parent, then M2L (V-list) and P2L (X-list) from the
-        // coarse leaves of the parent's colleagues.
-        let mut locals: Vec<LocalExpansion> = (0..n)
-            .map(|i| LocalExpansion {
-                center: tree.nodes[i].center,
-                coeffs: vec![Complex::new(0.0, 0.0); order + 1],
-            })
-            .collect();
-        for b in 0..n {
-            let cb = tree.nodes[b].center;
-            if let Some(p) = tree.nodes[b].parent {
-                let parent_local = locals[p].translate(cb);
-                locals[b] += &parent_local;
-                // V-list: same-level boxes well-separated from b
-                for &pc in &colleagues[p] {
-                    if tree.nodes[pc].is_leaf() {
-                        continue;
-                    }
-                    for &c in tree.nodes[pc].children.iter().flatten() {
-                        if !tree.nodes[c].is_adjacent(&tree.nodes[b]) {
-                            if let Some(cm) = &mp[c] {
-                                locals[b] += &cm.to_local(cb);
-                            }
-                        }
-                    }
-                }
-                // X-list: leaves adjacent to the parent but well-separated from b
-                for l in leaf_neighbors(&tree, &colleagues, p) {
-                    let ln = &tree.nodes[l];
-                    if !ln.indices.is_empty() && !ln.is_adjacent(&tree.nodes[b]) {
-                        let subset: Vec<Monopole> = ln.indices.iter().map(|&k| sources[k]).collect();
-                        locals[b] += &LocalExpansion::from_monopoles(&subset, cb, order);
-                    }
-                }
-            }
-        }
-
-        Fmm {
-            sources: sources.to_vec(),
-            tree,
-            locals,
-            colleagues,
-            root_multipole,
-            root_box,
-            eps2: cfg.eps2,
-            empty: sources.is_empty(),
-        }
+        Fmm(TreeFmm::build(sources, cfg))
     }
 
     fn jet(&self, theta: Point2D) -> Jet {
-        if self.empty {
-            return Jet::default();
-        }
-        // Outside the root box: every source is far, use the root multipole.
-        if !self.root_box.contains(&theta) {
-            return match &self.root_multipole {
-                Some(mp) => mp.eval_jet(theta),
-                None => Jet::default(),
-            };
-        }
-        let b = self.locate(theta);
-        let mut f = self.locals[b].eval_jet(theta);
-        // Near field: direct sum over the box, its neighbours, and coarse
-        // adjacent leaves (everything the local expansion omits).
-        for s in self.near_seeds(b) {
-            self.sum_subtree(s, theta, &mut f);
-        }
-        f
+        self.0.jet(theta)
     }
 
     fn name(&self) -> &'static str {
