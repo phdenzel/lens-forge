@@ -14,6 +14,7 @@ use crate::grid::Point2D;
 use crate::utils::binomial::pascal;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
+use std::ops::AddAssign;
 
 /// A field's local (Taylor) expansion of Φ about [`center`](Self::center);
 /// `coeffs[k]` is the Taylor coefficient `b_k`.
@@ -116,6 +117,17 @@ impl LocalExpansion {
     }
 }
 
+/// Accumulate a co-centred expansion (sums the shared far fields).
+impl AddAssign<&LocalExpansion> for LocalExpansion {
+    fn add_assign(&mut self, rhs: &LocalExpansion) {
+        debug_assert_eq!(self.center, rhs.center, "LocalExpansion::add_assign needs a shared centre");
+        debug_assert_eq!(self.coeffs.len(), rhs.coeffs.len(), "LocalExpansion::add_assign needs equal order");
+        for (a, r) in self.coeffs.iter_mut().zip(rhs.coeffs.iter()) {
+            *a += *r;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +180,23 @@ mod tests {
         let (e1, e4, e8) = (err(1), err(4), err(8));
         assert!(e4 < e1 && e8 < e4, "not monotone: {e1}, {e4}, {e8}");
         assert!(e8 < 1e-6, "order-8 error {e8} too large");
+    }
+
+    #[test]
+    fn add_assign_superposes_co_centred_expansions() {
+        // A shared-centre sum of two rings' locals equals the local of their
+        // union (the downward pass relies on this linearity).
+        let center = Point2D::new(0.2, -0.1);
+        let a = far_ring(16, 0x44, 5.0);
+        let b = far_ring(11, 0x55, 6.0);
+        let mut sum = LocalExpansion::from_monopoles(&a, center, 8);
+        sum += &LocalExpansion::from_monopoles(&b, center, 8);
+        let union: Vec<Monopole> = a.iter().chain(b.iter()).copied().collect();
+        let expected = LocalExpansion::from_monopoles(&union, center, 8);
+        assert_eq!(sum.center, expected.center);
+        for (s, e) in sum.coeffs.iter().zip(expected.coeffs.iter()) {
+            assert!((s - e).norm() < 1e-12);
+        }
     }
 
     #[test]
