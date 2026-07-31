@@ -20,7 +20,7 @@
 //! (`OVERSAMPLE`× the equivalent points) so each equivalent density is a
 //! least-squares fit rather than an exact interpolant.
 //!
-//! Because the equivalent densities are monopoles, evaluation (L2P / M2P) reuses
+//! Because the equivalent densities are monopoles, evaluation (L2T / M2T) reuses
 //! the shared near-field kernel [`Jet::add_monopole`], yielding ψ, α and H in one
 //! pass. The proxy kernel is the bare `ln|x − y|` (the `1/π` factor cancels in
 //! every check-from-equivalent solve and is reintroduced only by `add_monopole`).
@@ -60,11 +60,11 @@ pub(crate) struct LevelOps {
     up_check: Vec<Point2D>,
     /// Down-equivalent offsets: `n` points at `R_OUT * half` (incoming positions).
     down_equiv: Vec<Point2D>,
-    /// Down-check offsets: `m` points at `R_IN * half` (M2L, L2L, P2L).
+    /// Down-check offsets: `m` points at `R_IN * half` (M2L, L2L, S2L).
     down_check: Vec<Point2D>,
     /// Up pass: up-check → up-equivalent map inverse (S2M, M2M).
     up_pinv: Array2<f64>,
-    /// Down pass: down-check → down-equivalent map inverse (M2L, L2L, P2L).
+    /// Down pass: down-check → down-equivalent map inverse (M2L, L2L, S2L).
     down_pinv: Array2<f64>,
 }
 
@@ -232,18 +232,18 @@ impl ExpansionOps for KiScheme {
         add_weights(into, &w);
     }
 
-    fn p2l(&self, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
+    fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
         let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, sources));
         add_weights(into, &w);
     }
 
-    fn l2p(&self, inc: &EquivDensity, theta: Point2D) -> Jet {
+    fn l2t(&self, inc: &EquivDensity, theta: Point2D) -> Jet {
         eval(&inc.monos, theta)
     }
 
-    fn m2p(&self, out: &EquivDensity, theta: Point2D) -> Jet {
+    fn m2t(&self, out: &EquivDensity, theta: Point2D) -> Jet {
         eval(&out.monos, theta)
     }
 }
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn clustered_sources_match_direct() {
-        // Two tight clusters exercise mixed-depth leaves, the X-list (P2L) and
+        // Two tight clusters exercise mixed-depth leaves, the X-list (S2L) and
         // coarse-neighbour near lists.
         let mut rng = Lcg::new(2024);
         let mut bodies = Vec::new();

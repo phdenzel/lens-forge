@@ -2,17 +2,15 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Analytic Carrier–Greengard–Rokhlin FMM: the `Cauchy` expansion scheme and
-//! the [`Fmm`] backend built on the generic `TreeFmm` driver, $O(N)$.
+//! the [`Fmm`] backend built on the generic `TreeFmm` engine, $O(N)$.
 //!
 //! Resource: Carrier, Greengard & Rokhlin, A Fast Adaptive Multipole Algorithm
 //! for Particle Simulations, SIAM J. Sci. Stat. Comput. 9(4),
 //! [DOI:10.1137/0909044](https://doi.org/10.1137/0909044)
 //!
-//! `Cauchy` realizes the six `ExpansionOps` operators for the holomorphic
+//! `Cauchy` implements the six `ExpansionOps` operators for the holomorphic
 //! log-kernel with closed-form complex expansions: [`Multipole`] (Laurent) as
-//! the outgoing carrier and [`LocalExpansion`] (Taylor) as the incoming one. The
-//! operators are scale-free, so the box half-size is unused; the scheme carries
-//! just the expansion order.
+//! the outgoing carrier and [`LocalExpansion`] (Taylor) as the receiver.
 
 use crate::fastsum::{
     ExpansionOps, FieldSolver, Jet, LocalExpansion, Monopole, Multipole, SolverConfig, TreeFmm,
@@ -60,15 +58,15 @@ impl ExpansionOps for Cauchy {
         *into += &out.to_local(b.center);
     }
 
-    fn p2l(&self, b: TreeBox, sources: &[Monopole], into: &mut LocalExpansion) {
+    fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut LocalExpansion) {
         *into += &LocalExpansion::from_monopoles(sources, b.center, self.order);
     }
 
-    fn l2p(&self, inc: &LocalExpansion, theta: Point2D) -> Jet {
+    fn l2t(&self, inc: &LocalExpansion, theta: Point2D) -> Jet {
         inc.eval_jet(theta)
     }
 
-    fn m2p(&self, out: &Multipole, theta: Point2D) -> Jet {
+    fn m2t(&self, out: &Multipole, theta: Point2D) -> Jet {
         out.eval_jet(theta)
     }
 }
@@ -222,7 +220,7 @@ mod tests {
     #[test]
     fn clustered_sources_match_direct() {
         // Non-uniform sources (two tight clusters) exercise mixed-depth leaves,
-        // the X-list (coarse-leaf P2L) and coarse-neighbour near lists that a
+        // the X-list (coarse-leaf S2L) and coarse-neighbour near lists that a
         // uniform tree never produces.
         let mut rng = Lcg::new(2024);
         let mut bodies = Vec::new();

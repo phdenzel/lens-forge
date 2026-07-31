@@ -2,18 +2,10 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The [`ExpansionOps`] scheme: two expansion carriers plus the six translation
-//! operators a tree-driven FMM relays between them.
+//! operators, a tree-driven FMM relays between them.
 //!
 //! An *outgoing* expansion sends a box's sources' influence outward; an
-//! *incoming* expansion receives it at a target. The [`TreeFmm`](super::TreeFmm)
-//! driver is written once against this trait, so a backend supplies only the
-//! kernel-specific operators: the analytic [`Cauchy`](super::fmm::Cauchy) scheme
-//! uses closed-form complex expansions, the kernel-independent
-//! [`KiScheme`](super::kifmm::KiScheme) equivalent densities.
-//!
-//! The scheme is a *value*, built once via [`build`](ExpansionOps::build): any
-//! precompute (e.g. the kiFMM per-level pseudo-inverses) lives in `Self` and the
-//! operators read it through `&self`.
+//! *incoming* expansion receives it at a target.
 
 use crate::fastsum::{Jet, Monopole, SolverConfig};
 use crate::grid::Point2D;
@@ -76,27 +68,27 @@ pub(crate) trait ExpansionOps: Sized {
     /// * `into` - box `b`'s incoming expansion, updated in place.
     fn m2l(&self, b: TreeBox, src: TreeBox, out: &Self::Outgoing, into: &mut Self::Incoming);
 
-    /// P2L: add coarse-leaf `sources` (X-list) directly to box `b`'s incoming
+    /// S2L: add coarse-leaf `sources` (X-list) directly to box `b`'s incoming
     /// expansion, accumulating into `into`.
     ///
     /// # Arguments
     /// * `b` - the target box.
     /// * `sources` - the coarse-leaf monopoles.
     /// * `into` - box `b`'s incoming expansion, updated in place.
-    fn p2l(&self, b: TreeBox, sources: &[Monopole], into: &mut Self::Incoming);
+    fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut Self::Incoming);
 
-    /// L2P: evaluate the incoming expansion's jet at `theta`.
+    /// L2T: evaluate the incoming expansion's jet at `theta`.
     ///
     /// # Arguments
     /// * `inc` - the box's incoming expansion.
     /// * `theta` - query point near the expansion centre.
-    fn l2p(&self, inc: &Self::Incoming, theta: Point2D) -> Jet;
+    fn l2t(&self, inc: &Self::Incoming, theta: Point2D) -> Jet;
 
-    /// M2P: evaluate a far-field outgoing expansion's jet at `theta` (used for
+    /// M2T: evaluate a far-field outgoing expansion's jet at `theta` (used for
     /// the root, i.e. queries outside the tree's root box).
     ///
     /// # Arguments
     /// * `out` - a far-field outgoing expansion.
     /// * `theta` - query point outside the expansion's field.
-    fn m2p(&self, out: &Self::Outgoing, theta: Point2D) -> Jet;
+    fn m2t(&self, out: &Self::Outgoing, theta: Point2D) -> Jet;
 }

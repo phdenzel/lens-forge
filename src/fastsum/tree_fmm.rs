@@ -12,7 +12,7 @@
 //! * **colleagues** — each box's same-level adjacent neighbours.
 //! * **downward** — each box's incoming expansion is its parent's (L2L) plus
 //!   well-separated same-level outgoing expansions (M2L, V-list) and coarse-leaf
-//!   sources (P2L, X-list).
+//!   sources (S2L, X-list).
 //!
 //! At query time only the local expansion plus the sources in the query box, its
 //! neighbours, and adjacent coarser leaves are summed directly. The tree walk
@@ -198,6 +198,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
             for &pc in &colleagues[p] {
                 candidates.extend(tree.nodes[pc].children.iter().flatten().copied());
             }
+	    // Filter only adjacent boxes
             let mut list = Vec::new();
             for c in candidates {
                 if c != b && tree.nodes[c].is_adjacent(&tree.nodes[b]) {
@@ -208,7 +209,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
         }
 
         // Downward pass: incoming expansion for every node, top-down (L2L from
-        // the parent, then M2L (V-list) and P2L (X-list) from coarse leaves).
+        // the parent, then M2L (V-list) and S2L (X-list) from coarse leaves).
         let mut incoming: Vec<E::Incoming> =
             (0..n).map(|i| scheme.zero_incoming(tree.nodes[i].to_box())).collect();
         for b in 0..n {
@@ -236,7 +237,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
                 let ln = &tree.nodes[l];
                 if !ln.indices.is_empty() && !ln.is_adjacent(&tree.nodes[b]) {
                     let subset: Vec<Monopole> = ln.indices.iter().map(|&k| sources[k]).collect();
-                    scheme.p2l(bb, &subset, &mut incoming[b]);
+                    scheme.s2l(bb, &subset, &mut incoming[b]);
                 }
             }
         }
@@ -265,12 +266,12 @@ impl<E: ExpansionOps> TreeFmm<E> {
         // Outside the root box: every source is far, use the root expansion.
         if !self.root_box.contains(&theta) {
             return match &self.root_outgoing {
-                Some(out) => self.scheme.m2p(out, theta),
+                Some(out) => self.scheme.m2t(out, theta),
                 None => Jet::default(),
             };
         }
         let b = self.locate(theta);
-        let mut f = self.scheme.l2p(&self.incoming[b], theta);
+        let mut f = self.scheme.l2t(&self.incoming[b], theta);
         // Near field: direct sum over the box, its neighbours, and coarse
         // adjacent leaves (everything the local expansion omits).
         for s in self.near_seeds(b) {
