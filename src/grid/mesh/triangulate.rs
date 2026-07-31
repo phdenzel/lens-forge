@@ -3,14 +3,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Delaunay triangulation with incremental edge-flips.
 //!
+//! Resource: Berg et al., Computational Geometry (Ch. 9.3),
+//! [DOI:10.1007/978-3-540-77974-2](https://doi.org/10.1007/978-3-540-77974-2)
+//!
 //! Points are inserted one at a time into a triangulation seeded with a large
 //! enclosing super-triangle. Each insertion locates the containing triangle by
 //! walking the neighbour graph and splits it (1→3 interior, 2→4 on an edge,
 //! 1→2 on the hull); the Delaunay property is restored by flipping edges whose
 //! opposite vertex fails an [`incircle`] test. Triangles store vertex indices and
 //! per-edge neighbour links, so later insertion (refinement) stays local.
-//!
-//! Resource: Berg et al., Computational Geometry (Ch. 9.3), DOI:10.1007/978-3-540-77974-2
 //!
 //! [`TriangulationBuilder`] holds the mutable working state (coordinates behind an
 //! enclosing super-triangle) and supports
