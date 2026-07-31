@@ -9,8 +9,11 @@
 //!   transformations.
 //! * `rng` — a small seedable LCG for site sampling and test fixtures.
 //! * `binomial` — Pascal's-triangle binomial-coefficient table.
+//! * `dense` — one-sided Jacobi SVD and a Tikhonov-regularized pseudo-inverse
+//!   for small, ill-conditioned dense systems.
 
 pub(crate) mod binomial;
+pub(crate) mod dense;
 pub(crate) mod double_double;
 pub(crate) mod error_free;
 pub(crate) mod rng;
