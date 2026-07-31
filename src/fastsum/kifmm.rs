@@ -30,49 +30,32 @@ const OVERSAMPLE: usize = 2;
 /// Tikhonov regularization for the check-from-equivalent pseudo-inverses.
 const LAMBDA: f64 = 1e-12;
 
-/// Equivalent monopole densities on a box-scaled proxy circle; carries the
-/// outgoing (inner circle) and incoming (outer circle) expansions alike.
-#[derive(Clone)]
-pub(crate) struct EquivDensity {
-    /// Proxy monopoles: fixed circle positions with the current densities.
-    monos: Vec<Monopole>,
-}
-
-/// Precomputed proxy geometry and operator inverses for one tree level. Each
-/// pass has an `n`-point equivalent surface and an oversampled `m`-point check
-/// surface; the pinvs are `n × m`.
-pub(crate) struct LevelOps {
-    /// Up-equivalent offsets: `n` points at `R_IN * half` (outgoing positions).
-    up_equiv: Vec<Point2D>,
-    /// Up-check offsets: `m` points at `R_OUT * half` (S2M, M2M).
-    up_check: Vec<Point2D>,
-    /// Down-equivalent offsets: `n` points at `R_OUT * half` (incoming positions).
-    down_equiv: Vec<Point2D>,
-    /// Down-check offsets: `m` points at `R_IN * half` (M2L, L2L, S2L).
-    down_check: Vec<Point2D>,
-    /// Up pass: up-check → up-equivalent map inverse (S2M, M2M).
-    up_pinv: Array2<f64>,
-    /// Down pass: down-check → down-equivalent map inverse (M2L, L2L, S2L).
-    down_pinv: Array2<f64>,
-}
-
 /// Kernel-independent multipole scheme for the 2D log kernel: equivalent proxy
-/// densities with pseudo-inverse translation operators, precomputed per level.
+/// densities on box-scaled circles with pseudo-inverse translation operators.
+/// The two unit circles are shared across levels; the `n × m` pinvs are
+/// precomputed per level. Outgoing and incoming expansions are both just the
+/// proxy monopoles.
 pub(crate) struct KernelIndependent {
     /// Root box half side-length, for mapping a box half to its level index.
     root_half: f64,
-    /// Operator data indexed by tree level.
-    level: Vec<LevelOps>,
+    /// Unit equivalent circle: `n` points (equivalent surfaces).
+    equiv: Vec<Point2D>,
+    /// Unit check circle: `m = OVERSAMPLE · n` points (check surfaces).
+    check: Vec<Point2D>,
+    /// Per level, the up-check → up-equivalent inverse (S2M, M2M).
+    up_pinv: Vec<Array2<f64>>,
+    /// Per level, the down-check → down-equivalent inverse (M2L, L2L, S2L).
+    down_pinv: Vec<Array2<f64>>,
 }
 
 impl KernelIndependent {
-    /// Operator data for a box of the given half side-length.
+    /// Level index for a box of the given half side-length.
     ///
     /// # Arguments
     /// * `half` - the box half side-length.
-    fn level_for(&self, half: f64) -> &LevelOps {
+    fn level_index(&self, half: f64) -> usize {
         let l = (self.root_half / half).log2().round() as usize;
-        &self.level[l.min(self.level.len() - 1)]
+        l.min(self.up_pinv.len() - 1)
     }
 }
 
@@ -88,6 +71,16 @@ fn circle(n: usize, radius: f64) -> Vec<Point2D> {
             Point2D::new(radius * a.cos(), radius * a.sin())
         })
         .collect()
+}
+
+/// A unit circle scaled by `radius` and centred on `center`.
+///
+/// # Arguments
+/// * `unit` - unit-circle offsets.
+/// * `radius` - circle radius.
+/// * `center` - box centre (the origin gives a pure offset).
+fn place(unit: &[Point2D], radius: f64, center: Point2D) -> Vec<Point2D> {
+    unit.iter().map(|o| center + *o * radius).collect()
 }
 
 /// Bare log-kernel matrix `K[i][j] = ln|check_i − equiv_j|` (concentric surfaces,
@@ -127,17 +120,16 @@ fn check_potential(targets: &[Point2D], srcs: &[Monopole]) -> Array1<f64> {
     }))
 }
 
-/// Proxy monopoles at `center + offset` carrying densities `w`.
+/// Proxy monopoles at `positions` carrying densities `w`.
 ///
 /// # Arguments
-/// * `center` - the box centre.
-/// * `offsets` - circle offsets from the centre.
-/// * `w` - densities, one per offset.
-fn density(center: Point2D, offsets: &[Point2D], w: &Array1<f64>) -> Vec<Monopole> {
-    offsets
+/// * `positions` - proxy-surface points.
+/// * `w` - densities, one per position.
+fn density(positions: &[Point2D], w: &Array1<f64>) -> Vec<Monopole> {
+    positions
         .iter()
         .zip(w.iter())
-        .map(|(o, &wi)| Monopole::new(center + *o, wi))
+        .map(|(&p, &wi)| Monopole::new(p, wi))
         .collect()
 }
 
@@ -155,94 +147,99 @@ fn eval(monos: &[Monopole], theta: Point2D) -> Jet {
 }
 
 impl ExpansionOps for KernelIndependent {
-    type Outgoing = EquivDensity;
-    type Incoming = EquivDensity;
+    type Outgoing = Vec<Monopole>;
+    type Incoming = Vec<Monopole>;
 
     fn build(cfg: SolverConfig, root_half: f64, max_depth: usize) -> Self {
         let n = (4 * cfg.order).max(16);
-        let m = OVERSAMPLE * n;
-        let equiv_unit = circle(n, 1.0);
-        let check_unit = circle(m, 1.0);
-        let level = (0..=max_depth)
-            .map(|l| {
-                let h = root_half * 0.5f64.powi(l as i32);
-                let up_equiv: Vec<Point2D> = equiv_unit.iter().map(|o| *o * (R_IN * h)).collect();
-                let up_check: Vec<Point2D> = check_unit.iter().map(|o| *o * (R_OUT * h)).collect();
-                let down_equiv: Vec<Point2D> = equiv_unit.iter().map(|o| *o * (R_OUT * h)).collect();
-                let down_check: Vec<Point2D> = check_unit.iter().map(|o| *o * (R_IN * h)).collect();
-                let up_pinv = pseudo_inverse(&kernel_matrix(&up_check, &up_equiv), LAMBDA);
-                let down_pinv = pseudo_inverse(&kernel_matrix(&down_check, &down_equiv), LAMBDA);
-                LevelOps { up_equiv, up_check, down_equiv, down_check, up_pinv, down_pinv }
-            })
-            .collect();
-        KernelIndependent { root_half, level }
+        let equiv = circle(n, 1.0);
+        let check = circle(OVERSAMPLE * n, 1.0);
+        let o = Point2D::origin();
+        let mut up_pinv = Vec::with_capacity(max_depth + 1);
+        let mut down_pinv = Vec::with_capacity(max_depth + 1);
+        for l in 0..=max_depth {
+            let h = root_half * 0.5f64.powi(l as i32);
+            // Up: check at R_OUT, equivalent at R_IN; down swaps the radii.
+            let up = kernel_matrix(&place(&check, R_OUT * h, o), &place(&equiv, R_IN * h, o));
+            let down = kernel_matrix(&place(&check, R_IN * h, o), &place(&equiv, R_OUT * h, o));
+            up_pinv.push(pseudo_inverse(&up, LAMBDA));
+            down_pinv.push(pseudo_inverse(&down, LAMBDA));
+        }
+        KernelIndependent {
+            root_half,
+            equiv,
+            check,
+            up_pinv,
+            down_pinv,
+        }
     }
 
-    fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> EquivDensity {
-        let lo = self.level_for(b.half);
-        let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
-        let w = lo.up_pinv.dot(&check_potential(&check, sources));
-        EquivDensity { monos: density(b.center, &lo.up_equiv, &w) }
+    fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> Vec<Monopole> {
+        let l = self.level_index(b.half);
+        let check = place(&self.check, R_OUT * b.half, b.center);
+        let w = self.up_pinv[l].dot(&check_potential(&check, sources));
+        density(&place(&self.equiv, R_IN * b.half, b.center), &w)
     }
 
-    fn m2m(&self, b: TreeBox, child: &EquivDensity, acc: &mut Option<EquivDensity>) {
-        let lo = self.level_for(b.half);
-        let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
-        let w = lo.up_pinv.dot(&check_potential(&check, &child.monos));
-        let monos = density(b.center, &lo.up_equiv, &w);
+    fn m2m(&self, b: TreeBox, child: &Vec<Monopole>, acc: &mut Option<Vec<Monopole>>) {
+        let l = self.level_index(b.half);
+        let check = place(&self.check, R_OUT * b.half, b.center);
+        let w = self.up_pinv[l].dot(&check_potential(&check, child));
+        let monos = density(&place(&self.equiv, R_IN * b.half, b.center), &w);
         match acc {
-            None => *acc = Some(EquivDensity { monos }),
+            None => *acc = Some(monos),
             Some(a) => {
-                for (m, c) in a.monos.iter_mut().zip(monos) {
+                for (m, c) in a.iter_mut().zip(monos) {
                     m.strength += c.strength;
                 }
             }
         }
     }
 
-    fn zero_incoming(&self, b: TreeBox) -> EquivDensity {
-        let lo = self.level_for(b.half);
-        let monos = lo.down_equiv.iter().map(|o| Monopole::new(b.center + *o, 0.0)).collect();
-        EquivDensity { monos }
+    fn zero_incoming(&self, b: TreeBox) -> Vec<Monopole> {
+        place(&self.equiv, R_OUT * b.half, b.center)
+            .into_iter()
+            .map(|p| Monopole::new(p, 0.0))
+            .collect()
     }
 
-    fn l2l(&self, b: TreeBox, parent: &EquivDensity, into: &mut EquivDensity) {
-        let lo = self.level_for(b.half);
-        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
-        let w = lo.down_pinv.dot(&check_potential(&check, &parent.monos));
+    fn l2l(&self, b: TreeBox, parent: &Vec<Monopole>, into: &mut Vec<Monopole>) {
+        let l = self.level_index(b.half);
+        let check = place(&self.check, R_IN * b.half, b.center);
+        let w = self.down_pinv[l].dot(&check_potential(&check, parent));
         add_weights(into, &w);
     }
 
-    fn m2l(&self, b: TreeBox, _src: TreeBox, out: &EquivDensity, into: &mut EquivDensity) {
-        let lo = self.level_for(b.half);
-        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
-        let w = lo.down_pinv.dot(&check_potential(&check, &out.monos));
+    fn m2l(&self, b: TreeBox, _src: TreeBox, out: &Vec<Monopole>, into: &mut Vec<Monopole>) {
+        let l = self.level_index(b.half);
+        let check = place(&self.check, R_IN * b.half, b.center);
+        let w = self.down_pinv[l].dot(&check_potential(&check, out));
         add_weights(into, &w);
     }
 
-    fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
-        let lo = self.level_for(b.half);
-        let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
-        let w = lo.down_pinv.dot(&check_potential(&check, sources));
+    fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut Vec<Monopole>) {
+        let l = self.level_index(b.half);
+        let check = place(&self.check, R_IN * b.half, b.center);
+        let w = self.down_pinv[l].dot(&check_potential(&check, sources));
         add_weights(into, &w);
     }
 
-    fn l2t(&self, inc: &EquivDensity, theta: Point2D) -> Jet {
-        eval(&inc.monos, theta)
+    fn l2t(&self, inc: &Vec<Monopole>, theta: Point2D) -> Jet {
+        eval(inc, theta)
     }
 
-    fn m2t(&self, out: &EquivDensity, theta: Point2D) -> Jet {
-        eval(&out.monos, theta)
+    fn m2t(&self, out: &Vec<Monopole>, theta: Point2D) -> Jet {
+        eval(out, theta)
     }
 }
 
 /// Add densities `w` to an incoming expansion's fixed proxy positions.
 ///
 /// # Arguments
-/// * `into` - the incoming expansion, updated in place.
+/// * `into` - the incoming proxy monopoles, updated in place.
 /// * `w` - densities to add, one per proxy point.
-fn add_weights(into: &mut EquivDensity, w: &Array1<f64>) {
-    for (m, &wi) in into.monos.iter_mut().zip(w.iter()) {
+fn add_weights(into: &mut [Monopole], w: &Array1<f64>) {
+    for (m, &wi) in into.iter_mut().zip(w.iter()) {
         m.strength += wi;
     }
 }
@@ -322,7 +319,8 @@ mod tests {
         let ki = Kifmm::build(&one, SolverConfig::default());
         let direct = DirectSum::build(&one, SolverConfig::default());
         let theta = Point2D::new(3.0, 2.0);
-        let rel = ki.gradient(theta).distance(&direct.gradient(theta)) / direct.gradient(theta).norm();
+        let rel =
+            ki.gradient(theta).distance(&direct.gradient(theta)) / direct.gradient(theta).norm();
         assert!(rel < 1e-6, "rel err {rel} too large");
     }
 
@@ -336,10 +334,17 @@ mod tests {
         let theta = Point2D::new(0.4, -0.35);
         let a = ki.jet(theta).hessian;
         let b = direct.jet(theta).hessian;
-        let scale = b.iter().flatten().fold(0.0_f64, |m, &x| m.max(x.abs())).max(1e-6);
+        let scale = b
+            .iter()
+            .flatten()
+            .fold(0.0_f64, |m, &x| m.max(x.abs()))
+            .max(1e-6);
         for r in 0..2 {
             for c in 0..2 {
-                assert!((a[r][c] - b[r][c]).abs() < 1e-3 * scale, "H[{r}][{c}] mismatch");
+                assert!(
+                    (a[r][c] - b[r][c]).abs() < 1e-3 * scale,
+                    "H[{r}][{c}] mismatch"
+                );
             }
         }
     }
@@ -359,15 +364,24 @@ mod tests {
         let mut rng = Lcg::new(2024);
         let mut bodies = Vec::new();
         for _ in 0..800 {
-            let p = Point2D::new(-0.6 + 0.05 * rng.range(-1.0, 1.0), 0.5 + 0.05 * rng.range(-1.0, 1.0));
+            let p = Point2D::new(
+                -0.6 + 0.05 * rng.range(-1.0, 1.0),
+                0.5 + 0.05 * rng.range(-1.0, 1.0),
+            );
             bodies.push(Monopole::new(p, rng.range(0.0, 0.5)));
         }
         for _ in 0..800 {
-            let p = Point2D::new(0.7 + 0.05 * rng.range(-1.0, 1.0), -0.4 + 0.05 * rng.range(-1.0, 1.0));
+            let p = Point2D::new(
+                0.7 + 0.05 * rng.range(-1.0, 1.0),
+                -0.4 + 0.05 * rng.range(-1.0, 1.0),
+            );
             bodies.push(Monopole::new(p, rng.range(0.0, 0.5)));
         }
         for _ in 0..40 {
-            bodies.push(Monopole::new(Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)), rng.range(0.0, 0.3)));
+            bodies.push(Monopole::new(
+                Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)),
+                rng.range(0.0, 0.3),
+            ));
         }
         let cfg = SolverConfig::default().with_order(12);
         let ki = Kifmm::build(&bodies, cfg);
