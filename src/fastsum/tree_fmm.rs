@@ -29,8 +29,8 @@ pub(crate) struct TreeFmm<E: ExpansionOps> {
     sources: Vec<Monopole>,
     /// Spatial partitioning; leaves hold source indices into `sources`.
     tree: QuadTree,
-    /// Kernel- and scale-dependent operator data.
-    ctx: E::Ctx,
+    /// The expansion scheme and its precompute.
+    scheme: E,
     /// Precomputed incoming expansion per tree node.
     incoming: Vec<E::Incoming>,
     /// Same-level adjacent boxes per node (the colleague list).
@@ -144,7 +144,6 @@ impl<E: ExpansionOps> TreeFmm<E> {
     /// * `sources` - the monopole bodies.
     /// * `cfg` - solver configuration (order, leaf size, softening).
     pub(crate) fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
-        let order = cfg.order;
         let positions: Vec<Point2D> = sources.iter().map(|s| s.position).collect();
         let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
         let n = tree.nodes.len();
@@ -161,7 +160,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
                 max_depth = max_depth.max(depth[i]);
             }
         }
-        let ctx = E::context(root_half, max_depth, order, cfg.eps2);
+        let scheme = E::build(cfg, root_half, max_depth);
 
         // Upward pass: outgoing expansion for every node, bottom-up (S2M at
         // leaves, M2M up to the root).
@@ -174,12 +173,12 @@ impl<E: ExpansionOps> TreeFmm<E> {
                     continue;
                 }
                 let subset: Vec<Monopole> = node.indices.iter().map(|&k| sources[k]).collect();
-                out[i] = Some(E::s2m(&ctx, b, &subset));
+                out[i] = Some(scheme.s2m(b, &subset));
             } else {
                 let mut acc: Option<E::Outgoing> = None;
                 for &ch in node.children.iter().flatten() {
                     if let Some(cm) = &out[ch] {
-                        E::m2m(&ctx, b, cm, &mut acc);
+                        scheme.m2m(b, cm, &mut acc);
                     }
                 }
                 out[i] = acc;
@@ -211,14 +210,14 @@ impl<E: ExpansionOps> TreeFmm<E> {
         // Downward pass: incoming expansion for every node, top-down (L2L from
         // the parent, then M2L (V-list) and P2L (X-list) from coarse leaves).
         let mut incoming: Vec<E::Incoming> =
-            (0..n).map(|i| E::zero_incoming(&ctx, tree.nodes[i].to_box())).collect();
+            (0..n).map(|i| scheme.zero_incoming(tree.nodes[i].to_box())).collect();
         for b in 0..n {
             let bb = tree.nodes[b].to_box();
             let Some(p) = tree.nodes[b].parent else {
                 continue;
             };
             let parent = incoming[p].clone();
-            E::l2l(&ctx, bb, &parent, &mut incoming[b]);
+            scheme.l2l(bb, &parent, &mut incoming[b]);
             // V-list: same-level boxes well-separated from b.
             for &pc in &colleagues[p] {
                 if tree.nodes[pc].is_leaf() {
@@ -227,7 +226,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
                 for &c in tree.nodes[pc].children.iter().flatten() {
                     if !tree.nodes[c].is_adjacent(&tree.nodes[b]) {
                         if let Some(cm) = &out[c] {
-                            E::m2l(&ctx, bb, tree.nodes[c].to_box(), cm, &mut incoming[b]);
+                            scheme.m2l(bb, tree.nodes[c].to_box(), cm, &mut incoming[b]);
                         }
                     }
                 }
@@ -237,7 +236,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
                 let ln = &tree.nodes[l];
                 if !ln.indices.is_empty() && !ln.is_adjacent(&tree.nodes[b]) {
                     let subset: Vec<Monopole> = ln.indices.iter().map(|&k| sources[k]).collect();
-                    E::p2l(&ctx, bb, &subset, &mut incoming[b]);
+                    scheme.p2l(bb, &subset, &mut incoming[b]);
                 }
             }
         }
@@ -245,7 +244,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
         TreeFmm {
             sources: sources.to_vec(),
             tree,
-            ctx,
+            scheme,
             incoming,
             colleagues,
             root_outgoing,
@@ -266,12 +265,12 @@ impl<E: ExpansionOps> TreeFmm<E> {
         // Outside the root box: every source is far, use the root expansion.
         if !self.root_box.contains(&theta) {
             return match &self.root_outgoing {
-                Some(out) => E::m2p(&self.ctx, out, theta),
+                Some(out) => self.scheme.m2p(out, theta),
                 None => Jet::default(),
             };
         }
         let b = self.locate(theta);
-        let mut f = E::l2p(&self.ctx, &self.incoming[b], theta);
+        let mut f = self.scheme.l2p(&self.incoming[b], theta);
         // Near field: direct sum over the box, its neighbours, and coarse
         // adjacent leaves (everything the local expansion omits).
         for s in self.near_seeds(b) {

@@ -68,15 +68,16 @@ pub(crate) struct LevelOps {
     down_pinv: Array2<f64>,
 }
 
-/// Kernel-independent operator context: per-level proxy inverses.
-pub(crate) struct KiCtx {
+/// Kernel-independent multipole scheme for the 2D log kernel: equivalent proxy
+/// densities with pseudo-inverse translation operators, precomputed per level.
+pub(crate) struct KiScheme {
     /// Root box half side-length, for mapping a box half to its level index.
     root_half: f64,
     /// Operator data indexed by tree level.
     level: Vec<LevelOps>,
 }
 
-impl KiCtx {
+impl KiScheme {
     /// Operator data for a box of the given half side-length.
     ///
     /// # Arguments
@@ -165,17 +166,12 @@ fn eval(monos: &[Monopole], theta: Point2D) -> Jet {
     f
 }
 
-/// Kernel-independent multipole scheme for the 2D log kernel: equivalent proxy
-/// densities with pseudo-inverse translation operators.
-pub(crate) struct KiScheme;
-
 impl ExpansionOps for KiScheme {
     type Outgoing = EquivDensity;
     type Incoming = EquivDensity;
-    type Ctx = KiCtx;
 
-    fn context(root_half: f64, max_depth: usize, order: usize, _eps2: f64) -> KiCtx {
-        let n = (4 * order).max(16);
+    fn build(cfg: SolverConfig, root_half: f64, max_depth: usize) -> Self {
+        let n = (4 * cfg.order).max(16);
         let m = OVERSAMPLE * n;
         let equiv_unit = circle(n, 1.0);
         let check_unit = circle(m, 1.0);
@@ -191,18 +187,18 @@ impl ExpansionOps for KiScheme {
                 LevelOps { up_equiv, up_check, down_equiv, down_check, up_pinv, down_pinv }
             })
             .collect();
-        KiCtx { root_half, level }
+        KiScheme { root_half, level }
     }
 
-    fn s2m(ctx: &KiCtx, b: TreeBox, sources: &[Monopole]) -> EquivDensity {
-        let lo = ctx.level_for(b.half);
+    fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> EquivDensity {
+        let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
         let w = lo.up_pinv.dot(&check_potential(&check, sources));
         EquivDensity { monos: density(b.center, &lo.up_equiv, &w) }
     }
 
-    fn m2m(ctx: &KiCtx, b: TreeBox, child: &EquivDensity, acc: &mut Option<EquivDensity>) {
-        let lo = ctx.level_for(b.half);
+    fn m2m(&self, b: TreeBox, child: &EquivDensity, acc: &mut Option<EquivDensity>) {
+        let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.up_check.iter().map(|o| b.center + *o).collect();
         let w = lo.up_pinv.dot(&check_potential(&check, &child.monos));
         let monos = density(b.center, &lo.up_equiv, &w);
@@ -216,38 +212,38 @@ impl ExpansionOps for KiScheme {
         }
     }
 
-    fn zero_incoming(ctx: &KiCtx, b: TreeBox) -> EquivDensity {
-        let lo = ctx.level_for(b.half);
+    fn zero_incoming(&self, b: TreeBox) -> EquivDensity {
+        let lo = self.level_for(b.half);
         let monos = lo.down_equiv.iter().map(|o| Monopole::new(b.center + *o, 0.0)).collect();
         EquivDensity { monos }
     }
 
-    fn l2l(ctx: &KiCtx, b: TreeBox, parent: &EquivDensity, into: &mut EquivDensity) {
-        let lo = ctx.level_for(b.half);
+    fn l2l(&self, b: TreeBox, parent: &EquivDensity, into: &mut EquivDensity) {
+        let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, &parent.monos));
         add_weights(into, &w);
     }
 
-    fn m2l(ctx: &KiCtx, b: TreeBox, _src: TreeBox, out: &EquivDensity, into: &mut EquivDensity) {
-        let lo = ctx.level_for(b.half);
+    fn m2l(&self, b: TreeBox, _src: TreeBox, out: &EquivDensity, into: &mut EquivDensity) {
+        let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, &out.monos));
         add_weights(into, &w);
     }
 
-    fn p2l(ctx: &KiCtx, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
-        let lo = ctx.level_for(b.half);
+    fn p2l(&self, b: TreeBox, sources: &[Monopole], into: &mut EquivDensity) {
+        let lo = self.level_for(b.half);
         let check: Vec<Point2D> = lo.down_check.iter().map(|o| b.center + *o).collect();
         let w = lo.down_pinv.dot(&check_potential(&check, sources));
         add_weights(into, &w);
     }
 
-    fn l2p(_ctx: &KiCtx, inc: &EquivDensity, theta: Point2D) -> Jet {
+    fn l2p(&self, inc: &EquivDensity, theta: Point2D) -> Jet {
         eval(&inc.monos, theta)
     }
 
-    fn m2p(_ctx: &KiCtx, out: &EquivDensity, theta: Point2D) -> Jet {
+    fn m2p(&self, out: &EquivDensity, theta: Point2D) -> Jet {
         eval(&out.monos, theta)
     }
 }

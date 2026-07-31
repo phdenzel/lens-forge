@@ -11,8 +11,8 @@
 //! `Cauchy` realizes the six `ExpansionOps` operators for the holomorphic
 //! log-kernel with closed-form complex expansions: [`Multipole`] (Laurent) as
 //! the outgoing carrier and [`LocalExpansion`] (Taylor) as the incoming one. The
-//! operators are scale-free, so the box half-size is unused; the context is just
-//! the expansion order.
+//! operators are scale-free, so the box half-size is unused; the scheme carries
+//! just the expansion order.
 
 use crate::fastsum::{
     ExpansionOps, FieldSolver, Jet, LocalExpansion, Monopole, Multipole, SolverConfig, TreeFmm,
@@ -23,22 +23,24 @@ use num::complex::Complex;
 
 /// Analytic multipole scheme for the 2D log kernel: Laurent multipoles and
 /// Taylor locals with the closed-form CGR translation operators.
-pub(crate) struct Cauchy;
+pub(crate) struct Cauchy {
+    /// Expansion order (the operators are otherwise scale-free).
+    order: usize,
+}
 
 impl ExpansionOps for Cauchy {
     type Outgoing = Multipole;
     type Incoming = LocalExpansion;
-    type Ctx = usize; // the expansion order (operators are scale-free)
 
-    fn context(_root_half: f64, _max_depth: usize, order: usize, _eps2: f64) -> usize {
-        order
+    fn build(cfg: SolverConfig, _root_half: f64, _max_depth: usize) -> Self {
+        Cauchy { order: cfg.order }
     }
 
-    fn s2m(order: &usize, b: TreeBox, sources: &[Monopole]) -> Multipole {
-        Multipole::from_monopoles(sources, b.center, *order)
+    fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> Multipole {
+        Multipole::from_monopoles(sources, b.center, self.order)
     }
 
-    fn m2m(_order: &usize, b: TreeBox, child: &Multipole, acc: &mut Option<Multipole>) {
+    fn m2m(&self, b: TreeBox, child: &Multipole, acc: &mut Option<Multipole>) {
         let shifted = child.translate(b.center);
         *acc = Some(match acc.take() {
             Some(a) => a + shifted,
@@ -46,27 +48,27 @@ impl ExpansionOps for Cauchy {
         });
     }
 
-    fn zero_incoming(order: &usize, b: TreeBox) -> LocalExpansion {
-        LocalExpansion { center: b.center, coeffs: vec![Complex::new(0.0, 0.0); order + 1] }
+    fn zero_incoming(&self, b: TreeBox) -> LocalExpansion {
+        LocalExpansion { center: b.center, coeffs: vec![Complex::new(0.0, 0.0); self.order + 1] }
     }
 
-    fn l2l(_order: &usize, b: TreeBox, parent: &LocalExpansion, into: &mut LocalExpansion) {
+    fn l2l(&self, b: TreeBox, parent: &LocalExpansion, into: &mut LocalExpansion) {
         *into += &parent.translate(b.center);
     }
 
-    fn m2l(_order: &usize, b: TreeBox, _src: TreeBox, out: &Multipole, into: &mut LocalExpansion) {
+    fn m2l(&self, b: TreeBox, _src: TreeBox, out: &Multipole, into: &mut LocalExpansion) {
         *into += &out.to_local(b.center);
     }
 
-    fn p2l(order: &usize, b: TreeBox, sources: &[Monopole], into: &mut LocalExpansion) {
-        *into += &LocalExpansion::from_monopoles(sources, b.center, *order);
+    fn p2l(&self, b: TreeBox, sources: &[Monopole], into: &mut LocalExpansion) {
+        *into += &LocalExpansion::from_monopoles(sources, b.center, self.order);
     }
 
-    fn l2p(_order: &usize, inc: &LocalExpansion, theta: Point2D) -> Jet {
+    fn l2p(&self, inc: &LocalExpansion, theta: Point2D) -> Jet {
         inc.eval_jet(theta)
     }
 
-    fn m2p(_order: &usize, out: &Multipole, theta: Point2D) -> Jet {
+    fn m2p(&self, out: &Multipole, theta: Point2D) -> Jet {
         out.eval_jet(theta)
     }
 }
