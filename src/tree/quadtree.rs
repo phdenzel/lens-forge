@@ -25,6 +25,8 @@ pub(crate) struct QuadNode {
     pub children: [Option<usize>; 4],
     /// Indices of the points held in this node; non-empty only for leaves.
     pub indices: Vec<usize>,
+    /// Arena index of the parent node; `None` for the root.
+    pub parent: Option<usize>,
 }
 
 impl QuadNode {
@@ -32,6 +34,17 @@ impl QuadNode {
     #[inline]
     pub(crate) fn is_leaf(&self) -> bool {
         self.children.iter().all(Option::is_none)
+    }
+
+    /// Whether this box touches `other` (shares a boundary point) — the FMM
+    /// adjacency test, tolerant of centre rounding.
+    ///
+    /// # Arguments
+    /// * `other` - the box to test against.
+    #[inline]
+    pub(crate) fn is_adjacent(&self, other: &QuadNode) -> bool {
+        let s = (self.half + other.half) * (1.0 + 1e-6);
+        (self.center.x - other.center.x).abs() <= s && (self.center.y - other.center.y).abs() <= s
     }
 }
 
@@ -62,6 +75,7 @@ impl QuadTree {
                 half: 1.0,
                 children: [None; 4],
                 indices: Vec::new(),
+                parent: None,
             });
             return Self { nodes, root: 0 };
         }
@@ -75,7 +89,7 @@ impl QuadTree {
         half *= 1.0 + 1e-9;
 
         let all: Vec<usize> = (0..points.len()).collect();
-        let root = build_node(&mut nodes, points, &all, center, half, 0, leaf_size);
+        let root = build_node(&mut nodes, points, &all, center, half, None, 0, leaf_size);
         Self { nodes, root }
     }
 }
@@ -89,6 +103,7 @@ impl QuadTree {
 /// * `idx` - indices into `points` covered by this node.
 /// * `center` - centre of this node's square region.
 /// * `half` - half the side length of the region.
+/// * `parent` - arena index of the parent node, or `None` for the root.
 /// * `depth` - current subdivision level; stops at [`MAX_DEPTH`].
 /// * `leaf_size` - leaf point-count threshold.
 fn build_node(
@@ -97,6 +112,7 @@ fn build_node(
     idx: &[usize],
     center: Point2D,
     half: f64,
+    parent: Option<usize>,
     depth: usize,
     leaf_size: usize,
 ) -> usize {
@@ -106,6 +122,7 @@ fn build_node(
         half,
         children: [None; 4],
         indices: Vec::new(),
+        parent,
     });
 
     if idx.len() <= leaf_size || depth >= MAX_DEPTH {
@@ -132,7 +149,7 @@ fn build_node(
         if !quad.is_empty() {
             let cc = center + offs[q];
             children[q] = Some(build_node(
-                nodes, points, quad, cc, hh, depth + 1, leaf_size,
+                nodes, points, quad, cc, hh, Some(node_idx), depth + 1, leaf_size,
             ));
         }
     }
