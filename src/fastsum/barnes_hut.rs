@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Barnes–Hut quadtree with monopole (centre-of-mass) acceptance, $O(N \log N)$.
 //!
+//! Resource: Barnes & Hut, A hierarchical $O(N \log N)$ force-calculation
+//! algorithm, Nature 324, [DOI:10.1038/324446a0](https://doi.org/10.1038/324446a0)
+//!
 //! A square quadtree is built over the source elements; each node caches its
 //! aggregate monopole (total mass and centre of mass). At a query point, a node
 //! whose region satisfies the opening criterion
