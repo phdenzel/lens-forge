@@ -14,6 +14,16 @@ use crate::grid::Point2D;
 /// Deepest subdivision level, bounding recursion when points coincide.
 const MAX_DEPTH: usize = 64;
 
+/// A quadtree node's square region: centre and half side-length. Carries the
+/// geometry the FMM operators need without exposing the whole node.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TreeBox {
+    /// Centre of the square region.
+    pub center: Point2D,
+    /// Half the side length of the region.
+    pub half: f64,
+}
+
 /// A node of the [`QuadTree`]: a square region and its children or points.
 #[derive(Debug)]
 pub(crate) struct QuadNode {
@@ -34,6 +44,12 @@ impl QuadNode {
     #[inline]
     pub(crate) fn is_leaf(&self) -> bool {
         self.children.iter().all(Option::is_none)
+    }
+
+    /// The square region this node covers.
+    #[inline]
+    pub(crate) fn to_box(&self) -> TreeBox {
+        TreeBox { center: self.center, half: self.half }
     }
 
     /// Whether this box touches `other` (shares a boundary point) — the FMM

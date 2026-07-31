@@ -10,4 +10,4 @@
 mod kdtree;
 mod quadtree;
 pub(crate) use kdtree::KdTree;
-pub(crate) use quadtree::QuadTree;
+pub(crate) use quadtree::{QuadTree, TreeBox};
