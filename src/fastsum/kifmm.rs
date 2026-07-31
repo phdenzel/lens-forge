@@ -2,28 +2,16 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Kernel-independent FMM: the `KiScheme` expansion and the [`Kifmm`] backend
-//! built on the generic `TreeFmm` driver, $O(N)$.
+//! on the generic `TreeFmm` driver, $O(N)$.
 //!
 //! Resource: Ying, Biros & Zorin, A kernel-independent adaptive fast multipole
 //! algorithm in two and three dimensions, J. Comput. Phys. 196(2),
 //! [DOI:10.1016/j.jcp.2003.11.021](https://doi.org/10.1016/j.jcp.2003.11.021)
 //!
-//! Instead of analytic moments, each box carries **equivalent monopole
-//! densities** on a box-scaled proxy circle. The operators evaluate the bare log
-//! kernel between proxy points and a check surface, then apply a precomputed
-//! `pseudo_inverse` (the check-from-equivalent map) — nothing is derived from
-//! the kernel analytically. Two concentric circles per box (radii in units of
-//! the half side-length): an inner surface at `R_IN` enclosing the box's
-//! sources and an outer, well-separated surface at `R_OUT`. The upward pass
-//! uses the inner circle as its equivalent surface and the outer as its check
-//! surface; the downward pass swaps them. Check surfaces are oversampled
-//! (`OVERSAMPLE`× the equivalent points) so each equivalent density is a
-//! least-squares fit rather than an exact interpolant.
-//!
-//! Because the equivalent densities are monopoles, evaluation (L2T / M2T) reuses
-//! the shared near-field kernel [`Jet::add_monopole`], yielding ψ, α and H in one
-//! pass. The proxy kernel is the bare `ln|x − y|` (the `1/π` factor cancels in
-//! every check-from-equivalent solve and is reintroduced only by `add_monopole`).
+//! Each box carries equivalent monopole densities on box-scaled proxy circles;
+//! the operators solve the check-from-equivalent map (a precomputed
+//! `pseudo_inverse`) rather than deriving anything analytically. Evaluation
+//! reuses [`Jet::add_monopole`], as the densities are just monopoles.
 
 use crate::fastsum::{ExpansionOps, FieldSolver, Jet, Monopole, SolverConfig, TreeFmm};
 use crate::grid::Point2D;
