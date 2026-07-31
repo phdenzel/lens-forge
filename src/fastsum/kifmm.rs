@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Kernel-independent FMM: the `KiScheme` expansion and the [`Kifmm`] backend
-//! on the generic `TreeFmm` driver, $O(N)$.
+//! Kernel-independent FMM: the `KernelIndependent` expansion scheme and the [`Kifmm`] backend
+//! on the generic `TreeFmm` engine, $O(N)$.
 //!
 //! Resource: Ying, Biros & Zorin, A kernel-independent adaptive fast multipole
 //! algorithm in two and three dimensions, J. Comput. Phys. 196(2),
@@ -58,14 +58,14 @@ pub(crate) struct LevelOps {
 
 /// Kernel-independent multipole scheme for the 2D log kernel: equivalent proxy
 /// densities with pseudo-inverse translation operators, precomputed per level.
-pub(crate) struct KiScheme {
+pub(crate) struct KernelIndependent {
     /// Root box half side-length, for mapping a box half to its level index.
     root_half: f64,
     /// Operator data indexed by tree level.
     level: Vec<LevelOps>,
 }
 
-impl KiScheme {
+impl KernelIndependent {
     /// Operator data for a box of the given half side-length.
     ///
     /// # Arguments
@@ -154,7 +154,7 @@ fn eval(monos: &[Monopole], theta: Point2D) -> Jet {
     f
 }
 
-impl ExpansionOps for KiScheme {
+impl ExpansionOps for KernelIndependent {
     type Outgoing = EquivDensity;
     type Incoming = EquivDensity;
 
@@ -175,7 +175,7 @@ impl ExpansionOps for KiScheme {
                 LevelOps { up_equiv, up_check, down_equiv, down_check, up_pinv, down_pinv }
             })
             .collect();
-        KiScheme { root_half, level }
+        KernelIndependent { root_half, level }
     }
 
     fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> EquivDensity {
@@ -248,7 +248,7 @@ fn add_weights(into: &mut EquivDensity, w: &Array1<f64>) {
 }
 
 /// Kernel-independent Fast Multipole Method backend (adaptive quadtree).
-pub struct Kifmm(TreeFmm<KiScheme>);
+pub struct Kifmm(TreeFmm<KernelIndependent>);
 
 impl FieldSolver for Kifmm {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
