@@ -49,6 +49,15 @@ impl BBox {
         Self::new(Point2D::new(min[0], min[1]), Point2D::new(max[0], max[1]))
     }
 
+    /// Smallest box enclosing all `points`; `None` when `points` is empty.
+    ///
+    /// # Arguments
+    /// * `points` - the points to enclose.
+    #[inline]
+    pub fn from_points(points: &[Point2D]) -> Option<Self> {
+        Point2D::bounding_box(points).map(|(min, max)| Self::new(min, max))
+    }
+
     /// Whether the box is non-degenerate (`min.x < max.x && min.y < max.y`).
     #[inline]
     pub fn is_positive(&self) -> bool {
@@ -101,6 +110,23 @@ impl BBox {
     #[inline]
     pub fn contains(&self, p: &Point2D) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
+    }
+
+    /// Smallest square containing this box, centred on [`center`](Self::center)
+    /// and grown by a relative `pad` on the half-extent.
+    ///
+    /// # Arguments
+    /// * `pad` - fractional padding added to the half-extent.
+    /// * `default_min` - half-extent used when the box is degenerate (zero size).
+    #[inline]
+    pub fn padded_square(&self, pad: f64, default_min: f64) -> BBox {
+        let center = self.center();
+        let mut half = 0.5 * self.width().max(self.height());
+        if !(half > 0.0) {
+            half = default_min; // degenerate box (e.g. coincident points)
+        }
+        half *= 1.0 + pad;
+        BBox::new(center - half, center + half)
     }
 
     /// The four corners counter-clockwise, starting from `min`.
@@ -159,5 +185,35 @@ mod tests {
     fn degenerate_is_not_positive() {
         assert!(!BBox::new(Point2D::new(0.0, 0.0), Point2D::new(0.0, 1.0)).is_positive());
         assert!(!BBox::new(Point2D::new(1.0, 0.0), Point2D::new(0.0, 1.0)).is_positive());
+    }
+
+    #[test]
+    fn from_points_encloses_or_none() {
+        let pts = [
+            Point2D::new(-1.0, 2.0),
+            Point2D::new(3.0, -2.0),
+            Point2D::new(0.0, 1.0),
+        ];
+        assert_eq!(
+            BBox::from_points(&pts),
+            Some(BBox::new(Point2D::new(-1.0, -2.0), Point2D::new(3.0, 2.0)))
+        );
+        assert_eq!(BBox::from_points(&[]), None);
+    }
+
+    #[test]
+    fn padded_square_grows_and_squares() {
+        // Non-degenerate: half = 0.5·max(w, h)·(1 + pad), centred.
+        let b = BBox::new(Point2D::new(0.0, 0.0), Point2D::new(2.0, 4.0));
+        assert_eq!(
+            b.padded_square(0.5, 1.0),
+            BBox::new(Point2D::new(-2.0, -1.0), Point2D::new(4.0, 5.0))
+        );
+        // Degenerate box falls back to `default_min` for the half-extent.
+        let d = BBox::new(Point2D::new(1.0, 1.0), Point2D::new(1.0, 1.0));
+        assert_eq!(
+            d.padded_square(0.0, 2.0),
+            BBox::new(Point2D::new(-1.0, -1.0), Point2D::new(3.0, 3.0))
+        );
     }
 }
