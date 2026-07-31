@@ -61,11 +61,12 @@ fn bench_backends(c: &mut Criterion) {
     for &n in &[1_000usize, 5_000, 20_000] {
         let src = sources(n);
 
-        // Skip the O(N²) direct sum at the largest size to keep the run bounded.
+        // Skip the O(N²) direct sum at the largest size to keep the run bounded;
+        // the O(N log N) / O(N) backends run at every size.
         let kinds: &[SolverKind] = if n <= 5_000 {
-            &[SolverKind::Direct, SolverKind::BarnesHut]
+            &[SolverKind::Direct, SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
         } else {
-            &[SolverKind::BarnesHut]
+            &[SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
         };
 
         let mut group = c.benchmark_group(format!("fastsum/query_N{n}"));
