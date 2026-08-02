@@ -21,7 +21,7 @@ use ndarray::{Array1, Array2};
 use std::f64::consts::TAU;
 
 /// Inner proxy-circle radius, in units of a box's half side-length.
-const R_IN: f64 = 1.5;  // small margin, i.e. sqrt(2) ≈ 1.41 would touch corners
+const R_IN: f64 = 1.5; // small margin, i.e. sqrt(2) ≈ 1.41 would touch corners
 /// Outer (well-separated) proxy-circle radius, in units of the half side-length.
 const R_OUT: f64 = 3.0;
 /// Check points per equivalent point: an oversampled, overdetermined fit.
@@ -31,19 +31,18 @@ const LAMBDA: f64 = 1e-12;
 
 /// Kernel-independent multipole scheme for the 2D log kernel: equivalent proxy
 /// densities on box-scaled circles with pseudo-inverse translation operators.
-/// The two unit circles are shared across levels; the `n × m` pinvs are
-/// precomputed per level. Outgoing and incoming expansions are both just the
-/// proxy monopoles.
+/// The two unit circles are shared across levels; the `n × m` pseudo-inverses
+/// are precomputed per level.
 pub(crate) struct KernelIndependent {
     /// Root box half side-length, for mapping a box half to its level index.
     root_half: f64,
-    /// Unit equivalent circle: `n` points (equivalent surfaces).
+    /// Unit equivalent circle: `n` points (minimum 16).
     equiv: Vec<Point2D>,
-    /// Unit check circle: `m = OVERSAMPLE · n` points (check surfaces).
+    /// Unit check circle: `m = OVERSAMPLE · n` points (minimum 32).
     check: Vec<Point2D>,
-    /// Per level, the up-check → up-equivalent inverse (S2M, M2M).
+    /// Per level, pseudo inverse for up checks (for S2M, M2M).
     up_pinv: Vec<Array2<f64>>,
-    /// Per level, the down-check → down-equivalent inverse (M2L, L2L, S2L).
+    /// Per level, pseudo inverse for down checks (for M2L, L2L, S2L).
     down_pinv: Vec<Array2<f64>>,
 }
 
@@ -58,12 +57,13 @@ impl KernelIndependent {
     }
 }
 
-/// Unit-circle offsets (`n` points) scaled by `radius`.
+/// Circle offsets (`n` points) scaled by `radius` (defaults to the unit circle).
 ///
 /// # Arguments
 /// * `n` - number of proxy points.
-/// * `radius` - circle radius.
-fn circle(n: usize, radius: f64) -> Vec<Point2D> {
+/// * `radius` - circle radius; `None` gives the unit circle.
+fn circle(n: usize, radius: Option<f64>) -> Vec<Point2D> {
+    let radius = radius.unwrap_or(1.0);
     (0..n)
         .map(|i| {
             let a = TAU * i as f64 / n as f64;
@@ -72,18 +72,18 @@ fn circle(n: usize, radius: f64) -> Vec<Point2D> {
         .collect()
 }
 
-/// A unit circle scaled by `radius` and centred on `center`.
+/// A unit ring scaled by `radius` and shifted onto `center`.
 ///
 /// # Arguments
 /// * `unit` - unit-circle offsets.
 /// * `radius` - circle radius.
 /// * `center` - box centre (the origin gives a pure offset).
-fn place(unit: &[Point2D], radius: f64, center: Point2D) -> Vec<Point2D> {
+fn affine_ring(unit: &[Point2D], radius: f64, center: Point2D) -> Vec<Point2D> {
     unit.iter().map(|o| center + *o * radius).collect()
 }
 
-/// Bare log-kernel matrix `K[i][j] = ln|check_i − equiv_j|` (concentric surfaces,
-/// so the shared centre cancels and only the offsets matter).
+/// Bare log-kernel matrix `K[i][j] = ln|check_i − equiv_j|` (assumes concentric
+/// surfaces, so the shared centre cancel).
 ///
 /// # Arguments
 /// * `check` - check-surface offsets (rows).
@@ -92,14 +92,13 @@ fn kernel_matrix(check: &[Point2D], equiv: &[Point2D]) -> Array2<f64> {
     let mut k = Array2::zeros((check.len(), equiv.len()));
     for (i, c) in check.iter().enumerate() {
         for (j, e) in equiv.iter().enumerate() {
-            let (dx, dy) = (c.x - e.x, c.y - e.y);
-            k[[i, j]] = 0.5 * (dx * dx + dy * dy).ln();
+            k[[i, j]] = 0.5 * c.distance_squared(e).ln();
         }
     }
     k
 }
 
-/// Bare check potential `φ_k = Σ_i mᵢ ln|target_k − yᵢ|` of `srcs` at `targets`
+/// Bare check potential `φ_k = Σᵢ mᵢ ln|target_k − yᵢ|` of `srcs` at `targets`
 /// (no `1/π`; it cancels against the pseudo-inverse's kernel).
 ///
 /// # Arguments
@@ -108,8 +107,7 @@ fn kernel_matrix(check: &[Point2D], equiv: &[Point2D]) -> Array2<f64> {
 fn check_potential(targets: &[Point2D], srcs: &[Monopole]) -> Array1<f64> {
     Array1::from_iter(targets.iter().map(|t| {
         srcs.iter().fold(0.0, |acc, m| {
-            let (dx, dy) = (t.x - m.position.x, t.y - m.position.y);
-            let r2 = dx * dx + dy * dy;
+            let r2 = t.distance_squared(&m.position);
             if r2 > 0.0 {
                 acc + 0.5 * r2.ln() * m.strength
             } else {
@@ -119,12 +117,12 @@ fn check_potential(targets: &[Point2D], srcs: &[Monopole]) -> Array1<f64> {
     }))
 }
 
-/// Proxy monopoles at `positions` carrying densities `w`.
+/// Proxy monopoles at `positions` carrying densities `w = K⁺ · φ`.
 ///
 /// # Arguments
 /// * `positions` - proxy-surface points.
 /// * `w` - densities, one per position.
-fn density(positions: &[Point2D], w: &Array1<f64>) -> Vec<Monopole> {
+fn proxy_monopoles(positions: &[Point2D], w: &Array1<f64>) -> Vec<Monopole> {
     positions
         .iter()
         .zip(w.iter())
@@ -132,12 +130,23 @@ fn density(positions: &[Point2D], w: &Array1<f64>) -> Vec<Monopole> {
         .collect()
 }
 
+/// Add densities `w` to an incoming expansion's fixed proxy positions.
+///
+/// # Arguments
+/// * `into` - the incoming proxy monopoles, updated in place.
+/// * `w` - densities to add, one per proxy point.
+fn add_weights(into: &mut [Monopole], w: &Array1<f64>) {
+    for (m, &wi) in into.iter_mut().zip(w.iter()) {
+        m.strength += wi;
+    }
+}
+
 /// Evaluate proxy monopoles' jet at `theta` (the `1/π` kernel via `add_monopole`).
 ///
 /// # Arguments
 /// * `monos` - the proxy monopoles.
 /// * `theta` - query point.
-fn eval(monos: &[Monopole], theta: Point2D) -> Jet {
+fn eval_jet(monos: &[Monopole], theta: Point2D) -> Jet {
     let mut f = Jet::default();
     for m in monos {
         f.add_monopole(theta, m.position, m.strength, 0.0);
@@ -151,16 +160,23 @@ impl ExpansionOps for KernelIndependent {
 
     fn build(cfg: SolverConfig, root_half: f64, max_depth: usize) -> Self {
         let n = (4 * cfg.order).max(16);
-        let equiv = circle(n, 1.0);
-        let check = circle(OVERSAMPLE * n, 1.0);
-        let o = Point2D::origin();
+        let equiv = circle(n, None);
+        let check = circle(OVERSAMPLE * n, None);
+        let orig = Point2D::origin();
         let mut up_pinv = Vec::with_capacity(max_depth + 1);
         let mut down_pinv = Vec::with_capacity(max_depth + 1);
         for l in 0..=max_depth {
             let h = root_half * 0.5f64.powi(l as i32);
-            // Up: check at R_OUT, equivalent at R_IN; down swaps the radii.
-            let up = kernel_matrix(&place(&check, R_OUT * h, o), &place(&equiv, R_IN * h, o));
-            let down = kernel_matrix(&place(&check, R_IN * h, o), &place(&equiv, R_OUT * h, o));
+            // Up: check at R_OUT, equivalent at R_IN
+            let up = kernel_matrix(
+                &affine_ring(&check, R_OUT * h, orig),
+                &affine_ring(&equiv, R_IN * h, orig),
+            );
+	    // Down: check at R_IN, equivalent at R_OUT
+            let down = kernel_matrix(
+                &affine_ring(&check, R_IN * h, orig),
+                &affine_ring(&equiv, R_OUT * h, orig),
+            );
             up_pinv.push(pseudo_inverse(&up, LAMBDA));
             down_pinv.push(pseudo_inverse(&down, LAMBDA));
         }
@@ -175,20 +191,21 @@ impl ExpansionOps for KernelIndependent {
 
     fn s2m(&self, b: TreeBox, sources: &[Monopole]) -> Vec<Monopole> {
         let l = self.level_index(b.half);
-        let check = place(&self.check, R_OUT * b.half, b.center);
+        let check = affine_ring(&self.check, R_OUT * b.half, b.center);
         let w = self.up_pinv[l].dot(&check_potential(&check, sources));
-        density(&place(&self.equiv, R_IN * b.half, b.center), &w)
+        proxy_monopoles(&affine_ring(&self.equiv, R_IN * b.half, b.center), &w)
     }
 
     fn m2m(&self, b: TreeBox, child: &Vec<Monopole>, acc: &mut Option<Vec<Monopole>>) {
         let l = self.level_index(b.half);
-        let check = place(&self.check, R_OUT * b.half, b.center);
+        let check = affine_ring(&self.check, R_OUT * b.half, b.center);
         let w = self.up_pinv[l].dot(&check_potential(&check, child));
-        let monos = density(&place(&self.equiv, R_IN * b.half, b.center), &w);
+        let proxies = proxy_monopoles(&affine_ring(&self.equiv, R_IN * b.half, b.center), &w);
+	// accumulate child proxies into the parent's ring
         match acc {
-            None => *acc = Some(monos),
+            None => *acc = Some(proxies),
             Some(a) => {
-                for (m, c) in a.iter_mut().zip(monos) {
+                for (m, c) in a.iter_mut().zip(proxies) {
                     m.strength += c.strength;
                 }
             }
@@ -196,7 +213,7 @@ impl ExpansionOps for KernelIndependent {
     }
 
     fn zero_incoming(&self, b: TreeBox) -> Vec<Monopole> {
-        place(&self.equiv, R_OUT * b.half, b.center)
+        affine_ring(&self.equiv, R_OUT * b.half, b.center)
             .into_iter()
             .map(|p| Monopole::new(p, 0.0))
             .collect()
@@ -204,44 +221,34 @@ impl ExpansionOps for KernelIndependent {
 
     fn l2l(&self, b: TreeBox, parent: &Vec<Monopole>, into: &mut Vec<Monopole>) {
         let l = self.level_index(b.half);
-        let check = place(&self.check, R_IN * b.half, b.center);
+        let check = affine_ring(&self.check, R_IN * b.half, b.center);
         let w = self.down_pinv[l].dot(&check_potential(&check, parent));
         add_weights(into, &w);
     }
 
     fn m2l(&self, b: TreeBox, _src: TreeBox, out: &Vec<Monopole>, into: &mut Vec<Monopole>) {
         let l = self.level_index(b.half);
-        let check = place(&self.check, R_IN * b.half, b.center);
+        let check = affine_ring(&self.check, R_IN * b.half, b.center);
         let w = self.down_pinv[l].dot(&check_potential(&check, out));
         add_weights(into, &w);
     }
 
     fn s2l(&self, b: TreeBox, sources: &[Monopole], into: &mut Vec<Monopole>) {
         let l = self.level_index(b.half);
-        let check = place(&self.check, R_IN * b.half, b.center);
+        let check = affine_ring(&self.check, R_IN * b.half, b.center);
         let w = self.down_pinv[l].dot(&check_potential(&check, sources));
         add_weights(into, &w);
     }
 
     fn l2t(&self, inc: &Vec<Monopole>, theta: Point2D) -> Jet {
-        eval(inc, theta)
+        eval_jet(inc, theta)
     }
 
     fn m2t(&self, out: &Vec<Monopole>, theta: Point2D) -> Jet {
-        eval(out, theta)
+        eval_jet(out, theta)
     }
 }
 
-/// Add densities `w` to an incoming expansion's fixed proxy positions.
-///
-/// # Arguments
-/// * `into` - the incoming proxy monopoles, updated in place.
-/// * `w` - densities to add, one per proxy point.
-fn add_weights(into: &mut [Monopole], w: &Array1<f64>) {
-    for (m, &wi) in into.iter_mut().zip(w.iter()) {
-        m.strength += wi;
-    }
-}
 
 /// Kernel-independent Fast Multipole Method backend (adaptive quadtree).
 pub struct Kifmm(TreeFmm<KernelIndependent>);
