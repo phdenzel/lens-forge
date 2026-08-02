@@ -13,6 +13,11 @@
 
 use ndarray::Array2;
 
+/// Off-diagonal tolerance for the Jacobi convergence test, near `f64` epsilon.
+const EPS: f64 = 1e-15;
+/// Safety cap on Jacobi sweeps; convergence normally trips the `rotated` flag first.
+const MAX_SWEEPS: usize = 60;
+
 /// Rotate the columns of `u` (m × n, `m ≥ n`) to orthogonality by one-sided
 /// Jacobi, accumulating the applied rotations into `v`. On return the columns of
 /// `u` are `σᵢ uᵢ` and `v` is the orthogonal right-singular-vector matrix.
@@ -22,8 +27,6 @@ use ndarray::Array2;
 /// * `v` - accumulator, updated in place (starts as the identity).
 fn one_sided_jacobi(u: &mut Array2<f64>, v: &mut Array2<f64>) {
     let (m, n) = u.dim();
-    const EPS: f64 = 1e-15;
-    const MAX_SWEEPS: usize = 60;
     for _ in 0..MAX_SWEEPS {
         let mut rotated = false;
         for i in 0..n {
