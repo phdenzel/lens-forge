@@ -44,7 +44,7 @@ pub use kifmm::Kifmm;
 pub use local_expansion::LocalExpansion;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
-pub use solver::{build_solver, FieldSolver, SolverConfig, SolverKind};
+pub use solver::{FieldSolver, SolverConfig, SolverKind, build_solver};
 
 pub(crate) use expansion::ExpansionOps;
 pub(crate) use tree_fmm::TreeFmm;

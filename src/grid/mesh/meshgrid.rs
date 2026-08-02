@@ -8,12 +8,12 @@
 //! geometry is shared via [`Arc`], so value-producing operations (`scale`,
 //! `map`, …) clone cheaply without duplicating the tessellation.
 
-use std::sync::Arc;
-use ndarray::ArrayView1;
-use rayon::prelude::*;
 use super::voronoi::VoronoiMesh;
 use crate::grid::{BBox, FieldArray1D, Point2D, ScalarField2D};
 use crate::{LensForgeError, Result};
+use ndarray::ArrayView1;
+use rayon::prelude::*;
+use std::sync::Arc;
 
 /// A scalar field sampled on a Voronoi tessellation (one value per cell).
 #[derive(Clone)]
@@ -37,7 +37,10 @@ impl MeshGrid {
             ));
         }
         let mesh = VoronoiMesh::new(sites, bbox)?;
-        Ok(Self { mesh: Arc::new(mesh), values })
+        Ok(Self {
+            mesh: Arc::new(mesh),
+            values,
+        })
     }
 
     /// Mesh grid of zeros over `sites`.
@@ -76,11 +79,7 @@ impl MeshGrid {
     /// * `sites` - the generating points, one per cell.
     /// * `bbox` - the domain box the cells are clipped to.
     /// * `f` - function mapping site coordinates into a cell value.
-    pub fn from_func<F: Fn(f64, f64) -> f64>(
-        sites: &[Point2D],
-        bbox: BBox,
-        f: F,
-    ) -> Result<Self> {
+    pub fn from_func<F: Fn(f64, f64) -> f64>(sites: &[Point2D], bbox: BBox, f: F) -> Result<Self> {
         let values: FieldArray1D = sites.iter().map(|s| f(s.x, s.y)).collect();
         Self::new(sites, bbox, values)
     }
@@ -94,7 +93,10 @@ impl MeshGrid {
                 format!("{} values", values.len()),
             ));
         }
-        Ok(Self { mesh: self.mesh.clone(), values })
+        Ok(Self {
+            mesh: self.mesh.clone(),
+            values,
+        })
     }
 
     /* ================ Getter & Setter ==================================== */
@@ -286,7 +288,10 @@ impl MeshGrid {
 
     /// Maximum cell value.
     pub fn max(&self) -> f64 {
-        self.values.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+        self.values
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max)
     }
 
     /// Variance of all cell values.
@@ -524,7 +529,8 @@ mod tests {
 
     fn demo() -> MeshGrid {
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
-        MeshGrid::from_point_func(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), |s| s.x + s.y).unwrap()
+        MeshGrid::from_point_func(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), |s| s.x + s.y)
+            .unwrap()
     }
 
     #[test]
@@ -565,7 +571,13 @@ mod tests {
 
     #[test]
     fn flux_of_constant_is_value_times_area() {
-        let sites = [p(0.2, 0.3), p(0.8, 0.1), p(0.5, 0.9), p(0.1, 0.6), p(0.9, 0.7)];
+        let sites = [
+            p(0.2, 0.3),
+            p(0.8, 0.1),
+            p(0.5, 0.9),
+            p(0.1, 0.6),
+            p(0.9, 0.7),
+        ];
         let m = MeshGrid::constant(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), 2.5).unwrap();
         assert!((m.flux() - 2.5 * 1.0).abs() < 1e-9);
     }
@@ -700,7 +712,9 @@ mod tests {
         let m = demo();
         // A coarser mesh: one site deep in each of two quadrants.
         let new_sites = [p(0.1, 0.1), p(0.9, 0.9)];
-        let r = m.resample(&new_sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0)).unwrap();
+        let r = m
+            .resample(&new_sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0))
+            .unwrap();
         assert_eq!(r.len(), 2);
         assert_eq!(r.value(0), m.sample(p(0.1, 0.1)));
         assert_eq!(r.value(1), m.sample(p(0.9, 0.9)));
@@ -746,7 +760,9 @@ mod tests {
     #[test]
     fn with_values_shares_geometry_and_checks_length() {
         let m = demo();
-        let updated = m.with_values(FieldArray1D::from_vec(vec![10.0, 20.0, 30.0, 40.0])).unwrap();
+        let updated = m
+            .with_values(FieldArray1D::from_vec(vec![10.0, 20.0, 30.0, 40.0]))
+            .unwrap();
         assert_eq!(updated.values(), &[10.0, 20.0, 30.0, 40.0]);
         assert!(Arc::ptr_eq(&m.mesh, &updated.mesh)); // geometry reused, not rebuilt
         assert!(m.with_values(FieldArray1D::from_vec(vec![1.0])).is_err());

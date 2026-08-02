@@ -105,7 +105,12 @@ pub enum SolverKind {
 impl SolverKind {
     /// All currently-implemented backends (handy for comparison loops).
     pub fn implemented() -> &'static [SolverKind] {
-        &[SolverKind::Direct, SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
+        &[
+            SolverKind::Direct,
+            SolverKind::BarnesHut,
+            SolverKind::Fmm,
+            SolverKind::Kifmm,
+        ]
     }
 }
 
@@ -138,7 +143,10 @@ mod tests {
     #[test]
     fn config_defaults_and_builders() {
         let d = SolverConfig::default();
-        assert_eq!((d.theta_bh, d.order, d.eps2, d.leaf_size, d.tol), (0.5, 8, 0.0, 16, 1e-6));
+        assert_eq!(
+            (d.theta_bh, d.order, d.eps2, d.leaf_size, d.tol),
+            (0.5, 8, 0.0, 16, 1e-6)
+        );
         // Builders clamp / transform their inputs.
         assert_eq!(SolverConfig::default().with_theta(-1.0).theta_bh, 0.0);
         assert_eq!(SolverConfig::default().with_softening(0.5).eps2, 0.25);
@@ -160,8 +168,10 @@ mod tests {
     fn build_solver_dispatches_named_backends() {
         let src = bodies();
         let cfg = SolverConfig::default();
-        let names: Vec<_> =
-            SolverKind::implemented().iter().map(|&k| build_solver(k, &src, cfg).name()).collect();
+        let names: Vec<_> = SolverKind::implemented()
+            .iter()
+            .map(|&k| build_solver(k, &src, cfg).name())
+            .collect();
         assert_eq!(names, vec!["direct", "barnes-hut", "fmm", "kifmm"]);
     }
 
@@ -185,7 +195,11 @@ mod tests {
     fn default_batch_and_gradient_are_consistent() {
         let src = bodies();
         let cfg = SolverConfig::default().with_order(10);
-        let targets = [Point2D::new(3.0, 1.0), Point2D::new(-2.0, 2.5), Point2D::new(5.0, -1.0)];
+        let targets = [
+            Point2D::new(3.0, 1.0),
+            Point2D::new(-2.0, 2.5),
+            Point2D::new(5.0, -1.0),
+        ];
         for &kind in SolverKind::implemented() {
             let s = build_solver(kind, &src, cfg);
             let batch = s.jet_batch(&targets);

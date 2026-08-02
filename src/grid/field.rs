@@ -42,7 +42,9 @@ pub trait ScalarField2D {
 
     /// Area-weighted integral of the field, `Σ vᵢ · areaᵢ`.
     fn flux(&self) -> f64 {
-        (0..self.len()).map(|i| self.value_at(i) * self.cell_area(i)).sum()
+        (0..self.len())
+            .map(|i| self.value_at(i) * self.cell_area(i))
+            .sum()
     }
 
     /// Sum of the cell values.
@@ -58,12 +60,16 @@ pub trait ScalarField2D {
 
     /// Minimum cell value.
     fn min(&self) -> f64 {
-        (0..self.len()).map(|i| self.value_at(i)).fold(f64::INFINITY, f64::min)
+        (0..self.len())
+            .map(|i| self.value_at(i))
+            .fold(f64::INFINITY, f64::min)
     }
 
     /// Maximum cell value.
     fn max(&self) -> f64 {
-        (0..self.len()).map(|i| self.value_at(i)).fold(f64::NEG_INFINITY, f64::max)
+        (0..self.len())
+            .map(|i| self.value_at(i))
+            .fold(f64::NEG_INFINITY, f64::max)
     }
 
     /// Sample the field at many points.
@@ -143,8 +149,9 @@ mod tests {
         // centres are ± of the largest |x + 2y|.
         let n = f.len();
         let expected_min = (0..n).map(|i| pg.value_at(i)).fold(f64::INFINITY, f64::min);
-        let expected_max =
-            (0..n).map(|i| pg.value_at(i)).fold(f64::NEG_INFINITY, f64::max);
+        let expected_max = (0..n)
+            .map(|i| pg.value_at(i))
+            .fold(f64::NEG_INFINITY, f64::max);
         assert!((f.min() - expected_min).abs() < 1e-12);
         assert!((f.max() - expected_max).abs() < 1e-12);
         assert!(f.min() < f.max());
@@ -223,7 +230,11 @@ mod tests {
         let grid = Grid2D::square(8, 2.0).unwrap();
         let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
         let f: &dyn ScalarField2D = &pg;
-        let pts = [Point2D::new(0.5, -0.5), Point2D::new(-1.0, 0.25), Point2D::new(0.0, 0.0)];
+        let pts = [
+            Point2D::new(0.5, -0.5),
+            Point2D::new(-1.0, 0.25),
+            Point2D::new(0.0, 0.0),
+        ];
         let batch = f.sample_batch(&pts);
         assert_eq!(batch.len(), pts.len());
         for (b, &p) in batch.iter().zip(pts.iter()) {

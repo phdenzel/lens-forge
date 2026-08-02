@@ -89,12 +89,7 @@ impl FaceGeometry {
 /// * `i` - the cell index.
 /// * `nb` - the Voronoi neighbours of cell `i`.
 /// * `out` - per-neighbour length buffer (same length as `nb`, overwritten).
-pub(super) fn directed_facet_lengths(
-    mesh: &VoronoiMesh,
-    i: usize,
-    nb: &[usize],
-    out: &mut [f64],
-) {
+pub(super) fn directed_facet_lengths(mesh: &VoronoiMesh, i: usize, nb: &[usize], out: &mut [f64]) {
     out.fill(0.0);
     let site = mesh.site(i);
     let poly = mesh.cell_polygon(i);
@@ -195,7 +190,11 @@ mod tests {
         let faces = fg.faces_of(0);
         assert_eq!(faces.len(), 1);
         assert_eq!(faces[0].0, 1);
-        assert!((faces[0].1 - 1.0).abs() < 1e-12, "facet length {}", faces[0].1);
+        assert!(
+            (faces[0].1 - 1.0).abs() < 1e-12,
+            "facet length {}",
+            faces[0].1
+        );
     }
 
     #[test]
@@ -207,7 +206,10 @@ mod tests {
         let fg = FaceGeometry::build(&m);
         for i in 0..m.n_cells() {
             for &(_, len) in fg.faces_of(i) {
-                assert!(len < 1e-12 || (len - 0.5).abs() < 1e-12, "facet length {len}");
+                assert!(
+                    len < 1e-12 || (len - 0.5).abs() < 1e-12,
+                    "facet length {len}"
+                );
             }
         }
     }
@@ -216,8 +218,9 @@ mod tests {
     fn directed_facet_lengths_are_symmetric() {
         // ℓ_ij recovered from cell i must equal ℓ_ji recovered from cell j.
         let mut rng = Lcg::new(0xFACE);
-        let sites: Vec<Point2D> =
-            (0..80).map(|_| p(0.02 + 0.96 * rng.f(), 0.02 + 0.96 * rng.f())).collect();
+        let sites: Vec<Point2D> = (0..80)
+            .map(|_| p(0.02 + 0.96 * rng.f(), 0.02 + 0.96 * rng.f()))
+            .collect();
         let m = VoronoiMesh::new(&sites, unit()).unwrap();
         let fg = FaceGeometry::build(&m);
         for i in 0..m.n_cells() {
@@ -228,7 +231,10 @@ mod tests {
                     .find(|&&(k, _)| k == i)
                     .map(|&(_, l)| l)
                     .expect("adjacency is symmetric");
-                assert!((len_ij - len_ji).abs() < 1e-12, "{i}-{j}: {len_ij} vs {len_ji}");
+                assert!(
+                    (len_ij - len_ji).abs() < 1e-12,
+                    "{i}-{j}: {len_ij} vs {len_ji}"
+                );
             }
         }
     }

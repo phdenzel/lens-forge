@@ -129,7 +129,10 @@ pub trait FieldOps: ScalarField2D + Sized {
     /// # Arguments
     /// * `points` - the query points.
     fn interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        points.iter().map(|&p| self.interpolate_or(p, 0.0)).collect()
+        points
+            .iter()
+            .map(|&p| self.interpolate_or(p, 0.0))
+            .collect()
     }
 }
 
@@ -173,7 +176,12 @@ mod tests {
         assert!(info.residual >= 0.0); // solver ran and reported diagnostics
         // Return interior-ish scalars so callers can sanity-check the values.
         let mid = f.len() / 2;
-        (interp, gx.value_at(mid), gy.value_at(mid), lap.value_at(mid))
+        (
+            interp,
+            gx.value_at(mid),
+            gy.value_at(mid),
+            lap.value_at(mid),
+        )
     }
 
     #[test]
@@ -190,8 +198,9 @@ mod tests {
         // The same generic routine, same linear field, on an unstructured mesh.
         let mut rng = Lcg::new(0x0F5);
         let bbox = BBox::from_lims(-1.0, 1.0, -1.0, 1.0);
-        let sites: Vec<Point2D> =
-            (0..400).map(|_| Point2D::new(1.8 * rng.f() - 0.9, 1.8 * rng.f() - 0.9)).collect();
+        let sites: Vec<Point2D> = (0..400)
+            .map(|_| Point2D::new(1.8 * rng.f() - 0.9, 1.8 * rng.f() - 0.9))
+            .collect();
         let m = MeshGrid::from_func(&sites, bbox, plane).unwrap();
         let (interp, gx, gy, _lap) = exercise(&m, Point2D::new(0.1, -0.2));
         assert!((interp - plane(0.1, -0.2)).abs() < 1e-6);

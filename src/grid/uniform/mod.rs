@@ -14,15 +14,15 @@
 //! * `diff` — finite-difference derivatives (gradient, Laplacian).
 //! * `poisson` — Poisson solvers ($\nabla^2 \psi = f$).
 
-mod grid2d;
-mod pixelgrid;
-mod interp;
-mod spectral;
 mod diff;
-mod poisson;
 mod fieldops;
+mod grid2d;
+mod interp;
+mod pixelgrid;
+mod poisson;
+mod spectral;
 
-pub use grid2d::Grid2D;
-pub use pixelgrid::PixelGrid;
-pub use interp::BilinearKernel;
 pub use diff::{BoundaryCondition, DerivativeStencil};
+pub use grid2d::Grid2D;
+pub use interp::BilinearKernel;
+pub use pixelgrid::PixelGrid;

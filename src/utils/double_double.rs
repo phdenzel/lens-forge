@@ -66,7 +66,11 @@ mod tests {
     /// `dd_sqr` is bit-identical to the general `dd_mul(a, a)`.
     #[test]
     fn dd_sqr_matches_dd_mul() {
-        for a in [dd_diff(3.0, 0.1), dd_diff(1.0 + 2f64.powi(-52), 1.0), dd_diff(-7.5, 2.25)] {
+        for a in [
+            dd_diff(3.0, 0.1),
+            dd_diff(1.0 + 2f64.powi(-52), 1.0),
+            dd_diff(-7.5, 2.25),
+        ] {
             assert_eq!(dd_sqr(a), dd_mul(a, a));
         }
     }

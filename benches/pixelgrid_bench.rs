@@ -25,7 +25,7 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lens_forge::grid::{DerivativeStencil, PixelGrid, PoissonConfig};
 
 /// A smooth, periodic test field on `[-π, π]²`: `f(x, y) = sin(x)·cos(y)`.
@@ -104,7 +104,9 @@ fn poisson_source(n: usize) -> PixelGrid {
 
 fn bench_poisson(c: &mut Criterion) {
     // Match the FFT solver's default accuracy so the comparison is fair.
-    let cfg = PoissonConfig::default().with_tol(1e-6).with_max_iter(20_000);
+    let cfg = PoissonConfig::default()
+        .with_tol(1e-6)
+        .with_max_iter(20_000);
     for &n in &[32usize, 64, 128] {
         let src = poisson_source(n);
 

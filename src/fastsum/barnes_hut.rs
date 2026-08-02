@@ -13,8 +13,8 @@
 //! monopole; otherwise its children are visited. Leaves sum their elements
 //! directly.
 
+use crate::fastsum::{FieldSolver, Jet, Monopole, SolverConfig};
 use crate::grid::Point2D;
-use crate::fastsum::{FieldSolver, Monopole, Jet, SolverConfig};
 use crate::tree::QuadTree;
 
 /// Barnes–Hut backend.
@@ -154,7 +154,8 @@ mod tests {
         let direct = DirectSum::build(&bodies, cfg);
         let mut rng = Lcg::new(999);
         for _ in 0..50 {
-            let theta = Point2D::from_polar(rng.range(1.5, 4.0), rng.range(0.0, std::f64::consts::TAU));
+            let theta =
+                Point2D::from_polar(rng.range(1.5, 4.0), rng.range(0.0, std::f64::consts::TAU));
             let approx = bh.gradient(theta);
             let exact = direct.gradient(theta);
             let rel = approx.distance(&exact) / exact.norm().max(1e-6);

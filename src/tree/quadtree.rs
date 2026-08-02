@@ -49,7 +49,10 @@ impl QuadNode {
     /// The square region this node covers.
     #[inline]
     pub(crate) fn to_box(&self) -> TreeBox {
-        TreeBox { center: self.center, half: self.half }
+        TreeBox {
+            center: self.center,
+            half: self.half,
+        }
     }
 
     /// Whether this box touches `other` (shares a boundary point) — the FMM
@@ -165,7 +168,14 @@ fn build_node(
         if !quad.is_empty() {
             let cc = center + offs[q];
             children[q] = Some(build_node(
-                nodes, points, quad, cc, hh, Some(node_idx), depth + 1, leaf_size,
+                nodes,
+                points,
+                quad,
+                cc,
+                hh,
+                Some(node_idx),
+                depth + 1,
+                leaf_size,
             ));
         }
     }
@@ -197,7 +207,10 @@ mod tests {
                 }
             }
         }
-        assert!(seen.iter().all(|&c| c == 1), "each point in exactly one leaf");
+        assert!(
+            seen.iter().all(|&c| c == 1),
+            "each point in exactly one leaf"
+        );
     }
 
     /// Parents precede their descendants in the arena (reverse-pass invariant).

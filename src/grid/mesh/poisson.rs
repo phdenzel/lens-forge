@@ -19,7 +19,7 @@
 //! solver; only `tol`, `max_iter` and the Dirichlet/Neumann split of `bc` apply.
 
 use super::diff::apply_stiffness;
-use super::faces::{boundary_transmissibilities, FaceGeometry};
+use super::faces::{FaceGeometry, boundary_transmissibilities};
 use super::meshgrid::MeshGrid;
 use crate::grid::{BoundaryCondition, FieldArray1D, PoissonConfig};
 use crate::{Result, SolveInfo};
@@ -83,7 +83,14 @@ impl MeshGrid {
         let mut x = vec![0.0f64; n];
         if bnorm2 == 0.0 {
             let psi = self.with_values(FieldArray1D::from_vec(x))?;
-            return Ok((psi, SolveInfo { iterations: 0, residual: 0.0, converged: true }));
+            return Ok((
+                psi,
+                SolveInfo {
+                    iterations: 0,
+                    residual: 0.0,
+                    converged: true,
+                },
+            ));
         }
         let thresh = cfg.tol * cfg.tol * bnorm2;
 
@@ -103,11 +110,7 @@ impl MeshGrid {
                 if dirichlet {
                     d += bweight[i];
                 }
-                if d > 0.0 {
-                    d
-                } else {
-                    1.0
-                }
+                if d > 0.0 { d } else { 1.0 }
             })
             .collect();
 
@@ -166,7 +169,11 @@ impl MeshGrid {
             }
         }
         let psi = self.with_values(FieldArray1D::from_vec(x))?;
-        let info = SolveInfo { iterations, residual: (rs / bnorm2).sqrt(), converged };
+        let info = SolveInfo {
+            iterations,
+            residual: (rs / bnorm2).sqrt(),
+            converged,
+        };
         Ok((psi, info))
     }
 }
@@ -214,7 +221,9 @@ mod tests {
         use std::f64::consts::PI;
         let psi_exact = |x: f64, y: f64| (PI * x).cos() * (PI * y).cos();
         let m = mesh_from(|x, y| -2.0 * PI * PI * psi_exact(x, y));
-        let (psi, info) = m.poisson_cg(PoissonConfig::default().with_tol(1e-10)).unwrap();
+        let (psi, info) = m
+            .poisson_cg(PoissonConfig::default().with_tol(1e-10))
+            .unwrap();
         assert!(info.converged, "did not converge: {info:?}");
 
         // Compare against the mean-subtracted exact solution on interior cells.
@@ -299,9 +308,15 @@ mod tests {
         let psi_exact = |x: f64, y: f64| (PI * x / 8.0).cos() * (PI * y).cos();
         let lambda = PI * PI / 64.0 + PI * PI;
         let m = MeshGrid::from_func(&sites, bbox, |x, y| -lambda * psi_exact(x, y)).unwrap();
-        let (psi, info) = m.poisson_cg(PoissonConfig::default().with_tol(1e-9)).unwrap();
+        let (psi, info) = m
+            .poisson_cg(PoissonConfig::default().with_tol(1e-9))
+            .unwrap();
         assert!(info.converged, "did not converge: {info:?}");
-        assert!(info.iterations < m.len(), "too many iterations: {}", info.iterations);
+        assert!(
+            info.iterations < m.len(),
+            "too many iterations: {}",
+            info.iterations
+        );
 
         let mean = (0..m.len())
             .map(|i| m.area(i) * psi_exact(m.site(i).x, m.site(i).y))
@@ -329,14 +344,21 @@ mod tests {
     fn laplacian_of_the_solution_matches_the_source() {
         // End-to-end: ∇²(poisson_cg(f)) ≈ f - f̄ on interior cells.
         let m = mesh_from(|x, y| (2.0 * x - 1.0) * (2.0 * y - 1.0));
-        let (psi, info) = m.poisson_cg(PoissonConfig::default().with_tol(1e-10)).unwrap();
+        let (psi, info) = m
+            .poisson_cg(PoissonConfig::default().with_tol(1e-10))
+            .unwrap();
         assert!(info.converged);
         let fbar = (0..m.len()).map(|i| m.area(i) * m.value(i)).sum::<f64>() / m.total_area();
         let lap = psi.laplacian_field();
         for i in 0..m.len() {
             if is_interior(&m, i) {
                 let err = (lap.value(i) - (m.value(i) - fbar)).abs();
-                assert!(err < 0.15, "cell {i}: lap {} vs f {}", lap.value(i), m.value(i) - fbar);
+                assert!(
+                    err < 0.15,
+                    "cell {i}: lap {} vs f {}",
+                    lap.value(i),
+                    m.value(i) - fbar
+                );
             }
         }
     }

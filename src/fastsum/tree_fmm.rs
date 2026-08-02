@@ -198,7 +198,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
             for &pc in &colleagues[p] {
                 candidates.extend(tree.nodes[pc].children.iter().flatten().copied());
             }
-	    // Filter only adjacent boxes
+            // Filter only adjacent boxes
             let mut list = Vec::new();
             for c in candidates {
                 if c != b && tree.nodes[c].is_adjacent(&tree.nodes[b]) {
@@ -210,8 +210,9 @@ impl<E: ExpansionOps> TreeFmm<E> {
 
         // Downward pass: incoming expansion for every node, top-down (L2L from
         // the parent, then M2L (V-list) and S2L (X-list) from coarse leaves).
-        let mut incoming: Vec<E::Incoming> =
-            (0..n).map(|i| scheme.zero_incoming(tree.nodes[i].to_box())).collect();
+        let mut incoming: Vec<E::Incoming> = (0..n)
+            .map(|i| scheme.zero_incoming(tree.nodes[i].to_box()))
+            .collect();
         for b in 0..n {
             let bb = tree.nodes[b].to_box();
             let Some(p) = tree.nodes[b].parent else {

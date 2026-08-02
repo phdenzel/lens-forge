@@ -172,7 +172,7 @@ impl ExpansionOps for KernelIndependent {
                 &affine_ring(&check, R_OUT * h, orig),
                 &affine_ring(&equiv, R_IN * h, orig),
             );
-	    // Down: check at R_IN, equivalent at R_OUT
+            // Down: check at R_IN, equivalent at R_OUT
             let down = kernel_matrix(
                 &affine_ring(&check, R_IN * h, orig),
                 &affine_ring(&equiv, R_OUT * h, orig),
@@ -201,7 +201,7 @@ impl ExpansionOps for KernelIndependent {
         let check = affine_ring(&self.check, R_OUT * b.half, b.center);
         let w = self.up_pinv[l].dot(&check_potential(&check, child));
         let proxies = proxy_monopoles(&affine_ring(&self.equiv, R_IN * b.half, b.center), &w);
-	// accumulate child proxies into the parent's ring
+        // accumulate child proxies into the parent's ring
         match acc {
             None => *acc = Some(proxies),
             Some(a) => {
@@ -248,7 +248,6 @@ impl ExpansionOps for KernelIndependent {
         eval_jet(out, theta)
     }
 }
-
 
 /// Kernel-independent Fast Multipole Method backend (adaptive quadtree).
 pub struct Kifmm {

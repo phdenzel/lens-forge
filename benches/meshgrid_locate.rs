@@ -21,7 +21,7 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lens_forge::grid::{BBox, MeshGrid, Point2D};
 
 struct Lcg(u64);

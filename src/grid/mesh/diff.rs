@@ -14,7 +14,7 @@
 //! The area-free stiffness sum is the symmetric operator the Poisson solver
 //! applies; see [`apply_stiffness`].
 
-use super::faces::{directed_facet_lengths, FaceGeometry};
+use super::faces::{FaceGeometry, directed_facet_lengths};
 use super::meshgrid::MeshGrid;
 use crate::grid::{FieldArray1D, Point2D};
 
@@ -108,7 +108,8 @@ impl MeshGrid {
             .zip(gy.as_array1().iter())
             .map(|(&x, &y)| Point2D::new(x, y).norm())
             .collect();
-        self.with_values(mag).expect("gradient shares this geometry")
+        self.with_values(mag)
+            .expect("gradient shares this geometry")
     }
 
     /// The finite-volume (TPFA) Laplacian `∇²v` at cell `i`.
@@ -267,8 +268,10 @@ mod tests {
         // stencil on a near-uniform mesh).
         let m = mesh_from(|x, y| x * x + y * y);
         let lap = m.laplacian_field();
-        let interior: Vec<f64> =
-            (0..m.len()).filter(|&i| is_interior(&m, i)).map(|i| lap.value(i)).collect();
+        let interior: Vec<f64> = (0..m.len())
+            .filter(|&i| is_interior(&m, i))
+            .map(|i| lap.value(i))
+            .collect();
         assert!(!interior.is_empty());
         let mean = interior.iter().sum::<f64>() / interior.len() as f64;
         assert!((mean - 4.0).abs() < 0.2, "mean interior laplacian {mean}");

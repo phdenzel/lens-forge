@@ -10,9 +10,9 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use lens_forge::fastsum::{Monopole, SolverConfig, SolverKind, build_solver};
 use lens_forge::grid::Point2D;
-use lens_forge::fastsum::{build_solver, Monopole, SolverConfig, SolverKind};
 
 /// Deterministic LCG so benches are reproducible without an rng dependency.
 struct Lcg(u64);
@@ -64,7 +64,12 @@ fn bench_backends(c: &mut Criterion) {
         // Skip the O(N²) direct sum at the largest size to keep the run bounded;
         // the O(N log N) / O(N) backends run at every size.
         let kinds: &[SolverKind] = if n <= 5_000 {
-            &[SolverKind::Direct, SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
+            &[
+                SolverKind::Direct,
+                SolverKind::BarnesHut,
+                SolverKind::Fmm,
+                SolverKind::Kifmm,
+            ]
         } else {
             &[SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
         };

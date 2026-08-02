@@ -47,7 +47,10 @@ impl ExpansionOps for Cauchy {
     }
 
     fn zero_incoming(&self, b: TreeBox) -> LocalExpansion {
-        LocalExpansion { center: b.center, coeffs: vec![Complex::new(0.0, 0.0); self.order + 1] }
+        LocalExpansion {
+            center: b.center,
+            coeffs: vec![Complex::new(0.0, 0.0); self.order + 1],
+        }
     }
 
     fn l2l(&self, b: TreeBox, parent: &LocalExpansion, into: &mut LocalExpansion) {
@@ -166,10 +169,17 @@ mod tests {
         let theta = Point2D::new(0.4, -0.35);
         let a = fmm.jet(theta).hessian;
         let b = direct.jet(theta).hessian;
-        let scale = b.iter().flatten().fold(0.0_f64, |m, &x| m.max(x.abs())).max(1e-6);
+        let scale = b
+            .iter()
+            .flatten()
+            .fold(0.0_f64, |m, &x| m.max(x.abs()))
+            .max(1e-6);
         for r in 0..2 {
             for c in 0..2 {
-                assert!((a[r][c] - b[r][c]).abs() < 1e-4 * scale, "H[{r}][{c}] mismatch");
+                assert!(
+                    (a[r][c] - b[r][c]).abs() < 1e-4 * scale,
+                    "H[{r}][{c}] mismatch"
+                );
             }
         }
     }
@@ -229,16 +239,25 @@ mod tests {
         let mut rng = Lcg::new(2024);
         let mut bodies = Vec::new();
         for _ in 0..800 {
-            let p = Point2D::new(-0.6 + 0.05 * rng.range(-1.0, 1.0), 0.5 + 0.05 * rng.range(-1.0, 1.0));
+            let p = Point2D::new(
+                -0.6 + 0.05 * rng.range(-1.0, 1.0),
+                0.5 + 0.05 * rng.range(-1.0, 1.0),
+            );
             bodies.push(Monopole::new(p, rng.range(0.0, 0.5)));
         }
         for _ in 0..800 {
-            let p = Point2D::new(0.7 + 0.05 * rng.range(-1.0, 1.0), -0.4 + 0.05 * rng.range(-1.0, 1.0));
+            let p = Point2D::new(
+                0.7 + 0.05 * rng.range(-1.0, 1.0),
+                -0.4 + 0.05 * rng.range(-1.0, 1.0),
+            );
             bodies.push(Monopole::new(p, rng.range(0.0, 0.5)));
         }
         // A few scattered sources so the tree has coarse leaves between clusters.
         for _ in 0..40 {
-            bodies.push(Monopole::new(Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)), rng.range(0.0, 0.3)));
+            bodies.push(Monopole::new(
+                Point2D::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)),
+                rng.range(0.0, 0.3),
+            ));
         }
         let cfg = SolverConfig::default().with_order(12);
         let fmm = Fmm::build(&bodies, cfg);

@@ -9,7 +9,7 @@
 //! [`Jet`] is the order-≤2 truncation — b₀, b₁, b₂ give ψ, α, H — so
 //! this is the general-order form of the field-attribute abstraction.
 
-use crate::fastsum::{Monopole, Jet};
+use crate::fastsum::{Jet, Monopole};
 use crate::grid::Point2D;
 use crate::utils::binomial::pascal;
 use num::complex::Complex;
@@ -113,15 +113,25 @@ impl LocalExpansion {
             }
             coeffs[l] = sum;
         }
-        LocalExpansion { center: new_center, coeffs }
+        LocalExpansion {
+            center: new_center,
+            coeffs,
+        }
     }
 }
 
 /// Accumulate a co-centred expansion (sums the shared far fields).
 impl AddAssign<&LocalExpansion> for LocalExpansion {
     fn add_assign(&mut self, rhs: &LocalExpansion) {
-        debug_assert_eq!(self.center, rhs.center, "LocalExpansion::add_assign needs a shared centre");
-        debug_assert_eq!(self.coeffs.len(), rhs.coeffs.len(), "LocalExpansion::add_assign needs equal order");
+        debug_assert_eq!(
+            self.center, rhs.center,
+            "LocalExpansion::add_assign needs a shared centre"
+        );
+        debug_assert_eq!(
+            self.coeffs.len(),
+            rhs.coeffs.len(),
+            "LocalExpansion::add_assign needs equal order"
+        );
         for (a, r) in self.coeffs.iter_mut().zip(rhs.coeffs.iter()) {
             *a += *r;
         }

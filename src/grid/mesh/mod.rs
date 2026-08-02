@@ -34,6 +34,6 @@ mod meshgrid;
 pub use meshgrid::MeshGrid;
 
 mod diff;
+mod fieldops;
 mod interp;
 mod poisson;
-mod fieldops;

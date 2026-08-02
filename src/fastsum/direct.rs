@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Exact $O(N^2)$ direct summation — the accuracy oracle for the other backends.
 
+use crate::fastsum::{FieldSolver, Jet, Monopole, SolverConfig};
 use crate::grid::Point2D;
-use crate::fastsum::{FieldSolver, Monopole, Jet, SolverConfig};
 
 /// Brute-force summation over all source elements. Exact (up to summation order),
 /// used to validate and benchmark the accelerated backends.

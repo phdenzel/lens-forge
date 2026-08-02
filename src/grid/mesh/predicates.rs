@@ -94,7 +94,10 @@ pub(crate) fn incircle(a: Point2D, b: Point2D, c: Point2D, d: Point2D) -> f64 {
     let blift = dd_add(dd_sqr(bdx), dd_sqr(bdy));
     let clift = dd_add(dd_sqr(cdx), dd_sqr(cdy));
 
-    let det = dd_add(dd_add(dd_mul(alift, bc), dd_mul(blift, ca)), dd_mul(clift, ab));
+    let det = dd_add(
+        dd_add(dd_mul(alift, bc), dd_mul(blift, ca)),
+        dd_mul(clift, ab),
+    );
     det.0 + det.1
 }
 

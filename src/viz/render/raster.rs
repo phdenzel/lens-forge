@@ -343,7 +343,12 @@ impl<'a> TryFrom<&'a MeshGrid> for RasterField<'a> {
     fn try_from(mesh: &'a MeshGrid) -> Result<Self> {
         let bbox = mesh.bounds();
         let (width, height) = default_raster_dims(bbox.width(), bbox.height());
-        let params = RasterizeParams { width, height, bounds: None, sampling: RasterSampling::Nearest };
+        let params = RasterizeParams {
+            width,
+            height,
+            bounds: None,
+            sampling: RasterSampling::Nearest,
+        };
         mesh.to_raster(&params)
     }
 }

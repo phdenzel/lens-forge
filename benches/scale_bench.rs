@@ -8,10 +8,9 @@
 //! across array sizes from 100 to 100k, to guide which path the viewer should
 //! use at a given size. Uses simple deterministic input data (no rng).
 
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use lens_forge::viz::scale::{Normalize, RenderScale};
-
+use std::hint::black_box;
 
 /* ============ Helper functions =========================================== */
 fn generate_test_data(size: usize) -> Vec<f32> {
@@ -32,7 +31,6 @@ fn generate_test_data_mixed(size: usize) -> Vec<f32> {
         })
         .collect()
 }
-
 
 /* ============ RenderScale benchmarks ===================================== */
 fn bench_render_scale_linear(c: &mut Criterion) {
@@ -211,7 +209,6 @@ fn bench_render_scale_symlog(c: &mut Criterion) {
     group.finish();
 }
 
-
 /* ============ Normalize benchmarks ======================================= */
 fn bench_normalize(c: &mut Criterion) {
     let norm = Normalize::default()
@@ -321,7 +318,6 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
 
     group.finish();
 }
-
 
 /* ============ Criterion configuration ==================================== */
 criterion_group!(

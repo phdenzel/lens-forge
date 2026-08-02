@@ -3,14 +3,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Display utilities for images
 
-use crate::{LensForgeError, Result};
 use crate::viz::render::RenderOptions;
-use crate::viz::render::raster::RasterField;
 use crate::viz::render::context::RasterContext;
+use crate::viz::render::raster::RasterField;
+use crate::{LensForgeError, Result};
 use image::RgbaImage;
 use std::sync::Arc;
 use winit::{
-    application::ApplicationHandler, event::{ElementState, KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowId}
+    application::ApplicationHandler,
+    event::{ElementState, KeyEvent, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
+    window::{Window, WindowId},
 };
 
 struct ViewerState {
@@ -312,10 +316,10 @@ struct ViewerApp {
 
 impl ViewerApp {
     fn close(&mut self, event_loop: &ActiveEventLoop) {
-	if let Some(state) = self.state.take() {
-	    drop(state);
-	}
-	event_loop.exit();
+        if let Some(state) = self.state.take() {
+            drop(state);
+        }
+        event_loop.exit();
     }
 }
 
@@ -334,17 +338,18 @@ impl ApplicationHandler for ViewerApp {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let Some(state) = &mut self.state {
             match event {
-		WindowEvent::KeyboardInput {
-		    event: KeyEvent {
-			physical_key: PhysicalKey::Code(key_code),
-			state: ElementState::Pressed, .. },
-		    ..
-		} => {
-		    match key_code {
-			KeyCode::Escape | KeyCode::KeyQ => self.close(event_loop),
-			_ => {}
-		    }
-		}
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(key_code),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => match key_code {
+                    KeyCode::Escape | KeyCode::KeyQ => self.close(event_loop),
+                    _ => {}
+                },
                 WindowEvent::CloseRequested => self.close(event_loop),
                 WindowEvent::RedrawRequested => {
                     state.render();
@@ -392,7 +397,7 @@ mod tests {
     }
 
     /* ============ ViewerApp ============================================== */
-     #[test]
+    #[test]
     fn test_viewer_app_default() {
         let app = ViewerApp::default();
         assert!(app.state.is_none());
@@ -407,7 +412,7 @@ mod tests {
             state: None,
             image: img.clone(),
         };
-        
+
         assert!(app.state.is_none());
         assert_eq!(app.image.width(), 256);
         assert_eq!(app.image.height(), 256);

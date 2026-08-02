@@ -16,7 +16,7 @@
 //!
 //! For lensing, pass $f = 2\kappa$ to recover the potential from the convergence.
 
-use super::diff::{apply_laplacian_5pt_symm, BoundaryCondition};
+use super::diff::{BoundaryCondition, apply_laplacian_5pt_symm};
 use crate::grid::{FieldArray2D, PixelGrid, PoissonConfig};
 use crate::{LensForgeError, Result, SolveInfo};
 use ndarray::{Array2, Axis, Zip};
@@ -204,7 +204,12 @@ mod tests {
         let grid = Grid2D::square(32, PI).unwrap();
         let a = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos());
         let b = PixelGrid::from_func(grid, |x, y| -2.0 * x.sin() * y.cos() + 5.0);
-        assert!(max_abs_err(&a.poisson_spectral().unwrap(), &b.poisson_spectral().unwrap()) < 1e-10);
+        assert!(
+            max_abs_err(
+                &a.poisson_spectral().unwrap(),
+                &b.poisson_spectral().unwrap()
+            ) < 1e-10
+        );
     }
 
     #[test]
@@ -240,11 +245,7 @@ mod tests {
     /// solve of `∇²ψ = f` should return `psi` (the operator is its own forward
     /// map — a round-trip consistency check independent of any analytic edge
     /// mismatch).
-    fn source_from_potential(
-        grid: Grid2D,
-        psi: &[f64],
-        bc: BoundaryCondition,
-    ) -> PixelGrid {
+    fn source_from_potential(grid: Grid2D, psi: &[f64], bc: BoundaryCondition) -> PixelGrid {
         let nx = grid.nx;
         let ny = grid.ny;
         let inv_dx2 = 1.0 / (grid.dx() * grid.dx());
@@ -279,7 +280,9 @@ mod tests {
     fn poisson_cg_dirichlet_recovers_solution() {
         // Dirichlet is SPD → unique solution, recovered exactly (no projection).
         let grid = Grid2D::square(24, PI).unwrap();
-        let psi = row_major(&PixelGrid::from_func(grid, |x, y| x.sin() * (2.0 * y).sin()));
+        let psi = row_major(&PixelGrid::from_func(grid, |x, y| {
+            x.sin() * (2.0 * y).sin()
+        }));
         let src = source_from_potential(grid, &psi, BoundaryCondition::Dirichlet);
 
         let cfg = PoissonConfig::default()

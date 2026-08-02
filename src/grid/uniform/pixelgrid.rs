@@ -8,11 +8,11 @@
 //! (derivatives, FFTs, Poisson solvers, interpolation) are inherent methods
 //! added in sibling submodules.
 
+use crate::grid::{BBox, FieldArray2D, Grid2D, Point2D};
+use crate::{LensForgeError, Result};
 use core::f64;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use rayon::prelude::*;
-use crate::grid::{BBox, FieldArray2D, Grid2D, Point2D};
-use crate::{LensForgeError, Result};
 
 /// A 2D pixel grid with associated values
 #[derive(Debug, Clone, Default)]
@@ -98,8 +98,9 @@ impl PixelGrid {
         // `from_shape_vec` already rejects a length that does not match the shape,
         // so map its error to a dimension mismatch rather than checking twice.
         let (expected, got) = (grid.n_pixels(), v.len());
-        let values = Array2::from_shape_vec(grid.shape(), v)
-            .map_err(|_| LensForgeError::dimension_mismatch(expected.to_string(), got.to_string()))?;
+        let values = Array2::from_shape_vec(grid.shape(), v).map_err(|_| {
+            LensForgeError::dimension_mismatch(expected.to_string(), got.to_string())
+        })?;
         Ok(Self { grid, values })
     }
 
@@ -299,7 +300,9 @@ impl PixelGrid {
     /// * `p` - the query point to locate.
     #[inline]
     pub fn cell_of(&self, p: &Point2D) -> Option<usize> {
-        self.grid.point_to_pixel(p).map(|(i, j)| self.grid.flatten_index(i, j))
+        self.grid
+            .point_to_pixel(p)
+            .map(|(i, j)| self.grid.flatten_index(i, j))
     }
 
     /* ============ Values ================================================= */
@@ -573,7 +576,10 @@ impl PixelGrid {
     /// # Arguments
     /// * `points` - batch array of points
     pub fn interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        points.iter().map(|&p| self.interpolate_or(p, 0.0)).collect()
+        points
+            .iter()
+            .map(|&p| self.interpolate_or(p, 0.0))
+            .collect()
     }
 
     /// Batch interpolation for multiple points in parallel.
@@ -636,7 +642,10 @@ mod tests {
         assert_eq!(pg.extent_x(), grid.extent_x());
         assert_eq!(pg.extent_y(), grid.extent_y());
         assert_eq!(pg.aspect_ratio(), grid.aspect_ratio());
-        assert_eq!(pg.contains(&Point2D::origin()), grid.contains(&Point2D::origin()));
+        assert_eq!(
+            pg.contains(&Point2D::origin()),
+            grid.contains(&Point2D::origin())
+        );
     }
 
     #[test]
@@ -804,7 +813,9 @@ mod tests {
     fn with_values_reuses_geometry() {
         let grid = Grid2D::square(3, 1.0).unwrap();
         let pg = PixelGrid::zeros(grid);
-        let updated = pg.with_values(Array2::from_elem(grid.shape(), 7.0)).unwrap();
+        let updated = pg
+            .with_values(Array2::from_elem(grid.shape(), 7.0))
+            .unwrap();
         assert!(approx_eq(updated.mean(), 7.0, 1e-12));
         assert!(updated.grid.same_geometry(&pg.grid));
         // Shape mismatch is rejected.

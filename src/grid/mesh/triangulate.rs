@@ -84,7 +84,12 @@ impl TriangulationBuilder {
             vertices: [0, 1, 2],
             neighbors: [NO_NEIGHBOR; 3],
         }];
-        Self { coords, tris, last: 0, stack: Vec::new() }
+        Self {
+            coords,
+            tris,
+            last: 0,
+            stack: Vec::new(),
+        }
     }
 
     /// Insert `p`, restore the Delaunay property, and return the site index
@@ -507,7 +512,7 @@ fn locate(tris: &[Triangle], coords: &[Point2D], p: Point2D, start: usize) -> Lo
                     })
                     .expect("segment from interior source exits through one edge")
             }
-	    // Only two edges sharing apex opposite entry edge can exclude `p`
+            // Only two edges sharing apex opposite entry edge can exclude `p`
             Some(entry) => {
                 let (edge1, edge2) = ((entry + 1) % 3, (entry + 2) % 3);
                 let orient1 = edge_orient(&tri, edge1);
@@ -521,9 +526,9 @@ fn locate(tris: &[Triangle], coords: &[Point2D], p: Point2D, start: usize) -> Lo
                         orient[entry] = edge_orient(&tri, entry);
                         return classify(current, orient);
                     }
-		    // Beyond `edge1`
+                    // Beyond `edge1`
                     (true, false) => edge1,
-		    // Beyond `edge2`
+                    // Beyond `edge2`
                     (false, true) => edge2,
                     // Outer to both: disambiguate with the ray against both
                     (true, true) => {
@@ -538,7 +543,7 @@ fn locate(tris: &[Triangle], coords: &[Point2D], p: Point2D, start: usize) -> Lo
                 }
             }
         };
-	// The ray source→p crosses finitely many edges (termination guaranteed)
+        // The ray source→p crosses finitely many edges (termination guaranteed)
         let next = tri.neighbors[exit_slot];
         debug_assert!(next != NO_NEIGHBOR, "locate: walk left the triangulation");
         entry_slot = Some(
@@ -597,7 +602,10 @@ fn finalize(tris: &[Triangle]) -> Triangulation {
         }
         neighbors.push(nb);
     }
-    Triangulation { triangles, neighbors }
+    Triangulation {
+        triangles,
+        neighbors,
+    }
 }
 
 /// Build the Delaunay triangulation of `points` by incremental insertion.
@@ -743,7 +751,10 @@ mod tests {
         assert_delaunay(&pts, &t);
         assert_neighbor_symmetry(&t);
         // The on-edge point was inserted (used as a vertex), not skipped.
-        assert!(t.triangles.iter().any(|tri| tri.contains(&3)), "on-edge point missing");
+        assert!(
+            t.triangles.iter().any(|tri| tri.contains(&3)),
+            "on-edge point missing"
+        );
     }
 
     #[test]
@@ -762,7 +773,10 @@ mod tests {
         assert_delaunay(&pts, &t);
         assert_neighbor_symmetry(&t);
         for v in 3..6 {
-            assert!(t.triangles.iter().any(|tri| tri.contains(&v)), "point {v} missing");
+            assert!(
+                t.triangles.iter().any(|tri| tri.contains(&v)),
+                "point {v} missing"
+            );
         }
     }
 
@@ -782,7 +796,13 @@ mod tests {
         let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
         let mut b = TriangulationBuilder::new(bbox);
         let mut all: Vec<Point2D> = Vec::new();
-        for &q in &[p(0.05, 0.05), p(0.95, 0.05), p(0.95, 0.95), p(0.05, 0.95), p(0.5, 0.5)] {
+        for &q in &[
+            p(0.05, 0.05),
+            p(0.95, 0.05),
+            p(0.95, 0.95),
+            p(0.05, 0.95),
+            p(0.5, 0.5),
+        ] {
             b.insert(q);
             all.push(q);
         }
@@ -800,7 +820,10 @@ mod tests {
         assert_delaunay(&all, &refined);
         assert_neighbor_symmetry(&refined);
         for v in 0..all.len() {
-            assert!(refined.triangles.iter().any(|tri| tri.contains(&v)), "site {v} missing");
+            assert!(
+                refined.triangles.iter().any(|tri| tri.contains(&v)),
+                "site {v} missing"
+            );
         }
     }
 
@@ -809,7 +832,13 @@ mod tests {
         // A point coinciding with an existing site is located as a vertex and left
         // out (the `insert` duplicate path), so the mesh is unchanged.
         let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
-        let sites = [p(0.1, 0.1), p(0.9, 0.1), p(0.9, 0.9), p(0.1, 0.9), p(0.5, 0.5)];
+        let sites = [
+            p(0.1, 0.1),
+            p(0.9, 0.1),
+            p(0.9, 0.9),
+            p(0.1, 0.9),
+            p(0.5, 0.5),
+        ];
         let mut b = TriangulationBuilder::new(bbox);
         for &q in &sites {
             b.insert(q);
@@ -817,7 +846,10 @@ mod tests {
         let before = b.finalize();
         b.insert(p(0.5, 0.5)); // duplicate of site 4
         let after = b.finalize();
-        assert_eq!(before.triangles, after.triangles, "duplicate insert changed the mesh");
+        assert_eq!(
+            before.triangles, after.triangles,
+            "duplicate insert changed the mesh"
+        );
         assert_delaunay(&sites, &after);
     }
 }

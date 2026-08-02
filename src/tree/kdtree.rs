@@ -103,7 +103,7 @@ impl<P: KdPoint> KdTree<P> {
         let Some(node) = node else {
             return;
         };
-	// Measure distance from query point to node
+        // Measure distance from query point to node
         let n = &self.nodes[node as usize];
         let pt = self.pts[n.index];
         let d2 = pt.distance_squared(&q);
@@ -111,7 +111,7 @@ impl<P: KdPoint> KdTree<P> {
             *dist2 = d2;
             *best = Some(n.index);
         }
-	// Search nearest branch
+        // Search nearest branch
         let axis = depth % P::DIM;
         let diff = q[axis] - pt[axis];
         let (near, far) = if diff < 0.0 {
@@ -120,7 +120,7 @@ impl<P: KdPoint> KdTree<P> {
             (n.right, n.left)
         };
         self.search(near, q, depth + 1, best, dist2);
-	// Search far branch in case split plane is closer
+        // Search far branch in case split plane is closer
         if diff * diff < *dist2 {
             self.search(far, q, depth + 1, best, dist2);
         }

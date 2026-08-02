@@ -32,7 +32,9 @@ impl VoronoiMesh {
     /// * `rx`, `ry` - half the domain extent in x and y.
     pub fn rectangular(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
         if rx <= 0.0 || ry <= 0.0 {
-            return Err(LensForgeError::invalid_option("mesh extents must be positive"));
+            return Err(LensForgeError::invalid_option(
+                "mesh extents must be positive",
+            ));
         }
         let bbox = BBox::from_lims(-rx, rx, -ry, ry);
         let sites = lattice_sites(nx, ny, &bbox);
@@ -48,7 +50,9 @@ impl VoronoiMesh {
     /// * `rx`, `ry` - half the domain extent in x and y.
     pub fn hexagonal(nx: usize, ny: usize, rx: f64, ry: f64) -> Result<Self> {
         if rx <= 0.0 || ry <= 0.0 {
-            return Err(LensForgeError::invalid_option("mesh extents must be positive"));
+            return Err(LensForgeError::invalid_option(
+                "mesh extents must be positive",
+            ));
         }
         let bbox = BBox::from_lims(-rx, rx, -ry, ry);
         let sites = hexagonal_sites(nx, ny, &bbox);
@@ -64,7 +68,9 @@ impl VoronoiMesh {
     /// * `radius` - half the domain extent; the outer ring sits just inside it.
     pub fn concentric(rings: usize, points_per_ring: usize, radius: f64) -> Result<Self> {
         if radius <= 0.0 {
-            return Err(LensForgeError::invalid_option("mesh radius must be positive"));
+            return Err(LensForgeError::invalid_option(
+                "mesh radius must be positive",
+            ));
         }
         let bbox = BBox::from_lims(-radius, radius, -radius, radius);
         let sites = concentric_sites(rings, points_per_ring, radius);
@@ -86,7 +92,9 @@ impl VoronoiMesh {
         density: F,
     ) -> Result<Self> {
         if !bbox.is_positive() {
-            return Err(LensForgeError::invalid_option("mesh domain must have min < max"));
+            return Err(LensForgeError::invalid_option(
+                "mesh domain must have min < max",
+            ));
         }
         let sites = density_graded_sites(n, &bbox, seed, density)?;
         Self::new(&sites, bbox)
@@ -180,7 +188,9 @@ fn density_graded_sites<F: Fn(Point2D) -> f64>(
     density: F,
 ) -> Result<Vec<Point2D>> {
     if n == 0 {
-        return Err(LensForgeError::invalid_parameter("mesh needs at least one site"));
+        return Err(LensForgeError::invalid_parameter(
+            "mesh needs at least one site",
+        ));
     }
     let (w, h) = (bbox.width(), bbox.height());
     // Estimate the peak density on a coarse grid to set the acceptance scale.
@@ -194,7 +204,9 @@ fn density_graded_sites<F: Fn(Point2D) -> f64>(
         }
     }
     if dmax <= 0.0 {
-        return Err(LensForgeError::invalid_parameter("density must be positive somewhere"));
+        return Err(LensForgeError::invalid_parameter(
+            "density must be positive somewhere",
+        ));
     }
 
     let mut rng = Lcg::new(seed);
@@ -204,9 +216,14 @@ fn density_graded_sites<F: Fn(Point2D) -> f64>(
     while sites.len() < n {
         attempts += 1;
         if attempts > max_attempts {
-            return Err(LensForgeError::numerical_error("density sampling failed to converge"));
+            return Err(LensForgeError::numerical_error(
+                "density sampling failed to converge",
+            ));
         }
-        let p = Point2D::new(rng.range(bbox.min.x, bbox.max.x), rng.range(bbox.min.y, bbox.max.y));
+        let p = Point2D::new(
+            rng.range(bbox.min.x, bbox.max.x),
+            rng.range(bbox.min.y, bbox.max.y),
+        );
         // Accept with probability density(p) / dmax.
         if rng.f() * dmax <= density(p).max(0.0) {
             sites.push(p);
@@ -229,10 +246,18 @@ mod tests {
         // tile the box, and every cell must be an identical square pixel.
         let m = VoronoiMesh::square(5, 1.0).unwrap();
         assert_eq!(m.n_cells(), 25);
-        assert!((m.total_area() - 4.0).abs() < 1e-9, "area {}", m.total_area());
+        assert!(
+            (m.total_area() - 4.0).abs() < 1e-9,
+            "area {}",
+            m.total_area()
+        );
         let pixel = (2.0 / 5.0) * (2.0 / 5.0); // side 2r/n = 0.4
         for s in 0..m.n_cells() {
-            assert!((m.cell_area(s) - pixel).abs() < 1e-9, "cell {s} area {}", m.cell_area(s));
+            assert!(
+                (m.cell_area(s) - pixel).abs() < 1e-9,
+                "cell {s} area {}",
+                m.cell_area(s)
+            );
         }
     }
 
@@ -240,7 +265,11 @@ mod tests {
     fn rectangular_lattice_tiles_and_counts() {
         let m = VoronoiMesh::rectangular(4, 3, 2.0, 1.0).unwrap();
         assert_eq!(m.n_cells(), 12);
-        assert!((m.total_area() - 8.0).abs() < 1e-9, "area {}", m.total_area());
+        assert!(
+            (m.total_area() - 8.0).abs() < 1e-9,
+            "area {}",
+            m.total_area()
+        );
     }
 
     #[test]
@@ -254,19 +283,30 @@ mod tests {
         // Aspect dx = 1, dy = √3⁄2 gives unit nearest-neighbour spacing and regular
         // hexagons of area √3⁄2; rx = nx·dx/2 = 3, ry = ny·dy/2 = √3.
         let m = VoronoiMesh::hexagonal(6, 4, 3.0, 3.0_f64.sqrt()).unwrap();
-        assert!((m.total_area() - 12.0 * 3.0_f64.sqrt()).abs() < 1e-9, "area {}", m.total_area());
+        assert!(
+            (m.total_area() - 12.0 * 3.0_f64.sqrt()).abs() < 1e-9,
+            "area {}",
+            m.total_area()
+        );
         let hex_area = 3.0_f64.sqrt() / 2.0;
         let n_regular = (0..m.n_cells())
             .filter(|&i| m.cell_polygon(i).len() == 6 && (m.cell_area(i) - hex_area).abs() < 1e-9)
             .count();
-        assert!(n_regular >= 1, "expected regular hexagon cells, got {n_regular}");
+        assert!(
+            n_regular >= 1,
+            "expected regular hexagon cells, got {n_regular}"
+        );
     }
 
     #[test]
     fn concentric_is_finer_near_the_centre() {
         let m = VoronoiMesh::concentric(4, 8, 1.0).unwrap();
         assert_eq!(m.n_cells(), 1 + 4 * 8);
-        assert!((m.total_area() - 4.0).abs() < 1e-9, "area {}", m.total_area());
+        assert!(
+            (m.total_area() - 4.0).abs() < 1e-9,
+            "area {}",
+            m.total_area()
+        );
         // The central site's cell is smaller than an outer-ring cell.
         let center = m.cell_of(p(0.0, 0.0));
         let outer = m.cell_of(p(0.7, 0.0));

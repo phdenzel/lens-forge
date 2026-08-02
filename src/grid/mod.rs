@@ -72,18 +72,18 @@ pub type ComplexFieldArray2D = ndarray::Array2<num::complex::Complex<f64>>;
 /// Per-axis Fourier symbols (wavenumbers) as `(kx, ky)`.
 pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
-mod point;
+mod adaptive;
 mod bbox;
 mod field;
-mod ops;
-mod uniform;
-mod adaptive;
 mod mesh;
+mod ops;
+mod point;
+mod uniform;
 
-pub use point::Point2D;
 pub use bbox::BBox;
 pub use field::ScalarField2D;
 pub use ops::{FieldOps, PoissonConfig};
+pub use point::Point2D;
 pub use uniform::{BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid};
 // pub use adaptive::AdaGrid;
 pub use mesh::{MeshGrid, VoronoiMesh};

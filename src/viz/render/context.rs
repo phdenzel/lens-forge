@@ -230,7 +230,6 @@ impl Default for RasterContext {
     }
 }
 
-
 /* ============ Unit tests ================================================= */
 #[cfg(test)]
 mod tests {
@@ -741,7 +740,7 @@ mod tests {
     #[test]
     fn render_multiple_fields_consecutively() {
         let mut ctx = RasterContext::new();
-        let opt = options_with_dims(100, 100);   
+        let opt = options_with_dims(100, 100);
         for i in 0..10 {
             let field = create_ranged_field(100, 100, i as f64, (i + 1) as f64);
             let result = ctx.render(&field, &opt);
@@ -770,13 +769,13 @@ mod tests {
         let medium_field = create_test_field(100, 100);
         let opt_medium = options_with_dims(100, 100);
         let _ = ctx.render(&medium_field, &opt_medium).unwrap();
-        let cap_medium = ctx.capacity();   
+        let cap_medium = ctx.capacity();
         // Render large field
         let large_field = create_test_field(500, 500);
         let opt_large = options_with_dims(500, 500);
         let _ = ctx.render(&large_field, &opt_large).unwrap();
         let cap_large = ctx.capacity();
-        
+
         assert!(cap_medium > cap_small);
         assert!(cap_large > cap_medium);
     }
@@ -789,7 +788,7 @@ mod tests {
         let field = create_test_field(100, 100);
         let mut opt = options_with_dims(100, 100);
         opt.invalid_rgba = [255, 0, 255, 128]; // Magenta with alpha
-        
+
         let result = ctx.render(&field, &opt);
         assert!(result.is_ok());
     }
@@ -809,7 +808,7 @@ mod tests {
 
         for (w, h) in test_cases {
             let field = create_test_field(w, h);
-            let opt = options_with_dims(w, h);       
+            let opt = options_with_dims(w, h);
             let img = ctx.render(&field, &opt).unwrap();
             assert_eq!(img.width(), w, "Width mismatch for {}x{}", w, h);
             assert_eq!(img.height(), h, "Height mismatch for {}x{}", w, h);

@@ -249,10 +249,19 @@ pub fn texturize<M: ToMesh + ?Sized>(mesh: &M, opt: &RenderOptions) -> Result<Rg
         RenderScale::Log10 => opt.vmin.unwrap_or(-10.0),
         _ => 0.0,
     };
-    let scaled: Vec<f32> = cells.iter().map(|c| opt.scale.apply_or(c.value as f32, fallback)).collect();
-    let vmin = opt.vmin.unwrap_or_else(|| auto_range(&scaled).map(|(a, _)| a).unwrap_or(0.0));
-    let vmax = opt.vmax.unwrap_or_else(|| auto_range(&scaled).map(|(_, b)| b).unwrap_or(1.0));
-    let norm = Normalize::default().with_clamp(opt.clamp).with_lims(vmin, vmax)?;
+    let scaled: Vec<f32> = cells
+        .iter()
+        .map(|c| opt.scale.apply_or(c.value as f32, fallback))
+        .collect();
+    let vmin = opt
+        .vmin
+        .unwrap_or_else(|| auto_range(&scaled).map(|(a, _)| a).unwrap_or(0.0));
+    let vmax = opt
+        .vmax
+        .unwrap_or_else(|| auto_range(&scaled).map(|(_, b)| b).unwrap_or(1.0));
+    let norm = Normalize::default()
+        .with_clamp(opt.clamp)
+        .with_lims(vmin, vmax)?;
     let normed: Vec<f32> = scaled.iter().map(|&v| norm.apply(v)).collect();
     let gradient = opt.gradient();
     let colors = map_to_rgba_slice_or(&normed, &*gradient, Some(opt.invalid_rgba));
@@ -282,7 +291,12 @@ pub fn texturize<M: ToMesh + ?Sized>(mesh: &M, opt: &RenderOptions) -> Result<Rg
             for k in 0..pts.len() {
                 let a = pts[k];
                 let b = pts[(k + 1) % pts.len()];
-                draw_line_segment_mut(&mut img, (a.x as f32, a.y as f32), (b.x as f32, b.y as f32), edge);
+                draw_line_segment_mut(
+                    &mut img,
+                    (a.x as f32, a.y as f32),
+                    (b.x as f32, b.y as f32),
+                    edge,
+                );
             }
         }
     }
@@ -387,7 +401,10 @@ mod tests {
 
         // Sample the four quadrant centres: all filled (opaque), all distinct.
         let centers = [(16, 16), (48, 16), (16, 48), (48, 48)];
-        let colors: Vec<[u8; 4]> = centers.iter().map(|&(x, y)| img.get_pixel(x, y).0).collect();
+        let colors: Vec<[u8; 4]> = centers
+            .iter()
+            .map(|&(x, y)| img.get_pixel(x, y).0)
+            .collect();
         for c in &colors {
             assert_eq!(c[3], 255, "quadrant pixel not opaque: {c:?}");
         }
@@ -419,7 +436,11 @@ mod tests {
         // Each quadrant cell is a valid, unit-quarter-area quad.
         for c in &cells {
             assert!(c.vertices.len() >= 3);
-            assert!((c.area().abs() - 0.25).abs() < 1e-9, "cell area {}", c.area());
+            assert!(
+                (c.area().abs() - 0.25).abs() < 1e-9,
+                "cell area {}",
+                c.area()
+            );
         }
         let mf = MeshField::from_cells(cells);
         mf.validate().unwrap();

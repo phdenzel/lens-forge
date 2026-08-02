@@ -303,7 +303,10 @@ impl Grid2D {
     /// * `p` - point to be mapped
     #[inline(always)]
     pub fn relative_to_corner(&self, p: &Point2D) -> (f64, f64) {
-        ((p.x - self.bbox.min.x) / self.dx(), (p.y - self.bbox.min.y) / self.dy())
+        (
+            (p.x - self.bbox.min.x) / self.dx(),
+            (p.y - self.bbox.min.y) / self.dy(),
+        )
     }
 
     /// Check if point is inside grid
@@ -419,7 +422,10 @@ impl Grid2D {
 
     /// Create x and y coordinate matrices (non-broadcasting)
     pub fn prealloc_coord_matrix(&self) -> (Array2<f64>, Array2<f64>) {
-        (self.prealloc_coord_matrix_x(), self.prealloc_coord_matrix_y())
+        (
+            self.prealloc_coord_matrix_x(),
+            self.prealloc_coord_matrix_y(),
+        )
     }
 
     /// Create x and y coordinate matrices using broadcasting
@@ -808,7 +814,6 @@ impl Grid2D {
             && (self.dx() - other.dx()).abs() < 1e-10
             && (self.dy() - other.dy()).abs() < 1e-10
     }
-
 }
 
 impl std::fmt::Display for Grid2D {

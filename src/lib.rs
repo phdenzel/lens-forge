@@ -26,7 +26,7 @@ pub enum LensForgeError {
     /// Invalid grid dimensions
     InvalidGridDimensions(String),
     /// Mismatch between dimensions of grid and values
-    DimensionMismatch { expected: String, got: String},
+    DimensionMismatch { expected: String, got: String },
     /// Invalid parameter provided
     InvalidParameter(String),
     /// Invalid setting/option provided
@@ -39,32 +39,39 @@ pub enum LensForgeError {
     ConvergenceError { iterations: usize },
 }
 
-
 impl fmt::Display for LensForgeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-	match self {
-	    LensForgeError::InvalidGridDimensions(msg) => {
-		write!(f, "Invalid grid dimensions: {}", msg)
-	    }
-	    LensForgeError::DimensionMismatch { expected, got } => {
-		write!(f, "Dimension mismatch: expected {}, but got {}", expected, got)
-	    }
-	    LensForgeError::InvalidParameter(msg) => {
-		write!(f, "Invalid parameter: {}", msg)
-	    }
-	    LensForgeError::InvalidOption(msg) => {
-		write!(f, "Invalid option: {}", msg)
-	    }
-	    LensForgeError::NumericalError(msg) => {
-		write!(f, "Numerical error: {}", msg)
-	    }
-	    LensForgeError::ComputationError(msg) => {
-		write!(f, "Computation error: {}", msg)
-	    }
-	    LensForgeError::ConvergenceError { iterations } => {
-		write!(f, "Solver failed to converge after {} iterations", iterations)
-	    }
-	}
+        match self {
+            LensForgeError::InvalidGridDimensions(msg) => {
+                write!(f, "Invalid grid dimensions: {}", msg)
+            }
+            LensForgeError::DimensionMismatch { expected, got } => {
+                write!(
+                    f,
+                    "Dimension mismatch: expected {}, but got {}",
+                    expected, got
+                )
+            }
+            LensForgeError::InvalidParameter(msg) => {
+                write!(f, "Invalid parameter: {}", msg)
+            }
+            LensForgeError::InvalidOption(msg) => {
+                write!(f, "Invalid option: {}", msg)
+            }
+            LensForgeError::NumericalError(msg) => {
+                write!(f, "Numerical error: {}", msg)
+            }
+            LensForgeError::ComputationError(msg) => {
+                write!(f, "Computation error: {}", msg)
+            }
+            LensForgeError::ConvergenceError { iterations } => {
+                write!(
+                    f,
+                    "Solver failed to converge after {} iterations",
+                    iterations
+                )
+            }
+        }
     }
 }
 
@@ -74,12 +81,12 @@ impl Error for LensForgeError {}
 impl LensForgeError {
     /// Create a new InvalidGridDimension error
     pub fn invalid_grid_dimension(msg: impl Into<String>) -> Self {
-	LensForgeError::InvalidGridDimensions(msg.into())
+        LensForgeError::InvalidGridDimensions(msg.into())
     }
 
     /// Create a new DimensionMismatch error
     pub fn dimension_mismatch(expected: String, got: String) -> Self {
-	LensForgeError::DimensionMismatch { expected, got }
+        LensForgeError::DimensionMismatch { expected, got }
     }
 
     /// Create a new InvalidParameter error
@@ -120,7 +127,6 @@ pub struct SolveInfo {
     /// Whether the tolerance was reached within the iteration budget.
     pub converged: bool,
 }
-
 
 #[cfg(test)]
 mod tests {

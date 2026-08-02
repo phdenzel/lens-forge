@@ -100,7 +100,7 @@ pub(crate) fn pseudo_inverse(a: &Array2<f64>, lambda: f64) -> Array2<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{array, Array1, Array2};
+    use ndarray::{Array1, Array2, array};
 
     /// Frobenius distance between two equally-shaped matrices.
     fn dist(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
@@ -134,7 +134,12 @@ mod tests {
     #[test]
     fn reconstructs_the_original_matrix() {
         // A A⁺ A = A holds for any pseudo-inverse (checks the SVD factors).
-        let a = array![[2.0, -1.0, 0.5], [0.0, 1.0, 3.0], [1.0, 1.0, -2.0], [4.0, 0.0, 1.0]];
+        let a = array![
+            [2.0, -1.0, 0.5],
+            [0.0, 1.0, 3.0],
+            [1.0, 1.0, -2.0],
+            [4.0, 0.0, 1.0]
+        ];
         let pinv = pseudo_inverse(&a, 0.0);
         assert!(dist(&a.dot(&pinv).dot(&a), &a) < 1e-9);
     }
@@ -144,10 +149,17 @@ mod tests {
         // A nearly rank-deficient matrix: lambda = 0 blows the inverse up, while a
         // small lambda keeps its norm bounded.
         let a = array![[1.0, 1.0], [1.0, 1.0 + 1e-8]];
-        let raw = pseudo_inverse(&a, 0.0).iter().fold(0.0_f64, |m, &x| m.max(x.abs()));
-        let reg = pseudo_inverse(&a, 1e-3).iter().fold(0.0_f64, |m, &x| m.max(x.abs()));
+        let raw = pseudo_inverse(&a, 0.0)
+            .iter()
+            .fold(0.0_f64, |m, &x| m.max(x.abs()));
+        let reg = pseudo_inverse(&a, 1e-3)
+            .iter()
+            .fold(0.0_f64, |m, &x| m.max(x.abs()));
         assert!(raw > 1e6, "unregularized inverse should be huge, got {raw}");
-        assert!(reg < 1e3, "regularized inverse should stay bounded, got {reg}");
+        assert!(
+            reg < 1e3,
+            "regularized inverse should stay bounded, got {reg}"
+        );
     }
 
     #[test]

@@ -104,16 +104,20 @@ impl VoronoiMesh {
     /// degenerate (`min >= max`) domain.
     pub fn new(sites: &[Point2D], bbox: BBox) -> Result<Self> {
         if sites.is_empty() {
-            return Err(LensForgeError::invalid_parameter("mesh needs at least one site"));
+            return Err(LensForgeError::invalid_parameter(
+                "mesh needs at least one site",
+            ));
         }
         if !bbox.is_positive() {
-            return Err(LensForgeError::invalid_option("mesh domain must have min < max"));
+            return Err(LensForgeError::invalid_option(
+                "mesh domain must have min < max",
+            ));
         }
         if sites.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
             return Err(LensForgeError::numerical_error("mesh site is not finite"));
         }
         let n = sites.len();
-	// Build the triangulated Delaunay diagram, stored as CSR adjacency
+        // Build the triangulated Delaunay diagram, stored as CSR adjacency
         let neighbors = VoronoiAdjacency::from_lists(&build_adjacency(sites));
         let boxpoly = bbox.corners_ccw();
         // Squared distance of each site from the origin for the bisector offset
@@ -128,19 +132,19 @@ impl VoronoiMesh {
         let mut src: Vec<Point2D> = Vec::with_capacity(8);
         let mut dst: Vec<Point2D> = Vec::with_capacity(8);
         for (s, &site) in sites.iter().enumerate() {
-	    // Load starting polygon from bbox
+            // Load starting polygon from bbox
             src.clear();
             src.extend_from_slice(&boxpoly);
             let half_mag2_s = 0.5 * mag2[s];
             for &t in neighbors.of(s) {
-		// Bisector half-plane: {x : n·x <= c};
-		// all points closer to site than Delaunay neighbour
+                // Bisector half-plane: {x : n·x <= c};
+                // all points closer to site than Delaunay neighbour
                 let other = sites[t];
-		// Normal vector (nx, ny)
+                // Normal vector (nx, ny)
                 let n = other - site;
-		// Bisector offset
+                // Bisector offset
                 let c = 0.5 * mag2[t] - half_mag2_s;
-		// Clip to Voronoi membership
+                // Clip to Voronoi membership
                 clip_halfplane(&src, n.x, n.y, c, &mut dst);
                 std::mem::swap(&mut src, &mut dst);
                 if src.is_empty() {
@@ -154,10 +158,21 @@ impl VoronoiMesh {
             areas.push(area);
             centroids.push(centroid);
         }
-        let cells = VoronoiCells { centroids, areas, vertices, offsets };
+        let cells = VoronoiCells {
+            centroids,
+            areas,
+            vertices,
+            offsets,
+        };
 
         let kdtree = KdTree::new(sites);
-        Ok(Self { sites: sites.to_vec(), bbox, cells, neighbors, kdtree })
+        Ok(Self {
+            sites: sites.to_vec(),
+            bbox,
+            cells,
+            neighbors,
+            kdtree,
+        })
     }
 
     /// Relax the mesh with `iterations` Lloyd sweeps, moving each site to its cell
@@ -310,7 +325,10 @@ impl VoronoiMesh {
     pub fn translate(&self, dx: f64, dy: f64) -> Result<Self> {
         let shift = Point2D::new(dx, dy);
         let sites: Vec<Point2D> = self.sites.iter().map(|&s| s + shift).collect();
-        Self::new(&sites, BBox::new(self.bbox.min + shift, self.bbox.max + shift))
+        Self::new(
+            &sites,
+            BBox::new(self.bbox.min + shift, self.bbox.max + shift),
+        )
     }
 
     /// Index of the cell containing `p`: its nearest site, by the definition of a
@@ -321,7 +339,9 @@ impl VoronoiMesh {
     ///
     /// Returns the index of the containing (nearest-site) cell.
     pub fn cell_of(&self, p: Point2D) -> usize {
-        self.kdtree.nearest(p).expect("VoronoiMesh always has at least one site")
+        self.kdtree
+            .nearest(p)
+            .expect("VoronoiMesh always has at least one site")
     }
 
     /// Index of the cell containing `q`, via a warm-started greedy walk on the
@@ -418,22 +438,25 @@ pub(super) fn clip_halfplane(poly: &[Point2D], nx: f64, ny: f64, c: f64, out: &m
         return;
     }
     for i in 0..n {
-	// Walk the polygon's edge: current→next
+        // Walk the polygon's edge: current→next
         let cur = poly[i];
         let nxt = poly[(i + 1) % n];
-	// Compute intersections
+        // Compute intersections
         let dcur = nx * cur.x + ny * cur.y - c;
         let dnxt = nx * nxt.x + ny * nxt.y - c;
-	// Test inside -> keep
+        // Test inside -> keep
         let cur_in = dcur <= 0.0;
         let nxt_in = dnxt <= 0.0;
         if cur_in {
             out.push(cur);
         }
-	// if outside: emit intersection point via linear interpolation onto cut
+        // if outside: emit intersection point via linear interpolation onto cut
         if cur_in != nxt_in {
             let s = dcur / (dcur - dnxt);
-            out.push(Point2D::new(cur.x + s * (nxt.x - cur.x), cur.y + s * (nxt.y - cur.y)));
+            out.push(Point2D::new(
+                cur.x + s * (nxt.x - cur.x),
+                cur.y + s * (nxt.y - cur.y),
+            ));
         }
     }
 }
@@ -483,15 +506,21 @@ mod tests {
         // Random sites are uneven; Lloyd relaxation should even the cell areas out
         // (converging toward a centroidal Voronoi tessellation).
         let mut rng = Lcg::new(0xF00D);
-        let sites: Vec<Point2D> =
-            (0..80).map(|_| p(0.05 + 0.9 * rng.f(), 0.05 + 0.9 * rng.f())).collect();
+        let sites: Vec<Point2D> = (0..80)
+            .map(|_| p(0.05 + 0.9 * rng.f(), 0.05 + 0.9 * rng.f()))
+            .collect();
         let bbox = unit();
         let before = VoronoiMesh::new(&sites, bbox).unwrap();
-        let after = VoronoiMesh::new(&sites, bbox).unwrap().with_lloyd_iters(15).unwrap();
+        let after = VoronoiMesh::new(&sites, bbox)
+            .unwrap()
+            .with_lloyd_iters(15)
+            .unwrap();
         assert!((after.total_area() - 1.0).abs() < 1e-9);
         let area_var = |m: &VoronoiMesh| {
             let mean = m.total_area() / m.n_cells() as f64;
-            (0..m.n_cells()).map(|i| (m.cell_area(i) - mean).powi(2)).sum::<f64>()
+            (0..m.n_cells())
+                .map(|i| (m.cell_area(i) - mean).powi(2))
+                .sum::<f64>()
                 / m.n_cells() as f64
         };
         assert!(area_var(&after) < area_var(&before), "variance not reduced");
@@ -588,7 +617,11 @@ mod tests {
         let sites = [p(0.25, 0.25), p(0.75, 0.25), p(0.75, 0.75), p(0.25, 0.75)];
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
         for i in 0..m.n_cells() {
-            assert!((m.cell_area(i) - 0.25).abs() < 1e-12, "quadrant area {}", m.cell_area(i));
+            assert!(
+                (m.cell_area(i) - 0.25).abs() < 1e-12,
+                "quadrant area {}",
+                m.cell_area(i)
+            );
         }
         // Each quadrant centroid sits between its site and the box centre.
         let c0 = m.centroid(0);
@@ -599,11 +632,17 @@ mod tests {
     fn cells_tile_the_domain() {
         // The defining property: clipped Voronoi cells partition the box exactly.
         let mut rng = Lcg::new(0x1234_5678);
-        let sites: Vec<Point2D> = (0..200).map(|_| p(0.02 + 0.96 * rng.f(), 0.02 + 0.96 * rng.f())).collect();
+        let sites: Vec<Point2D> = (0..200)
+            .map(|_| p(0.02 + 0.96 * rng.f(), 0.02 + 0.96 * rng.f()))
+            .collect();
         let bbox = unit();
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
 
-        assert!((m.total_area() - 1.0).abs() < 1e-9, "area sum {}", m.total_area());
+        assert!(
+            (m.total_area() - 1.0).abs() < 1e-9,
+            "area sum {}",
+            m.total_area()
+        );
         for i in 0..m.n_cells() {
             assert!(m.cell_area(i) > 0.0, "empty cell {i}");
             assert!(m.cell_polygon(i).len() >= 3, "degenerate cell {i}");
@@ -622,7 +661,10 @@ mod tests {
         let m = VoronoiMesh::new(&sites, bbox).unwrap();
         for s in 0..m.n_cells() {
             for &t in m.neighbors_of(s) {
-                assert!(m.neighbors_of(t).contains(&s), "adjacency not symmetric: {s}-{t}");
+                assert!(
+                    m.neighbors_of(t).contains(&s),
+                    "adjacency not symmetric: {s}-{t}"
+                );
             }
         }
     }
@@ -639,7 +681,12 @@ mod tests {
             let q = p(rng.f(), rng.f());
             let want = m.cell_of(q);
             // Warm hint (previous-ish) and a worst-case far hint both converge.
-            for hint in [want, 0, sites.len() - 1, (rng.f() * sites.len() as f64) as usize] {
+            for hint in [
+                want,
+                0,
+                sites.len() - 1,
+                (rng.f() * sites.len() as f64) as usize,
+            ] {
                 assert_eq!(m.cell_of_walk(q, hint), want, "hint {hint}, q {q:?}");
             }
         }

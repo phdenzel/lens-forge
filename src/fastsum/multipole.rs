@@ -9,7 +9,7 @@
 //! field is read from Φ (ψ = Re Φ, α = conj Φ′, shear = conj Φ″). It is the
 //! order-0 case (`M₀` only) that the Barnes–Hut node acceptance already uses.
 
-use crate::fastsum::{Monopole, Jet, LocalExpansion};
+use crate::fastsum::{Jet, LocalExpansion, Monopole};
 use crate::grid::Point2D;
 use crate::utils::binomial::pascal;
 use num::complex::Complex;
@@ -50,7 +50,11 @@ impl Multipole {
                 tk *= t;
             }
         }
-        Self { center, strength, moments }
+        Self {
+            center,
+            strength,
+            moments,
+        }
     }
 
     /// Evaluate the far-field jet this expansion induces at `theta`.
@@ -114,7 +118,11 @@ impl Multipole {
             }
             moments[l - 1] = sum;
         }
-        Multipole { center: new_center, strength: self.strength, moments }
+        Multipole {
+            center: new_center,
+            strength: self.strength,
+            moments,
+        }
     }
 
     /// Convert this far-field multipole into a local (Taylor) expansion about a
@@ -155,14 +163,21 @@ impl Multipole {
         for c in coeffs.iter_mut() {
             *c *= FRAC_1_PI;
         }
-        LocalExpansion { center: target, coeffs }
+        LocalExpansion {
+            center: target,
+            coeffs,
+        }
     }
 }
 
 impl From<Monopole> for Multipole {
     /// Promote a point mass to an order-0 multipole centred on itself.
     fn from(m: Monopole) -> Self {
-        Self { center: m.position, strength: m.strength, moments: Vec::new() }
+        Self {
+            center: m.position,
+            strength: m.strength,
+            moments: Vec::new(),
+        }
     }
 }
 
@@ -190,8 +205,15 @@ impl Add for Multipole {
     /// # Arguments
     /// * `rhs` - the multipole to add; must share `self`'s centre and order.
     fn add(mut self, rhs: Multipole) -> Multipole {
-        debug_assert_eq!(self.center, rhs.center, "Multipole::add needs a shared centre");
-        debug_assert_eq!(self.moments.len(), rhs.moments.len(), "Multipole::add needs equal order");
+        debug_assert_eq!(
+            self.center, rhs.center,
+            "Multipole::add needs a shared centre"
+        );
+        debug_assert_eq!(
+            self.moments.len(),
+            rhs.moments.len(),
+            "Multipole::add needs equal order"
+        );
         self.strength += rhs.strength;
         for (m, r) in self.moments.iter_mut().zip(rhs.moments.iter()) {
             *m += *r;
@@ -211,7 +233,8 @@ mod tests {
         let mut rng = Lcg::new(seed);
         (0..n)
             .map(|_| {
-                let p = Point2D::from_polar(radius * rng.f().sqrt(), std::f64::consts::TAU * rng.f());
+                let p =
+                    Point2D::from_polar(radius * rng.f().sqrt(), std::f64::consts::TAU * rng.f());
                 Monopole::new(p, rng.range(0.1, 0.6))
             })
             .collect()

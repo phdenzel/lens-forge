@@ -60,7 +60,10 @@ impl MeshGrid {
     /// # Arguments
     /// * `points` - the query points.
     pub fn interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        points.iter().map(|&p| self.interpolate_or(p, 0.0)).collect()
+        points
+            .iter()
+            .map(|&p| self.interpolate_or(p, 0.0))
+            .collect()
     }
 
     /// Interpolate the field at each of `points` in parallel.
@@ -68,7 +71,10 @@ impl MeshGrid {
     /// # Arguments
     /// * `points` - the query points.
     pub fn par_interpolate_batch(&self, points: &[Point2D]) -> Vec<f64> {
-        points.par_iter().map(|&p| self.interpolate_or(p, 0.0)).collect()
+        points
+            .par_iter()
+            .map(|&p| self.interpolate_or(p, 0.0))
+            .collect()
     }
 
     /// Laplace (non-Sibsonian) natural-neighbour value at `p`, or `None` when
@@ -287,7 +293,9 @@ mod tests {
         // Directly exercise the barycentric path on an interior point.
         let m = linear_mesh();
         let q = p(0.5, 0.5);
-        let got = m.barycentric(q).expect("interior point has an enclosing triangle");
+        let got = m
+            .barycentric(q)
+            .expect("interior point has an enclosing triangle");
         assert!((got - (2.0 * q.x + 3.0 * q.y + 1.0)).abs() < 1e-9);
     }
 
@@ -297,7 +305,10 @@ mod tests {
         // the barycentric fallback takes over — both exact for the linear field.
         let m = linear_mesh();
         let q = p(0.06, 0.5);
-        assert!(m.laplace_nn(q).is_none(), "expected Laplace NN to defer near the edge");
+        assert!(
+            m.laplace_nn(q).is_none(),
+            "expected Laplace NN to defer near the edge"
+        );
         assert!(m.barycentric(q).is_some(), "expected an enclosing triangle");
         let got = m.interpolate(q);
         assert!((got - (2.0 * q.x + 3.0 * q.y + 1.0)).abs() < 1e-9, "{got}");

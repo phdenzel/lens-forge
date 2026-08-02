@@ -84,7 +84,10 @@ impl Jet {
     /// `(½(ψxx − ψyy), ψxy)`.
     #[inline]
     pub fn deviatoric(&self) -> (f64, f64) {
-        (0.5 * (self.hessian[0][0] - self.hessian[1][1]), self.hessian[0][1])
+        (
+            0.5 * (self.hessian[0][0] - self.hessian[1][1]),
+            self.hessian[0][1],
+        )
     }
 
     /// Reciprocal Jacobian determinant of the gradient map φ = θ − ∇ψ,

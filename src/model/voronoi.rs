@@ -10,8 +10,8 @@
 //! [`fastsum`](crate::fastsum) backends (Barnes–Hut by default; also the exact
 //! direct sum, and — planned — FMM / KIFMM / ℋ-matrix).
 
-use crate::grid::Point2D;
 use crate::fastsum::{FieldSolver, Monopole, SolverConfig, SolverKind, build_solver};
+use crate::grid::Point2D;
 use crate::model::lens::LensModel;
 use crate::{LensForgeError, Result};
 
@@ -29,7 +29,11 @@ pub struct VoronoiCell {
 impl VoronoiCell {
     /// Create a new cell.
     pub fn new(center: Point2D, kappa: f64, area: f64) -> Self {
-        Self { center, kappa, area }
+        Self {
+            center,
+            kappa,
+            area,
+        }
     }
 
     /// Dimensionless mass element `m = κ · area`.
@@ -60,11 +64,7 @@ impl VoronoiLens {
     /// # Errors
     /// Returns [`LensForgeError::InvalidParameter`] if there are no cells or any
     /// cell has a non-finite coordinate/κ or a non-positive, non-finite area.
-    pub fn with_solver(
-        cells: &[VoronoiCell],
-        kind: SolverKind,
-        cfg: SolverConfig,
-    ) -> Result<Self> {
+    pub fn with_solver(cells: &[VoronoiCell], kind: SolverKind, cfg: SolverConfig) -> Result<Self> {
         if cells.is_empty() {
             return Err(LensForgeError::invalid_parameter(
                 "VoronoiLens requires at least one cell",
@@ -90,7 +90,11 @@ impl VoronoiLens {
             .map(|c| Monopole::new(c.center, c.mass()))
             .collect();
         let solver = build_solver(kind, &sources, cfg);
-        Ok(Self { sites, kappa, solver })
+        Ok(Self {
+            sites,
+            kappa,
+            solver,
+        })
     }
 
     /// Number of cells.
@@ -149,7 +153,12 @@ mod tests {
         let lens = VoronoiLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, 0.8)]).unwrap();
         let a = lens.deflection(Point2D::new(2.0, 0.0));
         let expected = m * FRAC_1_PI * 0.5;
-        assert!((a.x - expected).abs() < 1e-12, "ax={} exp={}", a.x, expected);
+        assert!(
+            (a.x - expected).abs() < 1e-12,
+            "ax={} exp={}",
+            a.x,
+            expected
+        );
         assert!(a.y.abs() < 1e-12);
     }
 
@@ -169,7 +178,11 @@ mod tests {
         let cells: Vec<VoronoiCell> = (0..200)
             .map(|i| {
                 let t = i as f64 * 0.3;
-                VoronoiCell::new(Point2D::new(t.cos(), (2.0 * t).sin()), 0.1 + 0.01 * i as f64, 0.2)
+                VoronoiCell::new(
+                    Point2D::new(t.cos(), (2.0 * t).sin()),
+                    0.1 + 0.01 * i as f64,
+                    0.2,
+                )
             })
             .collect();
         let bh = VoronoiLens::with_solver(&cells, SolverKind::BarnesHut, SolverConfig::default())
