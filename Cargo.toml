@@ -26,6 +26,11 @@ winit = "0.30.12"
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
 
+[features]
+# Run the full parameter sweep in the benches (all sizes/stencils). Off by
+# default so `cargo bench` stays quick; enable with `--features full-bench`.
+full-bench = []
+
 [[bench]]
 name = "scale_bench"
 harness = false
