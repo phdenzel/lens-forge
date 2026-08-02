@@ -251,15 +251,19 @@ impl ExpansionOps for KernelIndependent {
 
 
 /// Kernel-independent Fast Multipole Method backend (adaptive quadtree).
-pub struct Kifmm(TreeFmm<KernelIndependent>);
+pub struct Kifmm {
+    engine: TreeFmm<KernelIndependent>,
+}
 
 impl FieldSolver for Kifmm {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
-        Kifmm(TreeFmm::build(sources, cfg))
+        Kifmm {
+            engine: TreeFmm::build(sources, cfg),
+        }
     }
 
     fn jet(&self, theta: Point2D) -> Jet {
-        self.0.jet(theta)
+        self.engine.jet(theta)
     }
 
     fn name(&self) -> &'static str {

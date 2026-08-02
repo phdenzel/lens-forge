@@ -72,15 +72,19 @@ impl ExpansionOps for Cauchy {
 }
 
 /// Fast Multipole Method backend (adaptive quadtree, analytic log-kernel scheme).
-pub struct Fmm(TreeFmm<Cauchy>);
+pub struct Fmm {
+    engine: TreeFmm<Cauchy>,
+}
 
 impl FieldSolver for Fmm {
     fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
-        Fmm(TreeFmm::build(sources, cfg))
+        Fmm {
+            engine: TreeFmm::build(sources, cfg),
+        }
     }
 
     fn jet(&self, theta: Point2D) -> Jet {
-        self.0.jet(theta)
+        self.engine.jet(theta)
     }
 
     fn name(&self) -> &'static str {
