@@ -12,7 +12,7 @@ use crate::grid::Point2D;
 use crate::tree::TreeBox;
 
 /// Kernel-specific expansion carriers and the operators that translate between
-/// them; the [`TreeFmm`](super::TreeFmm) driver supplies the tree and traversal.
+/// them; the [`TreeFmm`](super::TreeFmm) engine supplies the tree and traversal.
 pub(crate) trait ExpansionOps: Sized {
     /// Outgoing (far-field) expansion — a box's sources seen from outside.
     type Outgoing: Clone;

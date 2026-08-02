@@ -22,8 +22,7 @@
 //! * [`Kifmm`]      — kernel-independent FMM (equivalent densities), $O(N)$.
 //! * *(planned)* $\mathcal{H}$-matrix — hierarchical low-rank matrix (also invertible).
 //!
-//! All backends implement [`FieldSolver`], so the lens models and the benchmark
-//! harness are agnostic to which one is in use.
+//! All backends implement [`FieldSolver`], so the lens models are method-agnostic.
 
 pub mod barnes_hut;
 pub mod direct;

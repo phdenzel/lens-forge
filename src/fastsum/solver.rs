@@ -11,7 +11,7 @@ use crate::grid::Point2D;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SolverConfig {
     /// Barnes–Hut / FMM opening angle $\theta_\mathrm{bh}$ (multipole acceptance
-    /// criterion). $0$ forces exact evaluation.
+    /// criterion).
     pub theta_bh: f64,
     /// Multipole / local expansion order (FMM, KIFMM).
     pub order: usize,

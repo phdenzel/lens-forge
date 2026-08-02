@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Generic adaptive FMM driver on a [`QuadTree`], parameterized over an
+//! Generic adaptive FMM engine on a [`QuadTree`], parameterized over an
 //! [`ExpansionOps`] scheme, $O(N)$.
 //!
-//! Three source-only passes run once at [`build`](TreeFmm::build), on the same
-//! adaptive tree as Barnes–Hut (leaves at mixed depths):
+//! Three source-only passes run once at [`build`](TreeFmm::build), on an
+//! adaptive quadtree:
 //!
 //! * **upward** — build leaf outgoing expansions (S2M), then merge children into
 //!   parents (M2M).
@@ -41,7 +41,7 @@ pub(crate) struct TreeFmm<E: ExpansionOps> {
     root_box: BBox,
     /// Squared softening added to $r^2$ in the near field.
     eps2: f64,
-    /// Whether the driver holds no sources.
+    /// Whether the tree holds no sources.
     empty: bool,
 }
 
@@ -138,7 +138,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
         }
     }
 
-    /// Build the engine from source elements and a configuration.
+    /// Build the FMM engine from source elements and a configuration.
     ///
     /// # Arguments
     /// * `sources` - the monopole bodies.
@@ -273,7 +273,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
         let b = self.locate(theta);
         let mut f = self.scheme.l2t(&self.incoming[b], theta);
         // Near field: direct sum over the box, its neighbours, and coarse
-        // adjacent leaves (everything the local expansion omits).
+        // adjacent leaves.
         for s in self.near_seeds(b) {
             self.sum_subtree(s, theta, &mut f);
         }
