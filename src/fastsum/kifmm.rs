@@ -16,13 +16,12 @@
 use crate::fastsum::{ExpansionOps, FieldSolver, Jet, Monopole, SolverConfig, TreeFmm};
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
-use crate::utils::dense::pseudo_inverse;
+use crate::utils::svd::pseudo_inverse;
 use ndarray::{Array1, Array2};
 use std::f64::consts::TAU;
 
-/// Inner proxy-circle radius, in units of a box's half side-length. Encloses the
-/// box's sources (circumscribed radius $\sqrt2$) with margin.
-const R_IN: f64 = 1.5;
+/// Inner proxy-circle radius, in units of a box's half side-length.
+const R_IN: f64 = 1.5;  // small margin, i.e. sqrt(2) ≈ 1.41 would touch corners
 /// Outer (well-separated) proxy-circle radius, in units of the half side-length.
 const R_OUT: f64 = 3.0;
 /// Check points per equivalent point: an oversampled, overdetermined fit.
