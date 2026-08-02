@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Small dense linear algebra: a one-sided Jacobi SVD and the Tikhonov-
-//! regularized pseudo-inverse built on it.
+//! Small dense linear algebra: the Tikhonov-regularized pseudo-inverse, built on
+//! a hand-rolled singular value decomposition $A = U \Sigma V^\top$.
 //!
-//! Sized for the tiny, ill-conditioned check-from-equivalent maps a
-//! kernel-independent FMM inverts once per box geometry and then applies as a
-//! matvec. Storage and the `dot` products come from [`ndarray`]; only the SVD is
-//! hand-rolled. One-sided Jacobi rotates the columns of `A` (m × n, `m ≥ n`) to
-//! mutual orthogonality: the rotated columns are `σᵢ uᵢ` and the accumulated
-//! rotations form `V`, so `A = U Σ Vᵀ`.
+//! From the SVD the damped inverse is
+//! $$A^{+}_\lambda = \big(A^\top A + \lambda^2 I\big)^{-1} A^\top
+//!   = V \operatorname{diag}\Big(\tfrac{\sigma_i}{\sigma_i^2 + \lambda^2}\Big) U^\top,$$
+//! whose filter factor $\sigma_i / (\sigma_i^2 + \lambda^2)$ acts as $1/\sigma_i$
+//! for $\sigma_i \gg \lambda$ but rolls off to zero for $\sigma_i \lesssim \lambda$,
+//! keeping the ill-conditioned directions bounded.
+//!
+//! One-sided Jacobi supplies the SVD by rotating the columns of $A$ to mutual
+//! orthogonality — accurate even for the tiny singular values of the
+//! near-singular maps this inverts.
 
 use ndarray::Array2;
 
@@ -67,7 +71,7 @@ fn one_sided_jacobi(u: &mut Array2<f64>, v: &mut Array2<f64>) {
 }
 
 /// Tikhonov-regularized pseudo-inverse of `a` (m × n, `m ≥ n`): the n × m matrix
-/// `Aλ⁺ = V diag(σᵢ / (σᵢ² + λ²)) Uᵀ`, damping the ill-conditioned directions.
+/// `A_λ⁺ = V diag(σᵢ / (σᵢ² + λ²)) Uᵀ`, damping the ill-conditioned directions.
 ///
 /// # Arguments
 /// * `a` - the matrix to invert; must have at least as many rows as columns.
