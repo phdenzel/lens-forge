@@ -4,15 +4,16 @@
 //! Lens models.
 //!
 //! Every lens — parametric or free-form — implements [`LensModel`], exposing the
-//! four quantities the rest of the library needs (convergence κ, deflection α,
-//! potential ψ, Hessian ∂α/∂θ); consumers (solver, magnification, rendering) are
-//! written against the trait, agnostic to the representation.
+//! four quantities the rest of the library needs (convergence $\kappa$, deflection
+//! $\alpha$, potential $\psi$, Hessian $\partial\alpha/\partial\theta$); consumers
+//! (solver, magnification, rendering) are written against the trait, agnostic to
+//! the representation.
 //!
 //! Conventions (scaled/dimensionless angular units):
-//! * lens equation:  β = θ − α(θ)
-//! * convergence:    κ = ½ ∇²ψ
-//! * deflection:     α = ∇ψ
-//! * Jacobian:       A = ∂β/∂θ = I − H(ψ),   magnification μ = 1/det A
+//! * lens equation: $\beta = \theta - \alpha(\theta)$
+//! * convergence: $\kappa = \tfrac12 \nabla^2\psi$
+//! * deflection: $\alpha = \nabla\psi$
+//! * Jacobian: $A = \partial\beta/\partial\theta = I - H(\psi)$, magnification $\mu = 1/\det A$
 
 use crate::grid::Point2D;
 

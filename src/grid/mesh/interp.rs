@@ -9,9 +9,10 @@
 //!
 //! The primary scheme is **Laplace (non-Sibsonian) natural-neighbour
 //! interpolation**: each site `i` whose cell would border the inserted cell of
-//! the query point `p` contributes with weight `λ_i = ℓ_i / d_i`, giving
-//! `value(p) = Σ λ_i v_i / Σ λ_i`, where `d_i = |p − sᵢ|` and `ℓ_i` is the shared
-//! Voronoi facet length. It is exact for linear fields and C¹ away from the
+//! the query point `p` contributes with weight $\lambda_i = \ell_i / d_i$, giving
+//! $\mathrm{value}(p) = \sum_i \lambda_i v_i / \sum_i \lambda_i$, where
+//! $d_i = \lvert p - s_i \rvert$ and $\ell_i$ is the shared Voronoi facet length.
+//! It is exact for linear fields and $C^1$ away from the
 //! sites, and needs only facet lengths — no re-tessellation.
 //!
 //! Where `p` is not fully enclosed by its natural neighbours (at or beyond the

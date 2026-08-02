@@ -3,11 +3,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The [`Multipole`]: a source's far-field expansion.
 //!
-//! Laurent expansion of the holomorphic potential Φ(z) = (1/π) Σ mᵢ ln(z − zᵢ)
-//! about a centre `z_c`: with `t_i = z_i − z_c` and `w = z − z_c`,
-//! Φ = (1/π)[M₀ ln w − Σ_{k≥1} (M_k/k) w^{−k}], `M_k = Σ mᵢ tᵢᵏ`. The evaluated
-//! field is read from Φ (ψ = Re Φ, α = conj Φ′, shear = conj Φ″). It is the
-//! order-0 case (`M₀` only) that the Barnes–Hut node acceptance already uses.
+//! Laurent expansion of the holomorphic potential
+//! $\Phi(z) = \frac{1}{\pi} \sum_i m_i \ln(z - z_i)$ about a centre $z_c$: with
+//! $t_i = z_i - z_c$ and $w = z - z_c$,
+//! $$ \Phi = \frac{1}{\pi}\Big[ M_0 \ln w - \sum_{k \ge 1} \frac{M_k}{k} w^{-k} \Big], \qquad M_k = \sum_i m_i t_i^k. $$
+//! The evaluated field is read from $\Phi$ ($\psi = \operatorname{Re}\Phi$,
+//! $\alpha = \operatorname{conj}\Phi'$, shear $= \operatorname{conj}\Phi''$). It
+//! is the order-0 case ($M_0$ only) that the Barnes–Hut node acceptance already
+//! uses.
 
 use crate::fastsum::{Jet, LocalExpansion, Monopole};
 use crate::grid::Point2D;

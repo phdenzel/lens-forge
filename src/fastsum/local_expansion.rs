@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The [`LocalExpansion`]: the field's Taylor tower about a target centre.
 //!
-//! Taylor expansion of the holomorphic potential Φ about a source-free centre
-//! `z_t`: with `s_i = z_i − z_t` and `w = z − z_t`,
-//! Φ = (1/π)[Σ mᵢ ln(−sᵢ) − Σ_{k≥1} (1/k)(Σ mᵢ sᵢ^{−k}) wᵏ] = Σ bₖ wᵏ. The
-//! [`Jet`] is the order-≤2 truncation — b₀, b₁, b₂ give ψ, α, H — so
-//! this is the general-order form of the field-attribute abstraction.
+//! Taylor expansion of the holomorphic potential $\Phi$ about a source-free
+//! centre $z_t$: with $s_i = z_i - z_t$ and $w = z - z_t$,
+//! $$ \Phi = \frac{1}{\pi}\Big[ \sum_i m_i \ln(-s_i) - \sum_{k \ge 1} \frac{1}{k}\Big(\sum_i m_i s_i^{-k}\Big) w^k \Big] = \sum_k b_k w^k. $$
+//! The [`Jet`] is the order-$\le 2$ truncation — $b_0, b_1, b_2$ give $\psi,
+//! \alpha, H$ — so this is the general-order form of the field-attribute
+//! abstraction.
 
 use crate::fastsum::{Jet, Monopole};
 use crate::grid::Point2D;

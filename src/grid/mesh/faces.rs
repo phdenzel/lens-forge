@@ -5,8 +5,9 @@
 //!
 //! The finite-volume operators (the TPFA Laplacian in `diff` and the Poisson
 //! solver built on it) discretize a face integral over each Voronoi cell. The
-//! transmissibility across the facet shared by cells `i` and `j` is `ℓ_ij / d_ij`
-//! — facet length over site distance `d_ij = |sᵢ − sⱼ|`.
+//! transmissibility across the facet shared by cells `i` and `j` is
+//! $\ell_{ij} / d_{ij}$ — facet length over site distance
+//! $d_{ij} = \lvert s_i - s_j \rvert$.
 
 use super::voronoi::VoronoiMesh;
 

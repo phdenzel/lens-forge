@@ -8,8 +8,9 @@
 //!   and degrading gracefully at short-ring boundary cells.
 //! * [`MeshGrid::laplacian`] / [`MeshGrid::laplacian_field`] — the
 //!   **two-point-flux (TPFA)** Laplacian
-//!   `(∇²v)ᵢ = (1/Aᵢ) Σ_j (ℓ_ij / d_ij)(v_j − vᵢ)`, summing the flux across each
-//!   shared facet (see [`FaceGeometry`](super::faces)); box facets carry no flux.
+//!   $(\nabla^2 v)_i = \frac{1}{A_i} \sum_j \frac{\ell_{ij}}{d_{ij}}(v_j - v_i)$,
+//!   summing the flux across each shared facet (see
+//!   [`FaceGeometry`](super::faces)); box facets carry no flux.
 //!
 //! The area-free stiffness sum is the symmetric operator the Poisson solver
 //! applies; see [`apply_stiffness`].

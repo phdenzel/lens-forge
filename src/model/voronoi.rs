@@ -4,11 +4,11 @@
 //! Free-form lens on an adaptive/Voronoi lens plane.
 //!
 //! Its irregular sampling rules out the spectral (FFT) solve the uniform
-//! [`PixelGrid`](crate::grid::PixelGrid) lens uses for ∇²ψ = 2κ. Instead each cell
-//! is a mass element `mᵢ = κᵢ · areaᵢ` at its centroid, and the field is summed
-//! from the 2D Poisson Green's function by one of the interchangeable
-//! [`fastsum`](crate::fastsum) backends (Barnes–Hut by default; also the exact
-//! direct sum, and — planned — FMM / KIFMM / ℋ-matrix).
+//! [`PixelGrid`](crate::grid::PixelGrid) lens uses for $\nabla^2\psi = 2\kappa$.
+//! Instead each cell is a mass element $m_i = \kappa_i \cdot \mathrm{area}_i$ at its
+//! centroid, and the field is summed from the 2D Poisson Green's function by one of
+//! the interchangeable [`fastsum`](crate::fastsum) backends (Barnes–Hut by default;
+//! also the exact direct sum, and — planned — FMM / KIFMM / $\mathcal{H}$-matrix).
 
 use crate::fastsum::{FieldSolver, Monopole, SolverConfig, SolverKind, build_solver};
 use crate::grid::Point2D;
