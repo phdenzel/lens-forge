@@ -32,7 +32,7 @@ criterion = { version = "0.8.1", features = ["html_reports"] }
 full-bench = []
 
 [[bench]]
-name = "scale_bench"
+name = "viz_scale"
 harness = false
 
 [[bench]]
