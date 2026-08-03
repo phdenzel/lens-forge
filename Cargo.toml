@@ -48,7 +48,7 @@ name = "meshgrid_locate"
 harness = false
 
 [[bench]]
-name = "fastsum_bench"
+name = "fastsum_backends"
 harness = false
 
 # Render LaTeX math on docs.rs (mirrors `./docs/build-docs.sh` for local builds).
