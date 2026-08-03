@@ -40,6 +40,10 @@ name = "pixelgrid_ops"
 harness = false
 
 [[bench]]
+name = "meshgrid_ops"
+harness = false
+
+[[bench]]
 name = "meshgrid_locate"
 harness = false
 
