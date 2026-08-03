@@ -30,9 +30,9 @@ const DOMAIN: f64 = 1.0;
 const RASTER: usize = 128; // interp query grid side (W = H)
 
 #[cfg(feature = "full-bench")]
-const SITE_COUNTS: &[usize] = &[500, 2_000, 8_000];
+const SITE_COUNTS: &[usize] = &[512, 2_048, 8_192];
 #[cfg(not(feature = "full-bench"))]
-const SITE_COUNTS: &[usize] = &[2_000];
+const SITE_COUNTS: &[usize] = &[2_048];
 
 fn bbox() -> BBox {
     BBox::from_lims(-DOMAIN, DOMAIN, -DOMAIN, DOMAIN)
