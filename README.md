@@ -72,7 +72,7 @@ Performance is tracked with [Criterion](https://github.com/bheisler/criterion.rs
 ```sh
 cargo bench                          # all suites, quick representative sweep
 cargo bench --features full-bench    # exhaustive sweep (all sizes/stencils; slow)
-cargo bench --bench pixelgrid_bench  # run one suite
+cargo bench --bench pixelgrid_ops    # run one suite
 cargo bench -- pixelgrid/gradient    # filter by benchmark id
 ```
 
@@ -83,8 +83,8 @@ slower) run.
 | Bench | Measures |
 | --- | --- |
 | `fastsum_bench` | Head-to-head speed of the fast-summation backends (`DirectSum`, `BarnesHut`, `Fmm`, `Kifmm`) for the lensing deflection field. Times both the build (tree/precompute) and a batched query over a 64×64 grid of targets, sweeping source counts (1k/5k/20k); the exact `O(N²)` direct sum is skipped above 5k to bound the run. Accuracy is verified separately in the unit tests — this suite is speed only. |
-| `pixelgrid_bench` | Throughput of `PixelGrid` operators. **Gradient/Laplacian:** FD central stencils (2nd/4th/6th order) vs their FD-equivalent spectral counterparts vs the *exact* spectral derivative, over 64²–256². For the *same* discrete operator FD wins (spectral does an FFT to get the same numbers); the exact-spectral route is the one that buys accuracy (~10 orders of magnitude on smooth periodic data — see the tests in `src/grid/spectral.rs`). **Poisson (`∇²ψ = f`):** one FFT divide-by-`−k²` vs a finite-difference conjugate-gradient solve — the regime where the FFT wins decisively (~11× at 64², widening with size). **Interp:** serial vs Rayon-parallel bilinear resampling at a raster of query points. |
-| `meshgrid_locate` | Point-location throughput for `MeshGrid` under a raster scan (the `viz` render hot path): a cold `O(log n)` k-d tree descent per pixel vs a warm-start greedy walk on the Voronoi adjacency, swept over site counts. |
+| `pixelgrid_ops` | Throughput of `PixelGrid` operators. **Gradient/Laplacian:** FD central stencils (2nd/4th/6th order) vs their FD-equivalent spectral counterparts vs the *exact* spectral derivative, over 64²–256². For the *same* discrete operator FD wins (spectral does an FFT to get the same numbers); the exact-spectral route is the one that buys accuracy (~10 orders of magnitude on smooth periodic data — see the tests in `src/grid/spectral.rs`). **Poisson (`∇²ψ = f`):** one FFT divide-by-`−k²` vs a finite-difference conjugate-gradient solve — the regime where the FFT wins decisively (~11× at 64², widening with size). **Interp:** serial vs Rayon-parallel bilinear resampling at a raster of query points. |
+| `meshgrid_locate` | Point-location throughput for `MeshGrid`: a cold `O(log n)` k-d tree query per point vs a warm-start greedy walk on the Voronoi adjacency, each under two query orderings — a coherent **raster** scan (the `viz` render hot path, the walk's best case) and **scattered** random points (where the walk degrades toward `O(√n)` and the cold tree wins). Swept over site counts. |
 | `scale_bench` | Throughput of the `viz` render-scaling (`RenderScale`: linear/log10/symlog) and `Normalize` operations, comparing per-value, slice, in-place, and Rayon-parallel implementations across array sizes (100–100k). Guides which code path the viewer should use at a given size. |
 
 `fastsum_bench` and `meshgrid_locate` use a small deterministic LCG for
