@@ -154,16 +154,16 @@ fn bench_norm(c: &mut Criterion, name: &str, norm: Normalize, data_fn: fn(usize)
 
 /* ============ RenderScale benchmarks ===================================== */
 fn bench_render_scale_linear(c: &mut Criterion) {
-    bench_scale(c, "render_scale_linear", RenderScale::Linear, generate_test_data);
+    bench_scale(c, "render/scale_linear", RenderScale::Linear, generate_test_data);
 }
 
 fn bench_render_scale_log10(c: &mut Criterion) {
-    bench_scale(c, "render_scale_log10", RenderScale::Log10, generate_test_data);
+    bench_scale(c, "render/scale_log10", RenderScale::Log10, generate_test_data);
 }
 
 fn bench_render_scale_symlog(c: &mut Criterion) {
     let scale = RenderScale::SymLog { linthresh: 2.0 };
-    bench_scale(c, "render_scale_symlog", scale, generate_test_data_mixed);
+    bench_scale(c, "render/scale_symlog", scale, generate_test_data_mixed);
 }
 
 /* ============ Normalize benchmarks ======================================= */
@@ -172,7 +172,7 @@ fn bench_normalize(c: &mut Criterion) {
         .with_lims(0.0, 100.0)
         .unwrap()
         .with_clamp(true);
-    bench_norm(c, "normalize", norm, generate_test_data);
+    bench_norm(c, "render/normalize", norm, generate_test_data);
 }
 
 fn bench_normalize_unclamped(c: &mut Criterion) {
@@ -180,7 +180,7 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
         .with_lims(0.0, 100.0)
         .unwrap()
         .with_clamp(false);
-    bench_norm(c, "normalize_unclamped", norm, generate_test_data_mixed);
+    bench_norm(c, "render/normalize_unclamped", norm, generate_test_data_mixed);
 }
 
 /* ============ auto_range benchmark ======================================= */
@@ -188,7 +188,7 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
 /// data (the latter exercises the non-finite skip). No parallel variant exists,
 /// so this is a serial baseline for whether the range scan is worth optimizing.
 fn bench_auto_range(c: &mut Criterion) {
-    let mut group = c.benchmark_group("auto_range");
+    let mut group = c.benchmark_group("render/auto_range");
     group.sampling_mode(SamplingMode::Flat);
     for &size in SIZES {
         group.throughput(Throughput::Elements(size as u64));
