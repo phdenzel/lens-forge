@@ -8,19 +8,19 @@
 //! and as the fixture generator in tests.
 
 /// A seedable 64-bit linear congruential generator.
-pub(crate) struct Lcg(u64);
+pub struct Lcg(u64);
 
 impl Lcg {
     /// New generator seeded with `seed`.
     ///
     /// # Arguments
     /// * `seed` - the initial state; equal seeds reproduce the same sequence.
-    pub(crate) fn new(seed: u64) -> Self {
+    pub fn new(seed: u64) -> Self {
         Self(seed)
     }
 
     /// Next uniform sample in `[0, 1)`.
-    pub(crate) fn f(&mut self) -> f64 {
+    pub fn f(&mut self) -> f64 {
         self.0 = self
             .0
             .wrapping_mul(6364136223846793005)
@@ -32,7 +32,7 @@ impl Lcg {
     ///
     /// # Arguments
     /// * `lo`, `hi` - the half-open interval to sample.
-    pub(crate) fn range(&mut self, lo: f64, hi: f64) -> f64 {
+    pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.f()
     }
 }

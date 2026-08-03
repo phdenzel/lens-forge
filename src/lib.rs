@@ -14,6 +14,8 @@ pub(crate) mod tree;
 pub(crate) mod utils;
 pub mod viz;
 
+pub use utils::rng::Lcg;
+
 use std::error::Error;
 use std::fmt;
 
