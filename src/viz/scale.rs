@@ -405,6 +405,20 @@ impl RenderScale {
             }
         }
     }
+
+    /// Element count above which the parallel slice ops beat serial for this
+    /// mode, given `base` (the transcendental-mode crossover). `Linear` never
+    /// benefits — its per-element work is too cheap to amortize Rayon overhead
+    /// (see `benches/viz_scale.rs`) — so it returns [`usize::MAX`].
+    ///
+    /// # Arguments
+    /// * `base` - crossover element count for `Log10`/`SymLog`.
+    pub fn parallel_threshold(&self, base: usize) -> usize {
+        match self {
+            RenderScale::Linear => usize::MAX,
+            RenderScale::Log10 | RenderScale::SymLog { .. } => base,
+        }
+    }
 }
 
 /* ============ Normalize ================================================== */

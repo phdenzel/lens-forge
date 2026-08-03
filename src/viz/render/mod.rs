@@ -65,7 +65,10 @@ pub struct RenderOptions {
     pub edge_rgba: [u8; 4],
     /// Gradient used for colour mapping of normalized values in `[0, 1]`
     pub gradient_name: String,
-    /// Threshold for using parallel operations (number of pixels)
+    /// Element count above which the `Log10`/`SymLog` scaling and colormap
+    /// stages switch to the parallel path. `Linear` scaling and normalization
+    /// always run serial — parallel never wins for them (see
+    /// `benches/viz_scale.rs`).
     pub threshold_parallel: usize,
 }
 
@@ -83,7 +86,7 @@ impl Default for RenderOptions {
             show_edges: false,
             edge_rgba: [255, 255, 255, 32],
             gradient_name: "viridis".to_string(),
-            threshold_parallel: 100_000,
+            threshold_parallel: 30_000,
         }
     }
 }

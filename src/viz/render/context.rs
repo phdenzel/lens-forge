@@ -74,7 +74,8 @@ impl RasterContext {
             _ => 0.0,
         };
 
-        if self.stage_buffer.len() > opt.threshold_parallel {
+        let threshold = opt.scale.parallel_threshold(opt.threshold_parallel);
+        if self.stage_buffer.len() > threshold {
             opt.scale
                 .par_apply_slice_inplace(&mut self.stage_buffer, fallback);
         } else {
@@ -96,11 +97,9 @@ impl RasterContext {
             .with_clamp(opt.clamp)
             .with_lims(vmin, vmax)?;
 
-        if self.stage_buffer.len() > opt.threshold_parallel {
-            norm.par_apply_slice_inplace(&mut self.stage_buffer);
-        } else {
-            norm.apply_slice_inplace(&mut self.stage_buffer);
-        }
+        // Normalization is cheap enough that the parallel path never wins at any
+        // size (measured; see `benches/viz_scale.rs`), so always run serial.
+        norm.apply_slice_inplace(&mut self.stage_buffer);
 
         Ok(())
     }
