@@ -6,13 +6,14 @@
 //! For [`RenderScale`] (linear/log10/symlog) and [`Normalize`], compares five
 //! strategies — per-value, slice, in-place, and the Rayon-parallel slice/in-place
 //! variants (parallel only above a size threshold) — across array sizes, to guide
-//! which path the viewer should use at a given size. `--features full-bench`
-//! widens the size sweep.
+//! which path the viewer should use at a given size. Also times [`auto_range`],
+//! the serial min/max reduction feeding range determination, on clean and
+//! NaN-laden data. `--features full-bench` widens the size sweep.
 
 use criterion::{
     BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group, criterion_main,
 };
-use lens_forge::viz::scale::{Normalize, RenderScale};
+use lens_forge::viz::scale::{Normalize, RenderScale, auto_range};
 use std::hint::black_box;
 
 /// Array sizes swept as the benchmark id: a small representative subset by
@@ -182,6 +183,29 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
     bench_norm(c, "normalize_unclamped", norm, generate_test_data_mixed);
 }
 
+/* ============ auto_range benchmark ======================================= */
+/// The serial min/max scan over each size in [`SIZES`], on clean and NaN-laden
+/// data (the latter exercises the non-finite skip). No parallel variant exists,
+/// so this is a serial baseline for whether the range scan is worth optimizing.
+fn bench_auto_range(c: &mut Criterion) {
+    let mut group = c.benchmark_group("auto_range");
+    group.sampling_mode(SamplingMode::Flat);
+    for &size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+
+        let clean = generate_test_data(size);
+        group.bench_with_input(BenchmarkId::new("clean", size), &size, |b, _| {
+            b.iter(|| black_box(auto_range(black_box(&clean))));
+        });
+
+        let mixed = generate_test_data_mixed(size);
+        group.bench_with_input(BenchmarkId::new("mixed", size), &size, |b, _| {
+            b.iter(|| black_box(auto_range(black_box(&mixed))));
+        });
+    }
+    group.finish();
+}
+
 /* ============ Criterion configuration ==================================== */
 criterion_group!(
     benches,
@@ -190,6 +214,7 @@ criterion_group!(
     bench_render_scale_symlog,
     bench_normalize,
     bench_normalize_unclamped,
+    bench_auto_range,
 );
 
 criterion_main!(benches);
