@@ -10,6 +10,7 @@ pub mod fastsum;
 pub mod grid;
 pub mod lens;
 pub mod solver;
+pub mod source;
 pub(crate) mod tree;
 pub(crate) mod utils;
 pub mod viz;
