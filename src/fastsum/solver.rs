@@ -36,26 +36,46 @@ impl Default for SolverConfig {
 }
 
 impl SolverConfig {
+    /// Set the opening angle (clamped to `>= 0`).
+    ///
+    /// # Arguments
+    /// * `theta_bh` - Barnes–Hut / FMM acceptance angle
     #[inline]
     pub fn with_theta(mut self, theta_bh: f64) -> Self {
         self.theta_bh = theta_bh.max(0.0);
         self
     }
+    /// Set the softening length (stored squared).
+    ///
+    /// # Arguments
+    /// * `eps` - softening length added in quadrature to `r`
     #[inline]
     pub fn with_softening(mut self, eps: f64) -> Self {
         self.eps2 = eps * eps;
         self
     }
+    /// Set the multipole/local expansion order.
+    ///
+    /// # Arguments
+    /// * `order` - expansion order
     #[inline]
     pub fn with_order(mut self, order: usize) -> Self {
         self.order = order;
         self
     }
+    /// Set the maximum bodies per leaf (clamped to `>= 1`).
+    ///
+    /// # Arguments
+    /// * `leaf_size` - bodies per leaf before subdividing
     #[inline]
     pub fn with_leaf_size(mut self, leaf_size: usize) -> Self {
         self.leaf_size = leaf_size.max(1);
         self
     }
+    /// Set the target relative tolerance.
+    ///
+    /// # Arguments
+    /// * `tol` - relative tolerance
     #[inline]
     pub fn with_tol(mut self, tol: f64) -> Self {
         self.tol = tol;
