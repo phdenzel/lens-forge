@@ -10,7 +10,7 @@
 
 use std::f64::consts::PI;
 
-/// Speed of light in vacuum (m/s, exact).
+/// Speed of light in vacuum (m/s).
 pub const C: f64 = 2.997_924_58e8;
 /// Newtonian constant of gravitation (m³ kg⁻¹ s⁻², CODATA 2018).
 pub const G: f64 = 6.674_30e-11;
@@ -19,13 +19,13 @@ pub const H_BAR: f64 = 1.054_571_817e-34;
 /// Boltzmann constant (J K⁻¹, SI 2019).
 pub const K_B: f64 = 1.380_649e-23;
 
-/// Planck mass √(ℏc/G) — the Planckian *marble* (kg).
+/// Planck mass √(ℏc/G) (kg).
 pub const MARB: f64 = 2.176_434e-8;
-/// Planck length √(ℏG/c³) — the Planckian *lap* (m).
+/// Planck length √(ℏG/c³) (m).
 pub const LAP: f64 = 1.616_255e-35;
-/// Planck time √(ℏG/c⁵) — the Planckian *tick* (s).
+/// Planck time √(ℏG/c⁵) (s).
 pub const TICK: f64 = 5.391_247e-44;
-/// Planck temperature √(ℏc⁵/G)/k_B — the Planckian *therm* (K).
+/// Planck temperature √(ℏc⁵/G)/k_B (K).
 pub const THERM: f64 = 1.416_784e32;
 
 /// Solar mass (kg).
@@ -34,7 +34,7 @@ pub const M_SUN: f64 = 1.988_475e30;
 pub const PARSEC: f64 = 3.085_677_581_491_367_3e16;
 /// Megaparsec (m).
 pub const MPC: f64 = PARSEC * 1e6;
-/// Astronomical unit (m, exact).
+/// Astronomical unit (m).
 pub const AU: f64 = 1.495_978_707e11;
 /// Gigayear (s, Julian year × 10⁹).
 pub const GYR: f64 = 365.25 * 86_400.0 * 1e9;
