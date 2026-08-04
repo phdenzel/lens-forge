@@ -7,5 +7,7 @@
 //! work in scaled/dimensionless angular units (β a source-plane position).
 
 pub mod model;
+pub mod parametric;
 
 pub use model::SourceModel;
+pub use parametric::Sersic;
