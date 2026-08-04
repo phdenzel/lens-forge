@@ -83,7 +83,8 @@ impl FaceGeometry {
 /// hence equidistant with the owning site — to the edge midpoint; edges on the
 /// domain box match no neighbour and are skipped. These are the *directed*
 /// lengths (from cell `i`'s side of each facet); [`FaceGeometry::build`]
-/// symmetrizes them, while the pointwise [`MeshGrid::laplacian`] uses them as-is.
+/// symmetrizes them, while the pointwise
+/// [`MeshGrid::laplacian`](crate::grid::MeshGrid::laplacian) uses them as-is.
 ///
 /// # Arguments
 /// * `mesh` - the tessellation supplying the polygon and sites.

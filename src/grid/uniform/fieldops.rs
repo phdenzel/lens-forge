@@ -4,7 +4,7 @@
 //! [`FieldOps`] for [`PixelGrid`]: adapt its inherent operators to the shared,
 //! representation-agnostic contract.
 //!
-//! The inherent operators return raw [`FieldArray2D`] data with selectable
+//! The inherent operators return raw [`FieldArray2D`](crate::grid::FieldArray2D) data with selectable
 //! stencils and boundary conditions; here they are called with their defaults and
 //! rewrapped as [`PixelGrid`]s, so generic `FieldOps` code sees the same
 //! `Self`-valued results as the mesh. Each body delegates to the inherent method
