@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens models.
 //!
-//! Every lens — parametric or free-form — implements [`LensModel`]. Its one required
+//! Every lens implements [`LensModel`]. Its one required
 //! method [`jet`](LensModel::jet) returns the potential ψ together with its gradient
 //! (deflection α) and Hessian at a point; the derived quantities (convergence,
 //! magnification, ray-tracing) fall out as defaults. Consumers (solver, rendering) are
@@ -15,8 +15,12 @@
 //! * deflection: $\alpha = \nabla\psi$
 //! * Jacobian: $A = \partial\beta/\partial\theta = I - H(\psi)$, magnification $\mu = 1/\det A$
 
-use crate::fastsum::Jet;
+use crate::fastsum::{Jet, Monopole};
 use crate::grid::Point2D;
+
+/// A point-mass element `m = κ · area` — the lens-domain name for a fastsum
+/// [`Monopole`], the mass a cell contributes to the deflection field.
+pub type MassElement = Monopole;
 
 /// Lensing potential ψ and its derivatives at one point: ψ, deflection α = ∇ψ, Hessian H.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -39,21 +43,21 @@ impl From<Jet> for LensJet {
     }
 }
 
-/// A gravitational lens — parametric, external-field, or free-form.
+/// A gravitational lens.
 pub trait LensModel {
     /// Potential ψ, deflection α = ∇ψ, and Hessian H at `theta`.
     fn jet(&self, theta: Point2D) -> LensJet;
 
     /// The [`jet`](Self::jet) at each of `thetas`.
     ///
-    /// Default maps [`jet`](Self::jet); free-form lenses override to batch their solver.
+    /// Default maps [`jet`](Self::jet); override to batch when the backend supports it.
     fn jet_batch(&self, thetas: &[Point2D]) -> Vec<LensJet> {
         thetas.iter().map(|&t| self.jet(t)).collect()
     }
 
     /// Convergence κ(θ) = ½∇²ψ = ½ tr H.
     ///
-    /// Free-form lenses override with their input κ (primary there, not the solved trace).
+    /// Override where κ is a primary input rather than the solved trace.
     fn convergence(&self, theta: Point2D) -> f64 {
         let h = self.jet(theta).hessian;
         0.5 * (h[0][0] + h[1][1])
