@@ -9,7 +9,7 @@
 //! and the deflection and Hessian are formed in that same k-space
 //! ($\hat\alpha = i\mathbf{k}\hat\psi$, $\hat H = -\mathbf{k}\mathbf{k}^\top\hat\psi$),
 //! then bilinearly interpolated. The FFT solve is periodic and zero-mean — a different
-//! boundary condition from the free-space [`MeshLens`], so the two suit different
+//! boundary condition from the free-space [`MeshLens`](crate::lens::MeshLens), so the two suit different
 //! setups. Grid side lengths must be powers of two.
 
 use crate::Result;

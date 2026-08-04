@@ -4,7 +4,7 @@
 //! Grid structures and discretized fields for lens modelling.
 //!
 //! This module provides the geometry and sampled-field types that the physics
-//! layers ([`crate::model`], [`crate::solver`]) build on. Everything is 2D and
+//! layers ([`crate::lens`], [`crate::solver`]) build on. Everything is 2D and
 //! `f64`; arrays are row-major and indexed `[j, i]` (row = y, column = x).
 //!
 //! # Geometry primitives
