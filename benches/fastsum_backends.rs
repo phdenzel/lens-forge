@@ -12,6 +12,11 @@
 //! Accuracy against the exact direct sum lives in the unit tests; this measures
 //! speed. The `O(N²)` direct sum is skipped above 5k to bound the run;
 //! `--features full-bench` widens the source-count sweep.
+//!
+//! The `O(N²)` baseline is labelled `naive` so it sorts *after* the tree/
+//! expansion backends: Criterion's index table drops missing cells rather than
+//! padding them, so a gap in a middle column shifts every later column. As the
+//! last column, `naive`'s missing large-N rows are trailing and harmless.
 
 use std::hint::black_box;
 
@@ -54,40 +59,43 @@ fn targets(side: usize) -> Vec<Point2D> {
 
 fn kind_name(kind: SolverKind) -> &'static str {
     match kind {
-        SolverKind::Direct => "direct",
+        // "naive" (not "direct") so the O(N²) baseline sorts after the tree
+        // backends and lands in the table's last column (see module docs).
+        SolverKind::Direct => "naive",
         SolverKind::BarnesHut => "barnes-hut",
         SolverKind::Fmm => "fmm",
         SolverKind::Kifmm => "kifmm",
     }
 }
 
-/// Backends benched at source count `n`: the `O(N²)` direct sum is skipped above
-/// 5k to keep the run bounded; the tree/expansion backends run at every `n`.
-fn kinds_for(n: usize) -> &'static [SolverKind] {
-    if n <= 5_000 {
-        &[
-            SolverKind::Direct,
-            SolverKind::BarnesHut,
-            SolverKind::Fmm,
-            SolverKind::Kifmm,
-        ]
-    } else {
-        &[SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm]
-    }
-}
+/// Tree/expansion backends: benched at every source count, forming a dense
+/// per-backend table.
+const TREE_KINDS: &[SolverKind] = &[SolverKind::BarnesHut, SolverKind::Fmm, SolverKind::Kifmm];
+
+/// Largest source count the `O(N²)` direct sum is benched at (kept bounded).
+const DIRECT_MAX: usize = 5_000;
 
 fn bench_build(c: &mut Criterion) {
     let cfg = SolverConfig::default().with_theta(0.5);
+    let bench_one = |group: &mut criterion::BenchmarkGroup<'_, _>, kind, n, src: &[Monopole]| {
+        group.bench_with_input(BenchmarkId::new(kind_name(kind), n), &src, |b, s| {
+            b.iter(|| black_box(build_solver(kind, black_box(s), cfg)));
+        });
+    };
+
     let mut group = c.benchmark_group("fastsum/build");
     group.sampling_mode(SamplingMode::Flat);
     // Builds are slow (kifmm ~seconds) but near-deterministic, so few samples.
     group.sample_size(10);
     for &n in SOURCE_COUNTS {
         let src = sources(n);
-        for &kind in kinds_for(n) {
-            group.bench_with_input(BenchmarkId::new(kind_name(kind), n), &src, |b, s| {
-                b.iter(|| black_box(build_solver(kind, black_box(s), cfg)));
-            });
+        for &kind in TREE_KINDS {
+            bench_one(&mut group, kind, n, &src);
+        }
+        // O(N²) baseline only below the cap; its label sorts last so the gap
+        // above the cap sits in the trailing column.
+        if n <= DIRECT_MAX {
+            bench_one(&mut group, SolverKind::Direct, n, &src);
         }
     }
     group.finish();
@@ -96,15 +104,24 @@ fn bench_build(c: &mut Criterion) {
 fn bench_query(c: &mut Criterion) {
     let cfg = SolverConfig::default().with_theta(0.5);
     let query = targets(TARGET_SIDE);
+    let bench_one = |group: &mut criterion::BenchmarkGroup<'_, _>, kind, n, src: &[Monopole]| {
+        let solver = build_solver(kind, src, cfg);
+        group.bench_with_input(BenchmarkId::new(kind_name(kind), n), &query, |b, q| {
+            b.iter(|| black_box(solver.jet_batch(black_box(q))));
+        });
+    };
+
     let mut group = c.benchmark_group("fastsum/query");
     group.sampling_mode(SamplingMode::Flat);
     for &n in SOURCE_COUNTS {
         let src = sources(n);
-        for &kind in kinds_for(n) {
-            let solver = build_solver(kind, &src, cfg);
-            group.bench_with_input(BenchmarkId::new(kind_name(kind), n), &query, |b, q| {
-                b.iter(|| black_box(solver.jet_batch(black_box(q))));
-            });
+        for &kind in TREE_KINDS {
+            bench_one(&mut group, kind, n, &src);
+        }
+        // O(N²) baseline only below the cap; its label sorts last so the gap
+        // above the cap sits in the trailing column.
+        if n <= DIRECT_MAX {
+            bench_one(&mut group, SolverKind::Direct, n, &src);
         }
     }
     group.finish();
