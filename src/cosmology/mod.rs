@@ -8,4 +8,7 @@
 //! core lacks. [`units`] carries SI constants, astrophysical units, and Planckian-unit
 //! conversions.
 
+pub mod model;
 pub mod units;
+
+pub use model::Cosmology;
