@@ -60,6 +60,7 @@ available to the linker (notably `libiconv` on macOS).
 ```sh
 cargo run --example pixelgrid_viz
 cargo run --example meshgrid_viz
+cargo run --example meshgrid_texturize
 cargo run --example gradient_viz
 ```
 
