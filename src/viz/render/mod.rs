@@ -118,3 +118,60 @@ impl RenderOptions {
 pub fn validate_options(opt: &RenderOptions) -> Result<()> {
     opt.validate()
 }
+
+/* ============ Unit tests ================================================= */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_maps_every_supported_name() {
+        let cases = [
+            ("nearest", FilterType::Nearest),
+            ("Triangle", FilterType::Triangle),
+            ("CatmullRom", FilterType::CatmullRom),
+            ("GAUSSIAN", FilterType::Gaussian),
+            ("lanczos3", FilterType::Lanczos3),
+        ];
+        for (name, expected) in cases {
+            let mut opt = RenderOptions::default();
+            opt.sampling_type = name.to_string();
+            assert_eq!(opt.filter(), Some(expected));
+        }
+        // Unknown filter name yields None.
+        let mut opt = RenderOptions::default();
+        opt.sampling_type = "bogus".to_string();
+        assert_eq!(opt.filter(), None);
+    }
+
+    #[test]
+    fn dims_and_gradient_getters() {
+        let opt = RenderOptions::default();
+        assert_eq!(opt.width_u32(), 512);
+        assert_eq!(opt.height_u32(), 512);
+        // gradient() resolves the configured name without panicking.
+        let _ = opt.gradient();
+    }
+
+    #[test]
+    fn validate_rejects_bad_ranges_and_symlog() {
+        // vmin > vmax is rejected (via both the method and the free function).
+        let mut opt = RenderOptions::default();
+        opt.vmin = Some(1.0);
+        opt.vmax = Some(0.0);
+        assert!(opt.validate().is_err());
+        assert!(validate_options(&opt).is_err());
+
+        // Non-positive / non-finite SymLog linthresh is rejected.
+        for bad in [0.0, -1.0, f32::NAN] {
+            let opt = RenderOptions {
+                scale: RenderScale::SymLog { linthresh: bad },
+                ..RenderOptions::default()
+            };
+            assert!(opt.validate().is_err());
+        }
+
+        // A valid configuration passes.
+        assert!(RenderOptions::default().validate().is_ok());
+    }
+}
