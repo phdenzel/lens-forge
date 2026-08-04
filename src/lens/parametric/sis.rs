@@ -2,12 +2,19 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Singular isothermal sphere (SIS) lens.
+//!
+//! Resource: Turner, Ostriker & Gott, The statistics of gravitational lenses: the
+//! distributions of image angular separations and lens redshifts, ApJ 284 (1984),
+//! [DOI:10.1086/162379](https://doi.org/10.1086/162379)
+//!
+//! An SIS of Einstein radius $\theta_E$ at centre $c$ (with $r = |\theta - c|$):
+//! potential $\psi = \theta_E r$, deflection $\alpha = \theta_E (\theta - c)/r$, and
+//! convergence $\kappa = \theta_E/(2r)$.
 
 use crate::grid::Point2D;
 use crate::lens::model::{LensJet, LensModel};
 
-/// A singular isothermal sphere of Einstein radius θ_E: ψ = θ_E|θ−c|,
-/// α = θ_E (θ−c)/|θ−c|, κ = θ_E/(2|θ−c|).
+/// A singular isothermal sphere of Einstein radius `theta_e` centred at `center`.
 pub struct SIS {
     center: Point2D,
     theta_e: f64,

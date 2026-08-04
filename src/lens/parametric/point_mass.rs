@@ -2,12 +2,19 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Point-mass lens.
+//!
+//! Resource: Einstein, Lens-Like Action of a Star by the Deviation of Light in the
+//! Gravitational Field, Science 84 (1936),
+//! [DOI:10.1126/science.84.2188.506](https://doi.org/10.1126/science.84.2188.506)
+//!
+//! A point mass of Einstein radius $\theta_E$ at centre $c$ (with $r = |\theta - c|$):
+//! potential $\psi = \theta_E^2 \ln r$, deflection $\alpha = \theta_E^2 (\theta - c)/r^2$,
+//! and $\kappa = 0$ away from the (singular) centre.
 
 use crate::grid::Point2D;
 use crate::lens::model::{LensJet, LensModel};
 
-/// A point mass of Einstein radius θ_E: ψ = θ_E² ln|θ−c|, α = θ_E² (θ−c)/|θ−c|²,
-/// with κ = 0 everywhere except the (singular) centre.
+/// A point mass of Einstein radius `theta_e` centred at `center`.
 pub struct PointMass {
     center: Point2D,
     theta_e: f64,

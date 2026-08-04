@@ -2,15 +2,22 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Singular isothermal ellipsoid (SIE) lens.
+//!
+//! Resource: Kormann, Schneider & Bartelmann, Isothermal elliptical gravitational
+//! lens models, A&A 284 (1994),
+//! [ADS:1994A&A...284..285K](https://ui.adsabs.harvard.edu/abs/1994A%26A...284..285K)
+//!
+//! In the lens-aligned frame with axis ratio $q$ and $\psi = \sqrt{q^2 x^2 + y^2}$, the
+//! deflection is $\alpha_x = a \arctan(b x/\psi)$,
+//! $\alpha_y = a\,\operatorname{arctanh}(b y/\psi)$ with $a = \theta_E\sqrt{q}/\sqrt{1-q^2}$
+//! and $b = \sqrt{1-q^2}$, and the convergence is $\kappa = \theta_E\sqrt{q}/(2\psi)$.
+//! The $q \to 1$ limit reduces to the [`SIS`](super::SIS).
 
 use crate::grid::Point2D;
 use crate::lens::model::{LensJet, LensModel};
 
-/// A singular isothermal ellipsoid (Kormann et al. 1994) of Einstein radius θ_E,
-/// axis ratio `q` ∈ (0, 1], and major-axis position angle `phi`.
-///
-/// In the lens-aligned frame the convergence is κ = θ_E√q / (2√(q²x² + y²)); the
-/// `q → 1` limit reduces to the [`SIS`](super::SIS).
+/// A singular isothermal ellipsoid of Einstein radius `theta_e`, axis ratio `q`
+/// ∈ (0, 1], and major-axis position angle `phi`, centred at `center`.
 pub struct SIE {
     center: Point2D,
     theta_e: f64,
