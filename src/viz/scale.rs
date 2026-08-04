@@ -1169,4 +1169,193 @@ mod tests {
             assert!(approx(v, v_rev, 1e-6));
         }
     }
+
+    /* ============ auto_range ============================================= */
+    #[test]
+    fn auto_range_ignores_non_finite_and_reports_none() {
+        use super::auto_range;
+        // Finite min/max extracted, non-finite skipped.
+        let (lo, hi) = auto_range(&[f32::NAN, 1.0, f32::INFINITY, -2.0, 3.0]).unwrap();
+        assert!(approx(lo, -2.0, 1e-10));
+        assert!(approx(hi, 3.0, 1e-10));
+        // No finite values -> None (covers both the empty and all-NaN cases).
+        assert!(auto_range(&[]).is_none());
+        assert!(auto_range(&[f32::NAN, f32::INFINITY, f32::NEG_INFINITY]).is_none());
+    }
+
+    /* ============ RenderScale _or fallback wrappers ====================== */
+    #[test]
+    fn render_scale_or_wrappers() {
+        // Valid inputs pass through, invalid inputs hit the fallback for every kernel.
+        assert!(approx(RenderScale::apply_linear_or(2.0, -1.0), 2.0, 1e-10));
+        assert!(approx(RenderScale::apply_linear_or(f32::NAN, -1.0), -1.0, 1e-10));
+        assert!(approx(RenderScale::revert_linear_or(2.0, -1.0), 2.0, 1e-10));
+        assert!(approx(RenderScale::revert_linear_or(f32::NAN, -1.0), -1.0, 1e-10));
+
+        assert!(approx(RenderScale::apply_log10_or(10.0, -1.0), 1.0, 1e-10));
+        assert!(approx(RenderScale::apply_log10_or(-5.0, -1.0), -1.0, 1e-10));
+        assert!(approx(RenderScale::revert_log10_or(2.0, -1.0), 100.0, 1e-6));
+        assert!(approx(RenderScale::revert_log10_or(400.0, -1.0), -1.0, 1e-10));
+
+        assert!(approx(RenderScale::apply_symlog_or(1.0, 2.0, -1.0), 1.0, 1e-10));
+        assert!(approx(RenderScale::apply_symlog_or(5.0, 0.0, -1.0), -1.0, 1e-10));
+        assert!(approx(RenderScale::revert_symlog_or(1.0, 2.0, -1.0), 1.0, 1e-10));
+        assert!(approx(RenderScale::revert_symlog_or(5.0, 0.0, -1.0), -1.0, 1e-10));
+    }
+
+    #[test]
+    fn revert_symlog_rejects_bad_threshold() {
+        // Non-positive linthresh -> None (early-return branch in revert_symlog).
+        assert!(RenderScale::revert_symlog(5.0, 0.0).is_none());
+        assert!(RenderScale::revert_symlog(5.0, f32::NAN).is_none());
+    }
+
+    #[test]
+    fn try_apply_revert_ok_paths_for_all_modes() {
+        // Exercise the Ok arms of try_apply/try_revert for Linear and Log10.
+        assert!(approx(RenderScale::Linear.try_apply(3.0).unwrap(), 3.0, 1e-10));
+        assert!(approx(RenderScale::Linear.try_revert(3.0).unwrap(), 3.0, 1e-10));
+        assert!(approx(RenderScale::Log10.try_apply(100.0).unwrap(), 2.0, 1e-6));
+        assert!(approx(RenderScale::Log10.try_revert(2.0).unwrap(), 100.0, 1e-4));
+    }
+
+    /* ============ RenderScale slice invalid-threshold + parallel ========= */
+    #[test]
+    fn slice_ops_symlog_invalid_threshold_fill_fallback() {
+        let scale = RenderScale::SymLog { linthresh: 0.0 };
+        let input = vec![1.0, -2.0, 3.0];
+        let fb = -7.0;
+
+        let mut out = vec![0.0; 3];
+        scale.apply_slice(&input, &mut out, fb);
+        assert!(out.iter().all(|&v| approx(v, fb, 1e-10)));
+
+        let mut out = vec![0.0; 3];
+        scale.par_apply_slice(&input, &mut out, fb);
+        assert!(out.iter().all(|&v| approx(v, fb, 1e-10)));
+
+        let mut vals = input.clone();
+        scale.apply_slice_inplace(&mut vals, fb);
+        assert!(vals.iter().all(|&v| approx(v, fb, 1e-10)));
+
+        let mut vals = input.clone();
+        scale.par_apply_slice_inplace(&mut vals, fb);
+        assert!(vals.iter().all(|&v| approx(v, fb, 1e-10)));
+    }
+
+    #[test]
+    fn par_slice_ops_match_serial_for_all_modes() {
+        let mut input: Vec<f32> = (0..2000)
+            .map(|i| (i as f32 - 1000.0) * 0.1)
+            .collect();
+        // Sprinkle non-finite values so the fallback branches (incl. the Linear
+        // parallel in-place path) are exercised for every mode.
+        input[3] = f32::NAN;
+        input[7] = f32::INFINITY;
+        let fb = -99.0;
+        for scale in [
+            RenderScale::Linear,
+            RenderScale::Log10,
+            RenderScale::SymLog { linthresh: 2.0 },
+        ] {
+            let mut seq = vec![0.0; input.len()];
+            let mut par = vec![0.0; input.len()];
+            scale.apply_slice(&input, &mut seq, fb);
+            scale.par_apply_slice(&input, &mut par, fb);
+            assert_eq!(seq, par);
+
+            // in-place variants agree with their by-buffer counterparts
+            let mut seq_ip = input.clone();
+            let mut par_ip = input.clone();
+            scale.apply_slice_inplace(&mut seq_ip, fb);
+            scale.par_apply_slice_inplace(&mut par_ip, fb);
+            assert_eq!(seq_ip, par_ip);
+            assert_eq!(seq_ip, seq);
+        }
+    }
+
+    #[test]
+    fn parallel_threshold_per_mode() {
+        assert_eq!(RenderScale::Linear.parallel_threshold(1000), usize::MAX);
+        assert_eq!(RenderScale::Log10.parallel_threshold(1000), 1000);
+        assert_eq!(
+            RenderScale::SymLog { linthresh: 1.0 }.parallel_threshold(42),
+            42
+        );
+    }
+
+    /* ============ Normalize error / edge paths =========================== */
+    #[test]
+    fn normalize_try_apply_errors() {
+        let n = Normalize::default().with_lims(0.0, 10.0).unwrap();
+        // Non-finite input -> NumericalError.
+        assert!(matches!(
+            n.try_apply(f32::NAN),
+            Err(LensForgeError::NumericalError(_))
+        ));
+        // Valid input -> Ok.
+        assert!(approx(n.try_apply(5.0).unwrap(), 0.5, 1e-10));
+    }
+
+    #[test]
+    fn normalize_revert_and_try_revert() {
+        // revert returns NaN on non-finite input.
+        let n = Normalize::default().with_clamp(false).with_lims(0.0, 10.0).unwrap();
+        assert!(n.revert(f32::NAN).is_nan());
+        // Round-trip when clamping is off.
+        assert!(approx(n.try_revert(0.5).unwrap(), 5.0, 1e-10));
+
+        // try_revert rejects non-finite input.
+        assert!(matches!(
+            n.try_revert(f32::INFINITY),
+            Err(LensForgeError::NumericalError(_))
+        ));
+
+        // try_revert refuses to run when clamp is enabled.
+        let c = Normalize::default().with_lims(0.0, 10.0).unwrap();
+        assert!(matches!(
+            c.try_revert(0.5),
+            Err(LensForgeError::InvalidOption(_))
+        ));
+    }
+
+    #[test]
+    fn normalize_slice_unclamped_and_par_variants_handle_nan() {
+        let norm = Normalize::default()
+            .with_clamp(false)
+            .with_lims(0.0, 10.0)
+            .unwrap();
+        let input = vec![-5.0, 0.0, f32::NAN, 5.0, 15.0];
+
+        // Serial unclamped path (covers the NaN branch at line ~577).
+        let mut out = vec![0.0; input.len()];
+        norm.apply_slice(&input, &mut out);
+        assert!(approx(out[0], -0.5, 1e-10));
+        assert!(out[2].is_nan());
+        assert!(approx(out[4], 1.5, 1e-10));
+
+        // Parallel by-buffer matches serial for both clamp settings.
+        for clamp in [true, false] {
+            let norm = Normalize::default()
+                .with_clamp(clamp)
+                .with_lims(0.0, 10.0)
+                .unwrap();
+            let mut seq = vec![0.0; input.len()];
+            let mut par = vec![0.0; input.len()];
+            norm.apply_slice(&input, &mut seq);
+            norm.par_apply_slice(&input, &mut par);
+            for (a, b) in seq.iter().zip(par.iter()) {
+                assert!((a.is_nan() && b.is_nan()) || approx(*a, *b, 1e-10));
+            }
+
+            // In-place serial and parallel agree with the by-buffer result.
+            let mut seq_ip = input.clone();
+            let mut par_ip = input.clone();
+            norm.apply_slice_inplace(&mut seq_ip);
+            norm.par_apply_slice_inplace(&mut par_ip);
+            for (a, b) in seq_ip.iter().zip(par_ip.iter()) {
+                assert!((a.is_nan() && b.is_nan()) || approx(*a, *b, 1e-10));
+            }
+        }
+    }
 }
