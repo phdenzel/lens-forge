@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Parametric mass profiles, each a closed-form [`LensModel`](crate::lens::LensModel).
 
+pub mod nfw;
 pub mod point_mass;
 pub mod sie;
 pub mod sis;
 
+pub use nfw::NFW;
 pub use point_mass::PointMass;
 pub use sie::SIE;
 pub use sis::SIS;
