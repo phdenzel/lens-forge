@@ -41,6 +41,9 @@ struct Triangle {
 /// index triples into the input points, with matching neighbour links.
 pub(crate) struct Triangulation {
     pub triangles: Vec<[usize; 3]>,
+    /// Per-triangle adjacency; part of the output contract (validated by tests),
+    /// not yet consumed by production code.
+    #[allow(dead_code)]
     pub neighbors: Vec<[usize; 3]>,
 }
 
