@@ -58,7 +58,7 @@ available to the linker (notably `libiconv` on macOS).
 ### Examples
 
 ```sh
-cargo run --example pixel_grid_viz
+cargo run --example pixelgrid_viz
 cargo run --example gradient_viz
 ```
 
