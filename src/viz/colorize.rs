@@ -341,6 +341,34 @@ mod tests {
     }
 
     #[test]
+    fn test_par_map_to_rgba_slice_matches_serial() {
+        let gradient = get_gradient("inferno");
+        let values: Vec<f32> = (0..5000).map(|i| i as f32 / 4999.0).collect();
+
+        let serial = map_to_rgba_slice(&values, gradient.as_ref());
+        let parallel = par_map_to_rgba_slice(&values, gradient.as_ref());
+
+        assert_eq!(serial, parallel);
+        assert_eq!(parallel.len(), values.len());
+    }
+
+    #[test]
+    fn test_par_map_to_rgba_slice_or_matches_serial() {
+        let gradient = get_gradient("plasma");
+        let invalid = Some([1_u8, 2_u8, 3_u8, 4_u8]);
+        let mut values: Vec<f32> = (0..5000).map(|i| i as f32 / 4999.0).collect();
+        values[10] = f32::NAN;
+        values[20] = f32::INFINITY;
+
+        let serial = map_to_rgba_slice_or(&values, gradient.as_ref(), invalid);
+        let parallel = par_map_to_rgba_slice_or(&values, gradient.as_ref(), invalid);
+
+        assert_eq!(serial, parallel);
+        assert_eq!(parallel[10], invalid.unwrap());
+        assert_eq!(parallel[20], invalid.unwrap());
+    }
+
+    #[test]
     #[should_panic(expected = "must have same length")]
     fn test_length_mismatch_panics() {
         let gradient = get_gradient("viridis");
