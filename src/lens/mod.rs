@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens models — parametric, external-field, and free-form, all behind [`LensModel`].
 
+pub mod mesh;
 pub mod model;
-pub mod voronoi;
 
+pub use mesh::{MeshLens, VoronoiCell};
 pub use model::LensModel;
-pub use voronoi::{VoronoiCell, VoronoiLens};

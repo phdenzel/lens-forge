@@ -47,13 +47,13 @@ impl VoronoiCell {
 ///
 /// The deflection field is delegated to a pluggable [`FieldSolver`] backend; the
 /// convergence is read directly from the containing cell.
-pub struct VoronoiLens {
+pub struct MeshLens {
     sites: Vec<Point2D>,
     kappa: Vec<f64>,
     solver: Box<dyn FieldSolver + Send + Sync>,
 }
 
-impl VoronoiLens {
+impl MeshLens {
     /// Build a lens from Voronoi cells using the default backend (Barnes–Hut).
     pub fn new(cells: &[VoronoiCell]) -> Result<Self> {
         Self::with_solver(cells, SolverKind::BarnesHut, SolverConfig::default())
@@ -67,7 +67,7 @@ impl VoronoiLens {
     pub fn with_solver(cells: &[VoronoiCell], kind: SolverKind, cfg: SolverConfig) -> Result<Self> {
         if cells.is_empty() {
             return Err(LensForgeError::invalid_parameter(
-                "VoronoiLens requires at least one cell",
+                "MeshLens requires at least one cell",
             ));
         }
         for (i, c) in cells.iter().enumerate() {
@@ -113,7 +113,7 @@ impl VoronoiLens {
     }
 }
 
-impl LensModel for VoronoiLens {
+impl LensModel for MeshLens {
     /// Convergence at `theta` — the κ of the containing Voronoi cell, i.e. the
     /// nearest site (that is exactly the Voronoi definition).
     fn convergence(&self, theta: Point2D) -> f64 {
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn single_cell_matches_point_mass() {
         let m = 0.5 * 0.8;
-        let lens = VoronoiLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, 0.8)]).unwrap();
+        let lens = MeshLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, 0.8)]).unwrap();
         let a = lens.deflection(Point2D::new(2.0, 0.0));
         let expected = m * FRAC_1_PI * 0.5;
         assert!(
@@ -168,7 +168,7 @@ mod tests {
             VoronoiCell::new(Point2D::new(-1.0, 0.0), 0.2, 1.0),
             VoronoiCell::new(Point2D::new(1.0, 0.0), 0.9, 1.0),
         ];
-        let lens = VoronoiLens::new(&cells).unwrap();
+        let lens = MeshLens::new(&cells).unwrap();
         assert_eq!(lens.convergence(Point2D::new(-0.9, 0.1)), 0.2);
         assert_eq!(lens.convergence(Point2D::new(0.9, -0.3)), 0.9);
     }
@@ -185,10 +185,10 @@ mod tests {
                 )
             })
             .collect();
-        let bh = VoronoiLens::with_solver(&cells, SolverKind::BarnesHut, SolverConfig::default())
+        let bh = MeshLens::with_solver(&cells, SolverKind::BarnesHut, SolverConfig::default())
             .unwrap();
         let direct =
-            VoronoiLens::with_solver(&cells, SolverKind::Direct, SolverConfig::default()).unwrap();
+            MeshLens::with_solver(&cells, SolverKind::Direct, SolverConfig::default()).unwrap();
         assert_eq!(bh.solver_name(), "barnes-hut");
         assert_eq!(direct.solver_name(), "direct");
         let theta = Point2D::new(3.0, 2.0);
@@ -202,7 +202,7 @@ mod tests {
         let cells: Vec<VoronoiCell> = (0..100)
             .map(|i| VoronoiCell::new(Point2D::new((i as f64).cos(), (i as f64).sin()), 0.3, 0.2))
             .collect();
-        let lens = VoronoiLens::new(&cells).unwrap();
+        let lens = MeshLens::new(&cells).unwrap();
         let theta = Point2D::new(2.5, 0.0);
         assert!(lens.ray_trace(theta).is_finite());
         assert!(lens.magnification(theta).is_finite());
@@ -210,9 +210,9 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_bad_cells() {
-        assert!(VoronoiLens::new(&[]).is_err());
-        assert!(VoronoiLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, 0.0)]).is_err());
-        assert!(VoronoiLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, -1.0)]).is_err());
-        assert!(VoronoiLens::new(&[VoronoiCell::new(Point2D::origin(), f64::NAN, 1.0)]).is_err());
+        assert!(MeshLens::new(&[]).is_err());
+        assert!(MeshLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, 0.0)]).is_err());
+        assert!(MeshLens::new(&[VoronoiCell::new(Point2D::origin(), 0.5, -1.0)]).is_err());
+        assert!(MeshLens::new(&[VoronoiCell::new(Point2D::origin(), f64::NAN, 1.0)]).is_err());
     }
 }
