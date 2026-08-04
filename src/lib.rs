@@ -8,7 +8,7 @@
 
 pub mod fastsum;
 pub mod grid;
-pub mod model;
+pub mod lens;
 pub mod solver;
 pub(crate) mod tree;
 pub(crate) mod utils;

@@ -12,7 +12,7 @@
 
 use crate::fastsum::{FieldSolver, Monopole, SolverConfig, SolverKind, build_solver};
 use crate::grid::Point2D;
-use crate::model::lens::LensModel;
+use crate::lens::model::LensModel;
 use crate::{LensForgeError, Result};
 
 /// A single Voronoi cell of the lens plane.

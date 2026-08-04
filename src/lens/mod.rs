@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Lens and source models.
+//! Lens models — parametric, external-field, and free-form, all behind [`LensModel`].
 
-pub mod lens;
+pub mod model;
 pub mod voronoi;
-// pub mod source;
 
-pub use lens::LensModel;
+pub use model::LensModel;
 pub use voronoi::{VoronoiCell, VoronoiLens};
-// pub use lens::{PointMass, SIS, NFW};
-// pub use source::{SourceGrid, SourcePoint};
