@@ -513,7 +513,6 @@ impl Normalize {
             ));
         }
         let normalized = self.apply(v);
-        println!("Normalized {}", normalized);
         if !normalized.is_finite() {
             return Err(LensForgeError::numerical_error(
                 "Normalize::apply returned non-finite result.",
