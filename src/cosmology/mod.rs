@@ -8,7 +8,9 @@
 //! core lacks. [`units`] carries SI constants, astrophysical units, and Planckian-unit
 //! conversions.
 
+pub mod flat_lcdm;
 pub mod model;
 pub mod units;
 
+pub use flat_lcdm::FlatLCDM;
 pub use model::Cosmology;
