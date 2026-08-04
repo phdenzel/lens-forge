@@ -117,6 +117,17 @@ mod tests {
     }
 
     #[test]
+    fn brightness_batch_uses_the_default_map() {
+        // Parametric sources keep the trait's default brightness_batch.
+        let src = Sersic::new(Point2D::origin(), 2.0, 1.5, 2.0, 0.7, 0.3);
+        let pts = [Point2D::new(0.4, -0.2), Point2D::new(-1.1, 0.9)];
+        let batch = src.brightness_batch(&pts);
+        for (b, &p) in batch.iter().zip(&pts) {
+            assert_eq!(*b, src.brightness(p));
+        }
+    }
+
+    #[test]
     fn exponential_disk_decays_as_expected() {
         // n = 1: I(2 r_e)/I(r_e) = exp(-b_1 (2 - 1)) = exp(-b_1).
         let src = Sersic::new(Point2D::origin(), 1.0, 1.0, 1.0, 1.0, 0.0);
