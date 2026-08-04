@@ -7,7 +7,7 @@
 //! avoiding repeated allocations when rendering multiple fields.
 
 use crate::viz::colorize::{map_to_rgba_inplace, par_map_to_rgba_inplace};
-use crate::viz::render::{MeshField, RasterField, RenderOptions};
+use crate::viz::render::{RasterField, RenderOptions};
 use crate::viz::scale::{Normalize, RenderScale, auto_range};
 use crate::{LensForgeError, Result};
 use image::RgbaImage;

@@ -7,39 +7,15 @@
 //! * **raster** high-performance path for uniform pixel rendering
 //! * **mesh** path for explicit rendering of adaptive and irregular (polygonal cell) grids
 pub mod context;
-pub mod mesh;
+mod mesh;
 pub mod raster;
 use crate::viz::gradients::get_gradient;
 use crate::viz::scale::RenderScale;
 use crate::{LensForgeError, Result};
 use colorgrad::Gradient;
 use image::imageops::FilterType;
-use mesh::ToMesh;
-pub use mesh::{MeshField, texturize};
-use raster::ToRaster;
 pub use raster::{RasterField, RasterizeParams, rasterize, rasterize_with, validate_raster};
 use std::num::NonZeroU32;
-
-/// Coordinate bounds for rendering.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RenderBounds {
-    /// Lower-left corner (xmin, ymin)
-    pub min: [f64; 2],
-    /// Upper-right corner (xmax, ymax)
-    pub max: [f64; 2],
-}
-
-impl RenderBounds {
-    /// Returns `true` if bounds are finite and non-degenerate
-    pub fn is_valid(&self) -> bool {
-        self.min[0].is_finite()
-            && self.min[1].is_finite()
-            && self.max[0].is_finite()
-            && self.max[1].is_finite()
-            && (self.max[0] > self.min[0])
-            && (self.max[1] > self.min[1])
-    }
-}
 
 /// Shared rendering configuration.
 #[derive(Clone, Debug)]
@@ -52,6 +28,7 @@ pub struct RenderOptions {
     pub scale: RenderScale,
     /// Explicit lower normalization bound (in scaled space)
     pub vmin: Option<f32>,
+    /// Explicit higher normalization bound (in scaled space)
     pub vmax: Option<f32>,
     /// Clamp normalized values to `[0, 1]`
     pub clamp: bool,
@@ -132,12 +109,6 @@ impl RenderOptions {
         }
         Ok(())
     }
-}
-
-/// High-level: a thing we can render
-pub enum RenderInput<'a> {
-    Raster(&'a dyn ToRaster),
-    Mesh(&'a dyn ToMesh),
 }
 
 /// Validate common option invariants.

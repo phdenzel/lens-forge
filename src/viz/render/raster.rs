@@ -12,7 +12,6 @@
 //!   &params)?`.
 
 use crate::grid::{BBox, MeshGrid, PixelGrid, Point2D, ScalarField2D};
-use crate::viz::render::RenderBounds;
 use crate::{LensForgeError, Result};
 use std::borrow::Cow;
 use std::convert::TryFrom;
@@ -194,7 +193,7 @@ pub struct RasterizeParams {
     /// Output raster height
     pub height: NonZeroU32,
     /// Optional coordinate bounds to rasterize
-    pub bounds: Option<RenderBounds>,
+    pub bounds: Option<BBox>,
     /// Sampling strategy for conversions requiring rasterization.
     pub sampling: RasterSampling,
 }
@@ -304,10 +303,7 @@ impl RasterizeToField for MeshGrid {
     fn to_raster(&self, params: &RasterizeParams) -> Result<RasterField<'static>> {
         let w = params.width.get() as usize;
         let h = params.height.get() as usize;
-        let bbox = match params.bounds {
-            Some(b) => BBox::from_arrs(b.min, b.max),
-            None => self.bounds(),
-        };
+        let bbox = params.bounds.unwrap_or_else(|| self.bounds());
         let (min, max) = (bbox.min, bbox.max);
         let dx = (max.x - min.x) / w as f64;
         let dy = (max.y - min.y) / h as f64;
