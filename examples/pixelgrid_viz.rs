@@ -11,8 +11,8 @@ use lens_forge::viz::view::view_grid;
 use std::num::NonZeroU32;
 
 fn main() {
-    let map_size: usize = 512;
-    let render_size = map_size * 4;
+    let map_size: usize = 64;
+    let render_size = 2_048;
     let r: f64 = 2.0;
 
     let pg = PixelGrid::from_func_sq(map_size, r, |x, y| {
@@ -22,10 +22,11 @@ fn main() {
     });
 
     let opt = RenderOptions {
-        width: NonZeroU32::new((render_size as u32) / 2).unwrap(),
-        height: NonZeroU32::new((render_size as u32) / 2).unwrap(),
+        width: NonZeroU32::new(render_size as u32).unwrap(),
+        height: NonZeroU32::new(render_size as u32).unwrap(),
         gradient_name: "obscura".to_string(),
         scale: RenderScale::Linear,
+        sampling_type: "nearest".to_string(), // show pixels, not a smooth interpolation
         ..Default::default()
     };
 

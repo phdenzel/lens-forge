@@ -35,6 +35,7 @@ fn main() {
         height: NonZeroU32::new(render_size as u32).unwrap(),
         gradient_name: "obscura".to_string(),
         scale: RenderScale::Linear,
+        sampling_type: "nearest".to_string(), // show cells, not a smooth interpolation
         ..Default::default()
     };
 
