@@ -86,4 +86,4 @@ pub use ops::{FieldOps, PoissonConfig};
 pub use point::Point2D;
 pub use uniform::{BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid};
 // pub use adaptive::AdaGrid;
-pub use mesh::{MeshGrid, VoronoiMesh};
+pub use mesh::{MeshCell, MeshGrid, VoronoiMesh};

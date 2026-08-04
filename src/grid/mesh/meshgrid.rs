@@ -23,6 +23,21 @@ pub struct MeshGrid {
     values: FieldArray1D,
 }
 
+/// A read-only view of a single [`MeshGrid`] cell: its clipped polygon together
+/// with the stored value, area and centroid. Borrows the mesh geometry, so no
+/// polygon copy is made.
+#[derive(Clone, Copy, Debug)]
+pub struct MeshCell<'a> {
+    /// Clipped polygon vertices, counter-clockwise.
+    pub polygon: &'a [Point2D],
+    /// Value stored on the cell.
+    pub value: f64,
+    /// Cell area.
+    pub area: f64,
+    /// Area-weighted centroid.
+    pub centroid: Point2D,
+}
+
 impl MeshGrid {
     /// Build a mesh grid from `sites` clipped to `bbox`, with a value per site.
     ///
@@ -172,6 +187,19 @@ impl MeshGrid {
     /// Clipped polygon (counter-clockwise) of cell `i`.
     pub fn cell_polygon(&self, i: usize) -> &[Point2D] {
         self.mesh.cell_polygon(i)
+    }
+
+    /// Read-only view of cell `i`: polygon, value, area and centroid.
+    ///
+    /// # Arguments
+    /// * `i` - the cell index.
+    pub fn cell(&self, i: usize) -> MeshCell<'_> {
+        MeshCell {
+            polygon: self.cell_polygon(i),
+            value: self.value(i),
+            area: self.area(i),
+            centroid: self.centroid(i),
+        }
     }
 
     /// Voronoi neighbours of cell `i`.
@@ -787,6 +815,18 @@ mod tests {
             assert_eq!(m.neighbors(i), m.mesh().neighbors_of(i));
         }
         assert_eq!(m.centroids(), m.mesh().centroids());
+    }
+
+    #[test]
+    fn cell_view_matches_individual_accessors() {
+        let m = demo();
+        for i in 0..m.len() {
+            let c = m.cell(i);
+            assert_eq!(c.polygon, m.cell_polygon(i));
+            assert_eq!(c.value, m.value(i));
+            assert_eq!(c.area, m.area(i));
+            assert_eq!(c.centroid, m.centroid(i));
+        }
     }
 
     #[test]

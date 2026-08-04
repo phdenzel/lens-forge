@@ -31,7 +31,7 @@ pub use voronoi::VoronoiMesh;
 
 mod faces;
 mod meshgrid;
-pub use meshgrid::MeshGrid;
+pub use meshgrid::{MeshCell, MeshGrid};
 
 mod diff;
 mod fieldops;
