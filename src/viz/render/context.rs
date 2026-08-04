@@ -813,4 +813,35 @@ mod tests {
             assert_eq!(img.height(), h, "Height mismatch for {}x{}", w, h);
         }
     }
+
+    #[test]
+    fn render_errors_when_auto_vmin_exceeds_explicit_vmax() {
+        // Data sits at 10, but vmax is pinned below it; auto vmin (10) then
+        // exceeds vmax (5), hitting the determine_range guard.
+        let mut ctx = RasterContext::new();
+        let field = create_constant_field(8, 8, 10.0);
+        let mut opt = default_options();
+        opt.vmin = None;
+        opt.vmax = Some(5.0);
+
+        assert!(matches!(
+            ctx.render(&field, &opt),
+            Err(LensForgeError::InvalidOption(_))
+        ));
+    }
+
+    #[test]
+    fn to_image_rejects_dimension_mismatch() {
+        // Populate the colour buffer with a valid render, then request an image
+        // whose pixel count disagrees with the buffer length.
+        let mut ctx = RasterContext::new();
+        let field = create_test_field(4, 4);
+        let opt = options_with_dims(4, 4);
+        ctx.render(&field, &opt).unwrap();
+
+        assert!(matches!(
+            ctx.to_image(4, 5),
+            Err(LensForgeError::DimensionMismatch { .. })
+        ));
+    }
 }
