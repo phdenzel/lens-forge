@@ -10,5 +10,5 @@ pub mod pixel;
 
 pub use mesh::MeshLens;
 pub use model::{LensJet, LensModel, MassElement};
-pub use parametric::{PointMass, SIS};
+pub use parametric::{PointMass, SIE, SIS};
 pub use pixel::PixelLens;

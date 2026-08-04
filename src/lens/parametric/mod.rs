@@ -4,7 +4,9 @@
 //! Parametric mass profiles, each a closed-form [`LensModel`](crate::lens::LensModel).
 
 pub mod point_mass;
+pub mod sie;
 pub mod sis;
 
 pub use point_mass::PointMass;
+pub use sie::SIE;
 pub use sis::SIS;
