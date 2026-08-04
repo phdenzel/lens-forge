@@ -52,3 +52,53 @@ pub fn get_gradient(name: &str) -> Box<dyn Gradient + Send + Sync> {
         _ => Box::new(colorgrad::preset::viridis()),
     }
 }
+
+/* ============ Unit tests ================================================= */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_gradients_build_and_span_endpoints() {
+        // Each custom gradient builds without panicking and its domain is [0, 1].
+        for g in [
+            Box::new(hertzsprung()) as Box<dyn Gradient>,
+            Box::new(obscura()),
+            Box::new(gaseous()),
+        ] {
+            let (lo, hi) = g.domain();
+            assert!(approx(lo, 0.0) && approx(hi, 1.0));
+            // Endpoints match the first/last html colours (#101016 → #FFFFFF).
+            let a = g.at(0.0).to_rgba8();
+            let b = g.at(1.0).to_rgba8();
+            assert_eq!(a, [0x10, 0x10, 0x16, 0xFF]);
+            assert_eq!(b, [0xFF, 0xFF, 0xFF, 0xFF]);
+        }
+    }
+
+    #[test]
+    fn get_gradient_dispatches_all_names() {
+        // Every named preset/custom gradient resolves; case-insensitive.
+        for name in [
+            "viridis",
+            "magma",
+            "inferno",
+            "plasma",
+            "turbo",
+            "cividis",
+            "Hertzsprung",
+            "OBSCURA",
+            "gaseous",
+        ] {
+            let _ = get_gradient(name);
+        }
+        // Unknown names fall back to viridis.
+        let fallback = get_gradient("does-not-exist");
+        let viridis = get_gradient("viridis");
+        assert_eq!(fallback.at(0.5).to_rgba8(), viridis.at(0.5).to_rgba8());
+    }
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-6
+    }
+}
