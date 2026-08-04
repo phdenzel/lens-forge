@@ -11,9 +11,11 @@
 //! * `binomial` — Pascal's-triangle binomial-coefficient table.
 //! * `svd` — one-sided Jacobi SVD and a Tikhonov-regularized pseudo-inverse
 //!   for small, ill-conditioned dense systems.
+//! * `quad` — adaptive Simpson quadrature for smooth 1D integrands.
 
 pub(crate) mod binomial;
 pub(crate) mod double_double;
 pub(crate) mod error_free;
+pub(crate) mod quad;
 pub(crate) mod rng;
 pub(crate) mod svd;
