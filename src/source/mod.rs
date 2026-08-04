@@ -6,8 +6,10 @@
 //! Parametric profiles and a free-form field representation share the trait; all
 //! work in scaled/dimensionless angular units (β a source-plane position).
 
+pub mod field;
 pub mod model;
 pub mod parametric;
 
+pub use field::SourceField;
 pub use model::SourceModel;
 pub use parametric::{Gaussian, Sersic};
