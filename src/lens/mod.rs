@@ -3,12 +3,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens models, all behind the common [`LensModel`] trait.
 
+pub mod composite;
 pub mod external;
 pub mod mesh;
 pub mod model;
 pub mod parametric;
 pub mod pixel;
 
+pub use composite::CompositeLens;
 pub use external::ExternalShear;
 pub use mesh::MeshLens;
 pub use model::{LensJet, LensModel, MassElement};
