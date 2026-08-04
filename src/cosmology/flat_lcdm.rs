@@ -4,17 +4,17 @@
 //! Flat ΛCDM background cosmology.
 //!
 //! A spatially flat model with matter, radiation, and a cosmological constant
-//! (Saha, *magicenv* §8.3, eq. 8.17):
+//! (Saha, The Astronomers' Magic Envelope, OUP, Ch. 8.3, eq. 8.17):
 //! $E(z) = \sqrt{\Omega_m(1+z)^3 + \Omega_r(1+z)^4 + \Omega_\Lambda}$ with
-//! $\Omega_\Lambda = 1 - \Omega_m - \Omega_r$ and $\Omega_k = 0$. The radiation term is small
-//! today ($\Omega_r \sim 10^{-4}$) but grows as $(1+z)^4$ at high redshift. The first
-//! [`Cosmology`] implementation.
+//! $\Omega_\Lambda = 1 - \Omega_m - \Omega_r$ and $\Omega_k = 0$. The radiation
+//! term is small today ($\Omega_r \sim 10^{-4}$) but grows as $(1+z)^4$ at high
+//! redshift. The concordance [`Cosmology`] implementation.
 
 use crate::cosmology::model::Cosmology;
 use crate::cosmology::units;
 
-/// A flat ΛCDM cosmology of Hubble constant `h0` (km/s/Mpc), matter density `omega_m`,
-/// and radiation density `omega_r`.
+/// A flat ΛCDM cosmology of Hubble constant `h0` (km/s/Mpc),
+/// matter density `omega_m`, and radiation density `omega_r`.
 pub struct FlatLCDM {
     h0: f64,
     omega_m: f64,
@@ -48,8 +48,45 @@ impl FlatLCDM {
 
     /// The Planck 2018 flat ΛCDM parameters (H₀ = 67.66, Ω_m = 0.3111, Ω_r = 9.14e-5;
     /// Planck 2018 VI, radiation from photons + neutrinos at Neff = 3.046).
+    /// Also the [`Default`](Self::default).
     pub fn planck18() -> Self {
         Self::new(67.66, 0.3111, 9.14e-5)
+    }
+
+    /// Set the Hubble constant H₀ (km/s/Mpc) (chainable).
+    ///
+    /// # Arguments
+    /// * `h0_km_s_mpc` - Hubble constant H₀ (km/s/Mpc).
+    pub fn with_h0(mut self, h0_km_s_mpc: f64) -> Self {
+        self.h0 = h0_km_s_mpc;
+        self
+    }
+
+    /// Set the Hubble constant from a value in atto-Hertz (chainable).
+    ///
+    /// # Arguments
+    /// * `h0_ahz` - Hubble constant H₀ (atto-Hertz).
+    pub fn with_h0_ahz(mut self, h0_ahz: f64) -> Self {
+        self.h0 = h0_ahz * 1e-18 * units::MPC / 1e3;
+        self
+    }
+
+    /// Set the matter density parameter Ω_m (chainable).
+    ///
+    /// # Arguments
+    /// * `omega_m` - matter density parameter Ω_m.
+    pub fn with_omega_m(mut self, omega_m: f64) -> Self {
+        self.omega_m = omega_m;
+        self
+    }
+
+    /// Set the radiation density parameter Ω_r (chainable).
+    ///
+    /// # Arguments
+    /// * `omega_r` - radiation density parameter Ω_r.
+    pub fn with_omega_r(mut self, omega_r: f64) -> Self {
+        self.omega_r = omega_r;
+        self
     }
 
     /// Matter density parameter Ω_m.
@@ -65,6 +102,13 @@ impl FlatLCDM {
     /// Dark-energy density parameter $\Omega_\Lambda = 1 - \Omega_m - \Omega_r$.
     pub fn omega_l(&self) -> f64 {
         1.0 - self.omega_m - self.omega_r
+    }
+}
+
+impl Default for FlatLCDM {
+    /// The Planck 2018 concordance parameters ([`planck18`](Self::planck18)).
+    fn default() -> Self {
+        Self::planck18()
     }
 }
 
@@ -127,6 +171,26 @@ mod tests {
         let low = with_r.e(1.0) - without_r.e(1.0);
         let high = with_r.e(10.0) - without_r.e(10.0);
         assert!(low > 0.0 && high > low, "low={low} high={high}");
+    }
+
+    #[test]
+    fn default_is_planck18_and_with_methods_chain() {
+        // Default matches the Planck 2018 preset.
+        let d = FlatLCDM::default();
+        assert!((d.h0() - 67.66).abs() < 1e-12);
+        assert!((d.omega_m() - 0.3111).abs() < 1e-12);
+        assert!((d.omega_r() - 9.14e-5).abs() < 1e-12);
+        // Chainable overrides start from the default and replace only what is set.
+        let custom = FlatLCDM::default()
+            .with_h0(70.0)
+            .with_omega_m(0.3)
+            .with_omega_r(0.0);
+        assert!((custom.h0() - 70.0).abs() < 1e-12);
+        assert!((custom.omega_m() - 0.3).abs() < 1e-12);
+        assert_eq!(custom.omega_r(), 0.0);
+        // with_h0_ahz sets H0 via the atto-Hertz path.
+        let via_ahz = FlatLCDM::default().with_h0_ahz(d.h0_ahz());
+        assert!((via_ahz.h0() - d.h0()).abs() < 1e-9);
     }
 
     #[test]
