@@ -232,6 +232,28 @@ mod tests {
     }
 
     #[test]
+    fn len_reports_cell_count() {
+        let mg = mesh(&scattered(24), &vec![0.3; 24]);
+        let lens = MeshLens::new(&mg).unwrap();
+        assert_eq!(lens.len(), 24);
+        assert!(!lens.is_empty());
+    }
+
+    #[test]
+    fn jet_batch_matches_jet() {
+        let kappa: Vec<f64> = (0..50).map(|i| 0.2 + 0.01 * i as f64).collect();
+        let mg = mesh(&scattered(50), &kappa);
+        let lens = MeshLens::new(&mg).unwrap();
+        let pts = [Point2D::new(3.0, 2.0), Point2D::new(-2.0, 1.5)];
+        for (b, &p) in lens.jet_batch(&pts).iter().zip(&pts) {
+            let s = lens.jet(p);
+            assert!((b.psi - s.psi).abs() < 1e-12);
+            assert!((b.alpha.x - s.alpha.x).abs() < 1e-12);
+            assert_eq!(b.hessian, s.hessian);
+        }
+    }
+
+    #[test]
     fn direct_and_barnes_hut_backends_agree() {
         let sites = scattered(200);
         let kappa: Vec<f64> = (0..200).map(|i| 0.1 + 0.01 * i as f64).collect();
@@ -276,6 +298,18 @@ mod tests {
     }
 
     #[test]
+    fn configure_softening_changes_the_field() {
+        let mg = mesh(&scattered(60), &vec![0.4; 60]);
+        let sharp = MeshLens::new(&mg).unwrap();
+        let softened = MeshLens::new(&mg)
+            .unwrap()
+            .configure(SolverConfig::default().with_softening(0.5));
+        // Softening the kernel measurably changes the deflection inside the cloud.
+        let p = Point2D::new(0.8, 0.4);
+        assert!(sharp.deflection(p).distance(&softened.deflection(p)) > 1e-3);
+    }
+
+    #[test]
     fn ray_trace_and_magnification_are_finite() {
         let sites = scattered(100);
         let mg = MeshGrid::from_func(&sites, bbox(), |_, _| 0.3).unwrap();
@@ -285,12 +319,13 @@ mod tests {
         assert!(lens.magnification(theta).is_finite());
     }
 
-    /// Minimal field to exercise the defensive validation a well-formed mesh can't hit.
-    struct BadField {
+    /// A minimal explicit-cell [`ScalarField2D`], for driving a lens directly and for
+    /// the bad-input cases a well-formed mesh can't produce.
+    struct CellField {
         kappa: Vec<f64>,
         area: Vec<f64>,
     }
-    impl ScalarField2D for BadField {
+    impl ScalarField2D for CellField {
         fn len(&self) -> usize {
             self.kappa.len()
         }
@@ -312,23 +347,37 @@ mod tests {
     }
 
     #[test]
+    fn builds_from_a_generic_scalar_field() {
+        // Any ScalarField2D drives a MeshLens, not only a MeshGrid.
+        let field = CellField {
+            kappa: vec![0.5],
+            area: vec![1.0],
+        };
+        let lens = MeshLens::new(&field).unwrap();
+        assert_eq!(lens.len(), 1);
+        assert!(!lens.is_empty());
+        assert_eq!(field.bounds(), bbox());
+        assert_eq!(field.sample(Point2D::origin()), 0.0);
+    }
+
+    #[test]
     fn rejects_empty_and_bad_fields() {
-        let empty = BadField {
+        let empty = CellField {
             kappa: vec![],
             area: vec![],
         };
         assert!(MeshLens::new(&empty).is_err());
-        let zero_area = BadField {
+        let zero_area = CellField {
             kappa: vec![0.5],
             area: vec![0.0],
         };
         assert!(MeshLens::new(&zero_area).is_err());
-        let neg_area = BadField {
+        let neg_area = CellField {
             kappa: vec![0.5],
             area: vec![-1.0],
         };
         assert!(MeshLens::new(&neg_area).is_err());
-        let nan_kappa = BadField {
+        let nan_kappa = CellField {
             kappa: vec![f64::NAN],
             area: vec![1.0],
         };

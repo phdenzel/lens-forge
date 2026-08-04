@@ -266,6 +266,28 @@ mod tests {
     }
 
     #[test]
+    fn with_grid_rebuilds_on_explicit_grid() {
+        let (a, k) = (0.3, 2.0 * PI / (2.0 * L));
+        let src = PixelGrid::from_func_sq(N, L, |x, _| a * (k * x).cos());
+        let grid = Grid2D::square(128, L).unwrap();
+        let lens = PixelLens::new(&src).unwrap().with_grid(grid).unwrap();
+        let x = 0.7;
+        let j = lens.jet(Point2D::new(x, 0.4));
+        assert!(
+            (j.alpha.x - 2.0 * a / k * (k * x).sin()).abs() < 5e-3,
+            "αx: {}",
+            j.alpha.x
+        );
+    }
+
+    #[test]
+    fn rejects_non_power_of_two_grid() {
+        let src = PixelGrid::from_func_sq(N, L, |_, _| 0.3);
+        let grid = Grid2D::new(100, 100, src.grid.bbox).unwrap(); // 100 is not a power of two
+        assert!(PixelLens::from_field(&src, grid).is_err());
+    }
+
+    #[test]
     fn jet_batch_matches_jet() {
         let (lens, _, _) = cosine_lens(0.2);
         let pts = [
