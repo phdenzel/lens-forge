@@ -144,7 +144,7 @@ impl MeshGrid {
 
     /// The whole-field Laplacian `∇²v`, one value per cell.
     ///
-    /// Uses the symmetrized [`FaceGeometry`](super::faces) (matching the Poisson
+    /// Uses the symmetrized `FaceGeometry` (matching the Poisson
     /// solver's stiffness operator); agrees with the pointwise
     /// [`laplacian`](Self::laplacian) to rounding on interior cells.
     pub fn laplacian_field(&self) -> MeshGrid {

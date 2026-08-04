@@ -108,7 +108,7 @@ pub trait FieldOps: ScalarField2D + Sized {
 
     /// Solve `∇²ψ = f` with this field as the source `f`, returning the potential
     /// `ψ` and solver diagnostics. The boundary handling is
-    /// representation-specific (see the [module docs](self)).
+    /// representation-specific (see the [`grid`](crate::grid) module docs).
     ///
     /// # Arguments
     /// * `cfg` - solver configuration (defaults if `None`).
