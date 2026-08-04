@@ -12,7 +12,7 @@
 
 use crate::fastsum::{FieldSolver, Monopole, SolverConfig, SolverKind, build_solver};
 use crate::grid::Point2D;
-use crate::lens::model::LensModel;
+use crate::lens::model::{LensJet, LensModel};
 use crate::{LensForgeError, Result};
 
 /// A single Voronoi cell of the lens plane.
@@ -114,6 +114,23 @@ impl MeshLens {
 }
 
 impl LensModel for MeshLens {
+    fn jet(&self, theta: Point2D) -> LensJet {
+        self.solver.jet(theta).into()
+    }
+
+    fn jet_batch(&self, thetas: &[Point2D]) -> Vec<LensJet> {
+        self.solver
+            .jet_batch(thetas)
+            .into_iter()
+            .map(Into::into)
+            .collect()
+    }
+
+    /// Deflection only — cheaper than a full [`jet`](Self::jet) (skips the Hessian).
+    fn deflection(&self, theta: Point2D) -> Point2D {
+        self.solver.gradient(theta)
+    }
+
     /// Convergence at `theta` — the κ of the containing Voronoi cell, i.e. the
     /// nearest site (that is exactly the Voronoi definition).
     fn convergence(&self, theta: Point2D) -> f64 {
@@ -127,18 +144,6 @@ impl LensModel for MeshLens {
             }
         }
         self.kappa[best]
-    }
-
-    fn deflection(&self, theta: Point2D) -> Point2D {
-        self.solver.gradient(theta)
-    }
-
-    fn potential(&self, theta: Point2D) -> f64 {
-        self.solver.jet(theta).scalar
-    }
-
-    fn hessian(&self, theta: Point2D) -> [[f64; 2]; 2] {
-        self.solver.jet(theta).hessian
     }
 }
 

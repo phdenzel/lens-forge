@@ -7,4 +7,4 @@ pub mod mesh;
 pub mod model;
 
 pub use mesh::{MeshLens, VoronoiCell};
-pub use model::LensModel;
+pub use model::{LensJet, LensModel};
