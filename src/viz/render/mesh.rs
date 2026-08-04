@@ -148,4 +148,85 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn texturize_log10_scale_uses_fallback() {
+        // Log10 scaling drives the vmin-based fallback branch for non-positive
+        // values; the render must still succeed and fill the canvas.
+        let sites = [
+            Point2D::new(0.25, 0.5),
+            Point2D::new(0.75, 0.5),
+        ];
+        let mesh = MeshGrid::new(
+            &sites,
+            BBox::from_lims(0.0, 1.0, 0.0, 1.0),
+            ndarray::arr1(&[0.0, 100.0]), // 0.0 is non-positive -> fallback
+        )
+        .unwrap();
+        let opt = RenderOptions {
+            width: NonZeroU32::new(32).unwrap(),
+            height: NonZeroU32::new(32).unwrap(),
+            scale: RenderScale::Log10,
+            vmin: Some(-2.0),
+            vmax: Some(2.0),
+            ..RenderOptions::default()
+        };
+        let img = mesh.texturize(&opt).unwrap();
+        assert_eq!(img.dimensions(), (32, 32));
+    }
+
+    #[test]
+    fn texturize_show_edges_strokes_outlines() {
+        let mesh = quad_mesh();
+        let opt = RenderOptions {
+            width: NonZeroU32::new(64).unwrap(),
+            height: NonZeroU32::new(64).unwrap(),
+            vmin: Some(1.0),
+            vmax: Some(4.0),
+            show_edges: true,
+            edge_rgba: [255, 0, 0, 255],
+            ..RenderOptions::default()
+        };
+        let img = mesh.texturize(&opt).unwrap();
+        // The red edge colour must appear somewhere once outlines are drawn.
+        let has_edge = img.pixels().any(|p| p.0 == [255, 0, 0, 255]);
+        assert!(has_edge, "expected stroked cell edges");
+    }
+
+    #[test]
+    fn texturize_degenerate_resolution_skips_cells() {
+        // At 1x1 every cell collapses to fewer than 3 distinct pixels, so all
+        // cells are skipped and the canvas keeps the invalid colour.
+        let mesh = quad_mesh();
+        let opt = RenderOptions {
+            width: NonZeroU32::new(1).unwrap(),
+            height: NonZeroU32::new(1).unwrap(),
+            invalid_rgba: [7, 8, 9, 10],
+            ..RenderOptions::default()
+        };
+        let img = mesh.texturize(&opt).unwrap();
+        assert_eq!(img.get_pixel(0, 0).0, [7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn texturize_small_resolution_closes_wrapping_polygons() {
+        // A denser mesh at low resolution forces cell polygons whose first and
+        // last pixels coincide, exercising the loop-closing pop.
+        let sites: Vec<Point2D> = (0..16)
+            .map(|i| {
+                let x = 0.1 + 0.8 * ((i % 4) as f64) / 3.0;
+                let y = 0.1 + 0.8 * ((i / 4) as f64) / 3.0;
+                Point2D::new(x, y)
+            })
+            .collect();
+        let vals: ndarray::Array1<f64> = (0..16).map(|i| i as f64).collect();
+        let mesh = MeshGrid::new(&sites, BBox::from_lims(0.0, 1.0, 0.0, 1.0), vals).unwrap();
+        let opt = RenderOptions {
+            width: NonZeroU32::new(8).unwrap(),
+            height: NonZeroU32::new(8).unwrap(),
+            ..RenderOptions::default()
+        };
+        let img = mesh.texturize(&opt).unwrap();
+        assert_eq!(img.dimensions(), (8, 8));
+    }
 }
