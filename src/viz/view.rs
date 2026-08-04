@@ -362,6 +362,10 @@ impl ApplicationHandler for ViewerApp {
     }
 }
 
+/// Open an interactive window displaying `image` until closed.
+///
+/// # Arguments
+/// * `image` - RGBA image to display
 pub fn view_image(image: RgbaImage) {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -370,6 +374,11 @@ pub fn view_image(image: RgbaImage) {
     event_loop.run_app(&mut app).unwrap();
 }
 
+/// Render a grid with `opt` and display it in an interactive window.
+///
+/// # Arguments
+/// * `grid` - grid convertible into a [`RasterField`]
+/// * `opt` - shared rendering configuration
 pub fn view_grid<'a, T>(grid: &'a T, opt: &RenderOptions)
 where
     RasterField<'a>: TryFrom<&'a T, Error = LensForgeError>,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
+//! Visualization: colour mapping, scaling, rasterization, and a live viewer.
 mod colorize;
 mod gradients;
 pub mod io;

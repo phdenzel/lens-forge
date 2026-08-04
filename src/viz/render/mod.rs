@@ -69,18 +69,22 @@ impl Default for RenderOptions {
 }
 
 impl RenderOptions {
+    /// Output width as a plain `u32`.
     #[inline]
     pub fn width_u32(&self) -> u32 {
         self.width.get()
     }
+    /// Output height as a plain `u32`.
     #[inline]
     pub fn height_u32(&self) -> u32 {
         self.height.get()
     }
+    /// Resolve the configured colour gradient by name.
     #[inline]
     pub fn gradient(&self) -> Box<dyn Gradient + Send + Sync> {
         get_gradient(&self.gradient_name)
     }
+    /// Resampling filter for the configured `sampling_type`, or `None` if unknown.
     #[inline]
     pub fn filter(&self) -> Option<FilterType> {
         match self.sampling_type.to_lowercase().as_str() {

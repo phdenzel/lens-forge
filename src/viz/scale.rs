@@ -52,22 +52,44 @@ pub enum RenderScale {
 /// * `revert_log10` / `revert_log10_or`
 /// * `revert_symlog` / `revert_symlog_or`
 impl RenderScale {
+    /// Linear (identity) forward map; `None` for non-finite `v`.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
     #[inline]
     pub fn apply_linear(v: f32) -> Option<f32> {
         if !v.is_finite() { None } else { Some(v) }
     }
+    /// Linear forward map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn apply_linear_or(v: f32, fallback: f32) -> f32 {
         RenderScale::apply_linear(v).unwrap_or(fallback)
     }
+    /// Inverse of the linear map; `None` for non-finite `s`.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
     #[inline]
     pub fn revert_linear(s: f32) -> Option<f32> {
         if !s.is_finite() { None } else { Some(s) }
     }
+    /// Inverse linear map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn revert_linear_or(s: f32, fallback: f32) -> f32 {
         RenderScale::revert_linear(s).unwrap_or(fallback)
     }
+    /// Base-10 log forward map; `None` unless `v > 0` and finite.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
     #[inline]
     pub fn apply_log10(v: f32) -> Option<f32> {
         if v > 0.0 && v.is_finite() {
@@ -76,19 +98,38 @@ impl RenderScale {
             None
         }
     }
+    /// Log10 forward map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn apply_log10_or(v: f32, fallback: f32) -> f32 {
         RenderScale::apply_log10(v).unwrap_or(fallback)
     }
+    /// Inverse of the log10 map (`10^s`); `None` on overflow.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
     #[inline]
     pub fn revert_log10(s: f32) -> Option<f32> {
         let v = 10.0_f32.powf(s);
         if v.is_finite() { Some(v) } else { None }
     }
+    /// Inverse log10 map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn revert_log10_or(s: f32, fallback: f32) -> f32 {
         RenderScale::revert_log10(s).unwrap_or(fallback)
     }
+    /// Symmetric-log forward map, linear within `linthresh` of zero.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
+    /// * `linthresh` - Half-width of the linear region around zero
     #[inline]
     pub fn apply_symlog(v: f32, linthresh: f32) -> Option<f32> {
         if !linthresh.is_finite() || linthresh <= 0.0 {
@@ -107,10 +148,21 @@ impl RenderScale {
             }
         }
     }
+    /// Symmetric-log forward map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `v` - Value to scale
+    /// * `linthresh` - Half-width of the linear region around zero
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn apply_symlog_or(v: f32, linthresh: f32, fallback: f32) -> f32 {
         RenderScale::apply_symlog(v, linthresh).unwrap_or(fallback)
     }
+    /// Inverse of the symmetric-log map; `None` for invalid `linthresh`.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
+    /// * `linthresh` - Half-width of the linear region around zero
     #[inline]
     pub fn revert_symlog(s: f32, linthresh: f32) -> Option<f32> {
         if !linthresh.is_finite() || linthresh <= 0.0 {
@@ -126,6 +178,12 @@ impl RenderScale {
             if v.is_finite() { Some(v) } else { None }
         }
     }
+    /// Inverse symmetric-log map with `fallback` for invalid results.
+    ///
+    /// # Arguments
+    /// * `s` - Scaled value to invert
+    /// * `linthresh` - Half-width of the linear region around zero
+    /// * `fallback` - Value returned when the map is invalid
     #[inline]
     pub fn revert_symlog_or(s: f32, linthresh: f32, fallback: f32) -> f32 {
         RenderScale::revert_symlog(s, linthresh).unwrap_or(fallback)
@@ -425,8 +483,9 @@ impl RenderScale {
 /// Normalizer that maps values between specified range to [0, 1].
 #[derive(Clone, Copy, Debug)]
 pub struct Normalize {
-    /// Normalization range limits [`min`, `max`]
+    /// Lower normalization limit
     pub min: f32,
+    /// Upper normalization limit
     pub max: f32,
     /// Whether to clamp values beyond normalization range
     pub clamp: bool,
@@ -497,6 +556,10 @@ impl Normalize {
         if self.clamp { v.clamp(0.0, 1.0) } else { v }
     }
 
+    /// Normalize `v` into `[0, 1]`; returns `NaN` for non-finite input.
+    ///
+    /// # Arguments
+    /// * `v` - Value to normalize
     pub fn apply(&self, v: f32) -> f32 {
         if !v.is_finite() {
             return f32::NAN;
@@ -506,6 +569,10 @@ impl Normalize {
         self.clamp_or(normalized)
     }
 
+    /// Fallible [`apply`](Self::apply); errors on non-finite input or result.
+    ///
+    /// # Arguments
+    /// * `v` - Value to normalize
     pub fn try_apply(&self, v: f32) -> Result<f32> {
         if !v.is_finite() {
             return Err(LensForgeError::numerical_error(
@@ -521,6 +588,10 @@ impl Normalize {
         Ok(normalized)
     }
 
+    /// Map a normalized value back to data space; `NaN` for non-finite input.
+    ///
+    /// # Arguments
+    /// * `n` - Normalized value to invert
     pub fn revert(&self, n: f32) -> f32 {
         if !n.is_finite() {
             return f32::NAN;
@@ -529,6 +600,10 @@ impl Normalize {
         n * range + self.min
     }
 
+    /// Fallible [`revert`](Self::revert); errors when clamping is on or input non-finite.
+    ///
+    /// # Arguments
+    /// * `n` - Normalized value to invert
     pub fn try_revert(&self, n: f32) -> Result<f32> {
         if !n.is_finite() {
             return Err(LensForgeError::numerical_error(
