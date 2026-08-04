@@ -20,16 +20,16 @@ pub const H_BAR: f64 = 1.054_571_817e-34;
 pub const K_B: f64 = 1.380_649e-23;
 
 /// Planck mass √(ℏc/G) — the Planckian *marble* (kg).
-pub const PLANCK_MASS: f64 = 2.176_434e-8;
+pub const MARB: f64 = 2.176_434e-8;
 /// Planck length √(ℏG/c³) — the Planckian *lap* (m).
-pub const PLANCK_LENGTH: f64 = 1.616_255e-35;
+pub const LAP: f64 = 1.616_255e-35;
 /// Planck time √(ℏG/c⁵) — the Planckian *tick* (s).
-pub const PLANCK_TIME: f64 = 5.391_247e-44;
+pub const TICK: f64 = 5.391_247e-44;
 /// Planck temperature √(ℏc⁵/G)/k_B — the Planckian *therm* (K).
-pub const PLANCK_TEMPERATURE: f64 = 1.416_784e32;
+pub const THERM: f64 = 1.416_784e32;
 
 /// Solar mass (kg).
-pub const M_SUN: f64 = 1.988_47e30;
+pub const M_SUN: f64 = 1.988_475e30;
 /// Parsec (m).
 pub const PARSEC: f64 = 3.085_677_581_491_367_3e16;
 /// Megaparsec (m).
@@ -46,32 +46,32 @@ pub const DAY: f64 = 86_400.0;
 /// Mass in kg → Planckian *marbles*.
 #[inline]
 pub fn kg_to_marble(m: f64) -> f64 {
-    m / PLANCK_MASS
+    m / MARB
 }
 /// Mass in Planckian *marbles* → kg.
 #[inline]
 pub fn marble_to_kg(m: f64) -> f64 {
-    m * PLANCK_MASS
+    m * MARB
 }
 /// Length in m → Planckian *laps*.
 #[inline]
 pub fn m_to_lap(l: f64) -> f64 {
-    l / PLANCK_LENGTH
+    l / LAP
 }
 /// Length in Planckian *laps* → m.
 #[inline]
 pub fn lap_to_m(l: f64) -> f64 {
-    l * PLANCK_LENGTH
+    l * LAP
 }
 /// Time in s → Planckian *ticks*.
 #[inline]
 pub fn s_to_tick(t: f64) -> f64 {
-    t / PLANCK_TIME
+    t / TICK
 }
 /// Time in Planckian *ticks* → s.
 #[inline]
 pub fn tick_to_s(t: f64) -> f64 {
-    t * PLANCK_TIME
+    t * TICK
 }
 
 /// Solar masses → Planckian *marbles*.
@@ -108,9 +108,9 @@ mod tests {
     #[test]
     fn planck_units_are_self_consistent() {
         // marble = √(ℏc/G), lap = √(ℏG/c³), tick = √(ℏG/c⁵).
-        assert!(((PLANCK_MASS - (H_BAR * C / G).sqrt()) / PLANCK_MASS).abs() < 1e-4);
-        assert!(((PLANCK_LENGTH - (H_BAR * G / C.powi(3)).sqrt()) / PLANCK_LENGTH).abs() < 1e-4);
-        assert!(((PLANCK_TIME - (H_BAR * G / C.powi(5)).sqrt()) / PLANCK_TIME).abs() < 1e-4);
+        assert!(((MARB - (H_BAR * C / G).sqrt()) / MARB).abs() < 1e-4);
+        assert!(((LAP - (H_BAR * G / C.powi(3)).sqrt()) / LAP).abs() < 1e-4);
+        assert!(((TICK - (H_BAR * G / C.powi(5)).sqrt()) / TICK).abs() < 1e-4);
     }
 
     #[test]
