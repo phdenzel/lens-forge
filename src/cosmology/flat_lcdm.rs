@@ -99,6 +99,7 @@ mod tests {
         let cosmo = FlatLCDM::planck18();
         assert!((cosmo.e(0.0) - 1.0).abs() < 1e-12);
         assert!(cosmo.angular_diameter_distance(0.0).abs() < 1e-9);
+        assert!((cosmo.omega_m() - 0.3111).abs() < 1e-12);
         assert!((cosmo.omega_l() - (1.0 - 0.3111)).abs() < 1e-12);
     }
 
