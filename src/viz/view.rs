@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Display utilities for images
 
+use crate::LensForgeError;
 use crate::viz::render::RenderOptions;
 use crate::viz::render::context::RasterContext;
 use crate::viz::render::raster::RasterField;
-use crate::{LensForgeError, Result};
 use image::RgbaImage;
 use std::sync::Arc;
 use winit::{
@@ -17,6 +17,9 @@ use winit::{
     window::{Window, WindowId},
 };
 
+// Some fields only back the live-update path (`set_image`), which is not yet
+// wired into the event loop.
+#[allow(dead_code)]
 struct ViewerState {
     window: Arc<Window>,
     device: wgpu::Device,
@@ -140,10 +143,6 @@ impl ViewerState {
         };
         state.configure_surface();
         state
-    }
-
-    fn get_window(&self) -> &Window {
-        &self.window
     }
 
     fn resize(&mut self, nsize: winit::dpi::PhysicalSize<u32>) {
@@ -282,6 +281,7 @@ impl ViewerState {
     }
 
     /// Update the displayed image with a new RgbaImage buffer
+    #[allow(dead_code)] // live-update API, not yet wired into the event loop
     pub fn set_image(&mut self, image: &RgbaImage) {
         let nsize = (image.width(), image.height());
 
@@ -394,7 +394,6 @@ where
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgba, RgbaImage};
-    use winit::event_loop::{ActiveEventLoop, EventLoop};
 
     /* ============ Test setup ============================================= */
     fn create_test_gradient(width: u32, height: u32) -> RgbaImage {
