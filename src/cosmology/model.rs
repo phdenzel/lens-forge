@@ -228,8 +228,8 @@ mod tests {
     #[test]
     fn time_delay_distance_is_positive_and_inverse_in_h0() {
         let (zl, zs) = (0.5, 2.0);
-        let a = FlatLCDM::new(70.0, 0.3);
-        let b = FlatLCDM::new(140.0, 0.3); // only H0 differs
+        let a = FlatLCDM::new(70.0, 0.3, 0.0);
+        let b = FlatLCDM::new(140.0, 0.3, 0.0); // only H0 differs
         assert!(a.time_delay_distance(zl, zs) > 0.0);
         // D_Δt ∝ 1/H0: doubling H0 halves the time-delay distance.
         let ratio = a.time_delay_distance(zl, zs) / b.time_delay_distance(zl, zs);
