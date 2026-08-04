@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Parametric surface-brightness profiles, each a closed-form [`SourceModel`](crate::source::SourceModel).
 
+pub mod gaussian;
 pub mod sersic;
 
+pub use gaussian::Gaussian;
 pub use sersic::Sersic;

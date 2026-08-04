@@ -10,4 +10,4 @@ pub mod model;
 pub mod parametric;
 
 pub use model::SourceModel;
-pub use parametric::Sersic;
+pub use parametric::{Gaussian, Sersic};
