@@ -28,7 +28,12 @@ pub enum LensForgeError {
     /// Invalid grid dimensions
     InvalidGridDimensions(String),
     /// Mismatch between dimensions of grid and values
-    DimensionMismatch { expected: String, got: String },
+    DimensionMismatch {
+        /// Expected dimensions
+        expected: String,
+        /// Actual dimensions
+        got: String,
+    },
     /// Invalid parameter provided
     InvalidParameter(String),
     /// Invalid setting/option provided
@@ -38,7 +43,10 @@ pub enum LensForgeError {
     /// Computation error occurred
     ComputationError(String),
     /// Solver failed to converge
-    ConvergenceError { iterations: usize },
+    ConvergenceError {
+        /// Number of iterations performed before giving up
+        iterations: usize,
+    },
 }
 
 impl fmt::Display for LensForgeError {
