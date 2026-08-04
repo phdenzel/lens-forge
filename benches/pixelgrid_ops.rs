@@ -38,7 +38,7 @@ const STENCILS: &[(&str, DerivativeStencil)] = &[
 #[cfg(not(feature = "full-bench"))]
 const STENCILS: &[(&str, DerivativeStencil)] = &[
     ("central4", DerivativeStencil::Central4),
-    ("central6", DerivativeStencil::Central6)
+    ("central6", DerivativeStencil::Central6),
 ];
 
 #[cfg(feature = "full-bench")]

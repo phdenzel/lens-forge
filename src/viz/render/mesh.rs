@@ -153,10 +153,7 @@ mod tests {
     fn texturize_log10_scale_uses_fallback() {
         // Log10 scaling drives the vmin-based fallback branch for non-positive
         // values; the render must still succeed and fill the canvas.
-        let sites = [
-            Point2D::new(0.25, 0.5),
-            Point2D::new(0.75, 0.5),
-        ];
+        let sites = [Point2D::new(0.25, 0.5), Point2D::new(0.75, 0.5)];
         let mesh = MeshGrid::new(
             &sites,
             BBox::from_lims(0.0, 1.0, 0.0, 1.0),

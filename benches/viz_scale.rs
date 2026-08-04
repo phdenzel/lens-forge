@@ -154,11 +154,21 @@ fn bench_norm(c: &mut Criterion, name: &str, norm: Normalize, data_fn: fn(usize)
 
 /* ============ RenderScale benchmarks ===================================== */
 fn bench_render_scale_linear(c: &mut Criterion) {
-    bench_scale(c, "render/scale_linear", RenderScale::Linear, generate_test_data);
+    bench_scale(
+        c,
+        "render/scale_linear",
+        RenderScale::Linear,
+        generate_test_data,
+    );
 }
 
 fn bench_render_scale_log10(c: &mut Criterion) {
-    bench_scale(c, "render/scale_log10", RenderScale::Log10, generate_test_data);
+    bench_scale(
+        c,
+        "render/scale_log10",
+        RenderScale::Log10,
+        generate_test_data,
+    );
 }
 
 fn bench_render_scale_symlog(c: &mut Criterion) {
@@ -180,7 +190,12 @@ fn bench_normalize_unclamped(c: &mut Criterion) {
         .with_lims(0.0, 100.0)
         .unwrap()
         .with_clamp(false);
-    bench_norm(c, "render/normalize_unclamped", norm, generate_test_data_mixed);
+    bench_norm(
+        c,
+        "render/normalize_unclamped",
+        norm,
+        generate_test_data_mixed,
+    );
 }
 
 /* ============ auto_range benchmark ======================================= */

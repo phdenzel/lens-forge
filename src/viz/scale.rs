@@ -1263,19 +1263,47 @@ mod tests {
     fn render_scale_or_wrappers() {
         // Valid inputs pass through, invalid inputs hit the fallback for every kernel.
         assert!(approx(RenderScale::apply_linear_or(2.0, -1.0), 2.0, 1e-10));
-        assert!(approx(RenderScale::apply_linear_or(f32::NAN, -1.0), -1.0, 1e-10));
+        assert!(approx(
+            RenderScale::apply_linear_or(f32::NAN, -1.0),
+            -1.0,
+            1e-10
+        ));
         assert!(approx(RenderScale::revert_linear_or(2.0, -1.0), 2.0, 1e-10));
-        assert!(approx(RenderScale::revert_linear_or(f32::NAN, -1.0), -1.0, 1e-10));
+        assert!(approx(
+            RenderScale::revert_linear_or(f32::NAN, -1.0),
+            -1.0,
+            1e-10
+        ));
 
         assert!(approx(RenderScale::apply_log10_or(10.0, -1.0), 1.0, 1e-10));
         assert!(approx(RenderScale::apply_log10_or(-5.0, -1.0), -1.0, 1e-10));
         assert!(approx(RenderScale::revert_log10_or(2.0, -1.0), 100.0, 1e-6));
-        assert!(approx(RenderScale::revert_log10_or(400.0, -1.0), -1.0, 1e-10));
+        assert!(approx(
+            RenderScale::revert_log10_or(400.0, -1.0),
+            -1.0,
+            1e-10
+        ));
 
-        assert!(approx(RenderScale::apply_symlog_or(1.0, 2.0, -1.0), 1.0, 1e-10));
-        assert!(approx(RenderScale::apply_symlog_or(5.0, 0.0, -1.0), -1.0, 1e-10));
-        assert!(approx(RenderScale::revert_symlog_or(1.0, 2.0, -1.0), 1.0, 1e-10));
-        assert!(approx(RenderScale::revert_symlog_or(5.0, 0.0, -1.0), -1.0, 1e-10));
+        assert!(approx(
+            RenderScale::apply_symlog_or(1.0, 2.0, -1.0),
+            1.0,
+            1e-10
+        ));
+        assert!(approx(
+            RenderScale::apply_symlog_or(5.0, 0.0, -1.0),
+            -1.0,
+            1e-10
+        ));
+        assert!(approx(
+            RenderScale::revert_symlog_or(1.0, 2.0, -1.0),
+            1.0,
+            1e-10
+        ));
+        assert!(approx(
+            RenderScale::revert_symlog_or(5.0, 0.0, -1.0),
+            -1.0,
+            1e-10
+        ));
     }
 
     #[test]
@@ -1288,10 +1316,26 @@ mod tests {
     #[test]
     fn try_apply_revert_ok_paths_for_all_modes() {
         // Exercise the Ok arms of try_apply/try_revert for Linear and Log10.
-        assert!(approx(RenderScale::Linear.try_apply(3.0).unwrap(), 3.0, 1e-10));
-        assert!(approx(RenderScale::Linear.try_revert(3.0).unwrap(), 3.0, 1e-10));
-        assert!(approx(RenderScale::Log10.try_apply(100.0).unwrap(), 2.0, 1e-6));
-        assert!(approx(RenderScale::Log10.try_revert(2.0).unwrap(), 100.0, 1e-4));
+        assert!(approx(
+            RenderScale::Linear.try_apply(3.0).unwrap(),
+            3.0,
+            1e-10
+        ));
+        assert!(approx(
+            RenderScale::Linear.try_revert(3.0).unwrap(),
+            3.0,
+            1e-10
+        ));
+        assert!(approx(
+            RenderScale::Log10.try_apply(100.0).unwrap(),
+            2.0,
+            1e-6
+        ));
+        assert!(approx(
+            RenderScale::Log10.try_revert(2.0).unwrap(),
+            100.0,
+            1e-4
+        ));
     }
 
     /* ============ RenderScale slice invalid-threshold + parallel ========= */
@@ -1320,9 +1364,7 @@ mod tests {
 
     #[test]
     fn par_slice_ops_match_serial_for_all_modes() {
-        let mut input: Vec<f32> = (0..2000)
-            .map(|i| (i as f32 - 1000.0) * 0.1)
-            .collect();
+        let mut input: Vec<f32> = (0..2000).map(|i| (i as f32 - 1000.0) * 0.1).collect();
         // Sprinkle non-finite values so the fallback branches (incl. the Linear
         // parallel in-place path) are exercised for every mode.
         input[3] = f32::NAN;
@@ -1375,7 +1417,10 @@ mod tests {
     #[test]
     fn normalize_revert_and_try_revert() {
         // revert returns NaN on non-finite input.
-        let n = Normalize::default().with_clamp(false).with_lims(0.0, 10.0).unwrap();
+        let n = Normalize::default()
+            .with_clamp(false)
+            .with_lims(0.0, 10.0)
+            .unwrap();
         assert!(n.revert(f32::NAN).is_nan());
         // Round-trip when clamping is off.
         assert!(approx(n.try_revert(0.5).unwrap(), 5.0, 1e-10));
