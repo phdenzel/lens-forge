@@ -8,6 +8,7 @@
 
 pub mod fastsum;
 pub mod grid;
+pub mod cosmology;
 pub mod lens;
 pub mod solver;
 pub mod source;
