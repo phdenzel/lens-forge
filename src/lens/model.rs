@@ -17,6 +17,7 @@
 
 use crate::fastsum::{Jet, Monopole};
 use crate::grid::Point2D;
+use std::ops::{Add, AddAssign};
 
 /// A point-mass element `m = κ · area` — the lens-domain name for a fastsum
 /// [`Monopole`], the mass a cell contributes to the deflection field.
@@ -40,6 +41,27 @@ impl From<Jet> for LensJet {
             alpha: j.gradient,
             hessian: j.hessian,
         }
+    }
+}
+
+impl AddAssign for LensJet {
+    /// Superpose another lens's jet: ψ, α and H are all additive.
+    fn add_assign(&mut self, rhs: LensJet) {
+        self.psi += rhs.psi;
+        self.alpha += rhs.alpha;
+        for i in 0..2 {
+            for j in 0..2 {
+                self.hessian[i][j] += rhs.hessian[i][j];
+            }
+        }
+    }
+}
+
+impl Add for LensJet {
+    type Output = LensJet;
+    fn add(mut self, rhs: LensJet) -> LensJet {
+        self += rhs;
+        self
     }
 }
 
@@ -93,5 +115,30 @@ pub trait LensModel {
         let a12 = -h[0][1];
         let a21 = -h[1][0];
         1.0 / (a11 * a22 - a12 * a21)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lensjet_addition_is_componentwise() {
+        let a = LensJet {
+            psi: 1.0,
+            alpha: Point2D::new(2.0, 3.0),
+            hessian: [[1.0, 0.5], [0.5, -1.0]],
+        };
+        let b = LensJet {
+            psi: 0.5,
+            alpha: Point2D::new(-1.0, 4.0),
+            hessian: [[2.0, 1.0], [1.0, 3.0]],
+        };
+        let mut c = a;
+        c += b;
+        assert_eq!(c, a + b);
+        assert_eq!(c.psi, 1.5);
+        assert_eq!(c.alpha, Point2D::new(1.0, 7.0));
+        assert_eq!(c.hessian, [[3.0, 1.5], [1.5, 2.0]]);
     }
 }
