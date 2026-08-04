@@ -683,4 +683,59 @@ mod tests {
         assert_eq!(rf.height.get(), 512);
         assert!(rf.is_valid());
     }
+
+    #[test]
+    fn meshgrid_tryfrom_preserves_tall_aspect() {
+        // A domain taller than it is wide drives the `dx < dy` branch of
+        // `default_raster_dims`: the shorter (x) side is scaled down.
+        let sites = [Point2D::new(0.5, 0.5), Point2D::new(0.5, 1.5)];
+        let mesh = MeshGrid::new(
+            &sites,
+            BBox::from_lims(0.0, 1.0, 0.0, 2.0), // dx=1, dy=2
+            ndarray::arr1(&[1.0, 2.0]),
+        )
+        .unwrap();
+        let rf: RasterField = (&mesh).try_into().unwrap();
+        assert_eq!(rf.height.get(), 512);
+        assert_eq!(rf.width.get(), 256);
+        assert!(rf.is_valid());
+    }
+
+    /* ============ ToRaster impl for RasterField ========================== */
+    #[test]
+    fn raster_field_is_a_toraster_source() {
+        let w = NonZeroU32::new(3).unwrap();
+        let h = NonZeroU32::new(2).unwrap();
+        let rf = RasterField::from_vec(w, h, vec![0.0; 6]).unwrap();
+        // Exercises RasterField's ToRaster width/height/values via validate_raster.
+        validate_raster(&rf as &dyn ToRaster).unwrap();
+        assert_eq!(ToRaster::width(&rf).get(), 3);
+        assert_eq!(ToRaster::height(&rf).get(), 2);
+        assert_eq!(ToRaster::values(&rf).len(), 6);
+    }
+
+    /* ============ PixelGrid conversions ================================= */
+    #[test]
+    fn pixelgrid_converts_and_rasterizes() {
+        // 4x3 grid with values equal to the column index, so row-major layout is
+        // easy to check after conversion.
+        let pg = PixelGrid::from_func_rect(4, 3, 2.0, 1.5, |x, _y| x);
+
+        // Borrowed conversion via TryFrom<&PixelGrid>.
+        let rf: RasterField = (&pg).try_into().unwrap();
+        assert_eq!(rf.width.get(), 4);
+        assert_eq!(rf.height.get(), 3);
+        assert!(rf.is_valid());
+
+        // Generic `rasterize` entry (owned, via TryFrom<&PixelGrid>).
+        let owned = rasterize(&pg).unwrap();
+        assert_eq!(owned.width.get(), 4);
+        assert_eq!(owned.height.get(), 3);
+        assert_eq!(owned.as_slice(), rf.as_slice());
+
+        // RasterizeToField::to_raster path via `rasterize_with`.
+        let params = RasterizeParams::from_dims(4, 3).unwrap();
+        let via_params = rasterize_with(&pg, &params).unwrap();
+        assert_eq!(via_params.as_slice(), rf.as_slice());
+    }
 }
