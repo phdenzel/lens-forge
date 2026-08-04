@@ -5,8 +5,10 @@
 
 pub mod mesh;
 pub mod model;
+pub mod parametric;
 pub mod pixel;
 
 pub use mesh::MeshLens;
 pub use model::{LensJet, LensModel, MassElement};
+pub use parametric::PointMass;
 pub use pixel::PixelLens;
