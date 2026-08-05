@@ -38,6 +38,29 @@ fn apply_step(
     }
 }
 
+/// Solve the diffusion step `(A − Δt·K) x = rhs` by Jacobi-preconditioned CG,
+/// warm-started at `x0` — the mesh operator [`apply_step`] fed to [`jacobi_pcg`].
+fn solve_step(
+    mesh: &MeshGrid,
+    faces: &FaceGeometry,
+    areas: &[f64],
+    diag: &[f64],
+    dt: f64,
+    rhs: &[f64],
+    x0: Vec<f64>,
+) -> Vec<f64> {
+    let mut kbuf = vec![0.0; rhs.len()];
+    jacobi_pcg(
+        |x, out| apply_step(mesh, faces, areas, dt, x, out, &mut kbuf),
+        Some(diag),
+        rhs,
+        x0,
+        1e-8,
+        10 * rhs.len() + 50,
+    )
+    .0
+}
+
 impl MeshGrid {
     /// Convolve the field with `kernel`, returning a new mesh of the same geometry.
     ///
@@ -152,28 +175,6 @@ impl MeshGrid {
         }
         u
     }
-}
-
-/// Solve the diffusion step `(A − Δt·K) x = rhs` by Jacobi-preconditioned CG,
-/// warm-started at `x0` — the mesh operator [`apply_step`] fed to [`jacobi_pcg`].
-fn solve_step(
-    mesh: &MeshGrid,
-    faces: &FaceGeometry,
-    areas: &[f64],
-    diag: &[f64],
-    dt: f64,
-    rhs: &[f64],
-    x0: Vec<f64>,
-) -> Vec<f64> {
-    let mut kbuf = vec![0.0; rhs.len()];
-    jacobi_pcg(
-        |x, out| apply_step(mesh, faces, areas, dt, x, out, &mut kbuf),
-        diag,
-        rhs,
-        x0,
-        1e-8,
-        10 * rhs.len() + 50,
-    )
 }
 
 #[cfg(test)]
