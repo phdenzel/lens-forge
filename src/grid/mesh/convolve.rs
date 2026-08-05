@@ -252,6 +252,20 @@ mod tests {
     }
 
     #[test]
+    fn mixture_with_zero_sigma_component_keeps_the_original() {
+        // A σ = 0 component is the identity, contributing the un-blurred field.
+        let m = mesh_from(|x, y| x * x - 0.3 * y);
+        let mix = m
+            .convolve(&Kernel::gaussian_mixture(vec![(0.5, 0.0), (0.5, 0.09)]))
+            .unwrap();
+        let blurred = m.convolve(&Kernel::gaussian(0.09)).unwrap();
+        for i in 0..m.len() {
+            let want = 0.5 * m.value(i) + 0.5 * blurred.value(i);
+            assert!((mix.value(i) - want).abs() < 1e-9, "cell {i}");
+        }
+    }
+
+    #[test]
     fn sampled_gather_leaves_a_constant_field_unchanged() {
         // The per-cell normalization makes the weighted gather exact on constants.
         let m = mesh_from(|_, _| 4.0);
