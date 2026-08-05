@@ -148,6 +148,20 @@ mod tests {
     }
 
     #[test]
+    fn trait_convolve_matches_inherent() {
+        // The FieldOps trait path delegates to the inherent method.
+        use crate::grid::FieldOps;
+        let grid = Grid2D::square(16, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (x + 0.5 * y).sin());
+        let k = Kernel::gaussian(0.3);
+        let via_trait = FieldOps::convolve(&pg, &k).unwrap();
+        let inherent = pg.convolve(&k).unwrap();
+        for (a, b) in via_trait.values.iter().zip(inherent.values.iter()) {
+            assert!((a - b).abs() < 1e-12);
+        }
+    }
+
+    #[test]
     fn delta_kernel_is_identity() {
         // A single-pixel unit-integral kernel reproduces the field.
         let grid = Grid2D::square(16, 2.0).unwrap();

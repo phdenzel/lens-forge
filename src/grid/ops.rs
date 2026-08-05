@@ -211,6 +211,15 @@ mod tests {
     }
 
     #[test]
+    fn pixelgrid_fieldops_poisson_surfaces_solver_error() {
+        // The `poisson` delegate propagates the inherent solver's rejection of the
+        // asymmetric Natural boundary — exercising its error path.
+        let g = PixelGrid::from_func_sq(8, 1.0, plane);
+        let cfg = PoissonConfig::default().with_bc(BoundaryCondition::Natural);
+        assert!(FieldOps::poisson(&g, Some(cfg)).is_err());
+    }
+
+    #[test]
     fn meshgrid_satisfies_fieldops() {
         // The same generic routine, same linear field, on an unstructured mesh.
         let mut rng = Lcg::new(0x0F5);
