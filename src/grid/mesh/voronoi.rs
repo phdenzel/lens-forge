@@ -89,6 +89,8 @@ pub struct VoronoiMesh {
     cells: VoronoiCells,
     /// Delaunay 1-ring adjacency per site.
     neighbors: VoronoiAdjacency,
+    /// Delaunay triangles (site-indexed, counter-clockwise); empty for < 3 sites.
+    triangles: Vec<[usize; 3]>,
     /// Spatial index over the sites for `O(log n)` point location.
     kdtree: KdTree<Point2D>,
 }
@@ -117,8 +119,9 @@ impl VoronoiMesh {
             return Err(LensForgeError::numerical_error("mesh site is not finite"));
         }
         let n = sites.len();
-        // Build the triangulated Delaunay diagram, stored as CSR adjacency
-        let neighbors = VoronoiAdjacency::from_lists(&build_adjacency(sites));
+        // Triangulate once; keep the CSR adjacency and the triangles for reuse.
+        let (adjacency, triangles) = build_delaunay(sites);
+        let neighbors = VoronoiAdjacency::from_lists(&adjacency);
         let boxpoly = bbox.corners_ccw();
         // Squared distance of each site from the origin for the bisector offset
         let mag2: Vec<f64> = sites.iter().map(|p| p.x * p.x + p.y * p.y).collect();
@@ -171,6 +174,7 @@ impl VoronoiMesh {
             bbox,
             cells,
             neighbors,
+            triangles,
             kdtree,
         })
     }
@@ -290,6 +294,13 @@ impl VoronoiMesh {
         &self.sites
     }
 
+    /// The Delaunay triangles (site-indexed, counter-clockwise), computed once at
+    /// construction; empty for fewer than three sites.
+    #[inline]
+    pub fn triangles(&self) -> &[[usize; 3]] {
+        &self.triangles
+    }
+
     /// Whether `p` lies within the domain box.
     ///
     /// # Arguments
@@ -390,18 +401,19 @@ impl std::fmt::Display for VoronoiMesh {
     }
 }
 
-/// Voronoi adjacency: the deduplicated Delaunay 1-ring of each site.
+/// Delaunay connectivity of `sites`: the deduplicated 1-ring adjacency per site
+/// and the triangle list, from a single triangulation.
 ///
 /// # Arguments
 /// * `sites` - the generating points; counts below three (which cannot be
-///   triangulated) are handled directly.
+///   triangulated) are handled directly, yielding no triangles.
 ///
-/// Returns, per site, the sorted indices of its Delaunay neighbours.
-fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
+/// Returns the per-site sorted neighbour indices and the site-indexed triangles.
+fn build_delaunay(sites: &[Point2D]) -> (Vec<Vec<usize>>, Vec<[usize; 3]>) {
     let n = sites.len();
     match n {
-        1 => return vec![Vec::new()],
-        2 => return vec![vec![1], vec![0]],
+        1 => return (vec![Vec::new()], Vec::new()),
+        2 => return (vec![vec![1], vec![0]], Vec::new()),
         _ => {}
     }
 
@@ -418,7 +430,7 @@ fn build_adjacency(sites: &[Point2D]) -> Vec<Vec<usize>> {
         list.sort_unstable();
         list.dedup();
     }
-    neighbors
+    (neighbors, tri.triangles)
 }
 
 /// Sutherland–Hodgman clip of a convex polygon by the half-plane

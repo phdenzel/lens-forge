@@ -220,6 +220,13 @@ impl MeshGrid {
         self.mesh.sites()
     }
 
+    /// Delaunay triangles (site-indexed), reusing the geometry's cached
+    /// triangulation; empty for fewer than three sites.
+    #[inline]
+    pub fn triangles(&self) -> &[[usize; 3]] {
+        self.mesh.triangles()
+    }
+
     /// Area-weighted centroids of every cell.
     #[inline]
     pub fn centroids(&self) -> Vec<Point2D> {
