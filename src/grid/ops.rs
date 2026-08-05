@@ -106,6 +106,15 @@ pub trait FieldOps: ScalarField2D + Sized {
     /// The Laplacian field `∇²v`.
     fn laplacian_field(&self) -> Result<Self>;
 
+    /// A new field of the same geometry whose value at each cell is `f` evaluated
+    /// at that cell's centre (pixel centre / mesh site). The dual of
+    /// [`sample`](crate::grid::ScalarField2D::sample): build a field from a
+    /// function rather than read one at a point.
+    ///
+    /// # Arguments
+    /// * `f` - evaluated at each cell centre.
+    fn map_centers<G: Fn(Point2D) -> f64>(&self, f: G) -> Self;
+
     /// Solve `∇²ψ = f` with this field as the source `f`, returning the potential
     /// `ψ` and solver diagnostics. The boundary handling is
     /// representation-specific (see the [`grid`](crate::grid) module docs).
@@ -191,6 +200,8 @@ mod tests {
         assert!(info.residual >= 0.0); // solver ran and reported diagnostics
         // The mean level crosses the field, so the contour returns segments.
         assert!(!f.contour(f.mean()).is_empty());
+        // map_centers rebuilds a same-geometry field from a point function.
+        assert_eq!(f.map_centers(|p| p.x).len(), f.len());
         // Return interior-ish scalars so callers can sanity-check the values.
         let mid = f.len() / 2;
         (

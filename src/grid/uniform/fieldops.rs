@@ -38,6 +38,10 @@ impl FieldOps for PixelGrid {
         self.with_values(PixelGrid::laplacian_field(self, None, None)?)
     }
 
+    fn map_centers<G: Fn(Point2D) -> f64>(&self, f: G) -> Self {
+        PixelGrid::from_func(self.grid, |x, y| f(Point2D::new(x, y)))
+    }
+
     fn poisson(&self, cfg: Option<PoissonConfig>) -> Result<(Self, SolveInfo)> {
         let (psi, info) = self.poisson_cg(cfg)?;
         Ok((self.with_values(psi)?, info))

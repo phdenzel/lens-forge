@@ -9,7 +9,7 @@
 //! (inherent methods win method resolution over trait methods).
 
 use super::meshgrid::MeshGrid;
-use crate::grid::{ContourSegment, FieldOps, Kernel, Point2D, PoissonConfig};
+use crate::grid::{ContourSegment, FieldArray1D, FieldOps, Kernel, Point2D, PoissonConfig};
 use crate::{Result, SolveInfo};
 
 impl FieldOps for MeshGrid {
@@ -31,6 +31,12 @@ impl FieldOps for MeshGrid {
 
     fn laplacian_field(&self) -> Result<Self> {
         Ok(MeshGrid::laplacian_field(self))
+    }
+
+    fn map_centers<G: Fn(Point2D) -> f64>(&self, f: G) -> Self {
+        let values = FieldArray1D::from_vec(self.sites().iter().map(|&s| f(s)).collect());
+        self.with_values(values)
+            .expect("resampling shares this geometry")
     }
 
     fn poisson(&self, cfg: Option<PoissonConfig>) -> Result<(Self, SolveInfo)> {
