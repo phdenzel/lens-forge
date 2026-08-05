@@ -15,17 +15,12 @@ use super::diff::apply_stiffness;
 use super::faces::FaceGeometry;
 use super::meshgrid::MeshGrid;
 use crate::grid::{FieldArray1D, Kernel, PixelGrid};
+use crate::utils::cg::jacobi_pcg;
 use crate::Result;
 
 /// Backward-Euler sub-steps used to reach the diffusion time $t = \sigma^2/2$;
 /// more steps sharpen the Gaussian approximation (each is one implicit solve).
 const DIFFUSION_STEPS: usize = 16;
-
-/// Dot product of two equal-length slices.
-#[inline]
-fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b).map(|(x, y)| x * y).sum()
-}
 
 /// Apply the step operator `M = A − Δt·K` to `x`, writing `out` (with `kbuf` scratch).
 fn apply_step(
@@ -159,7 +154,8 @@ impl MeshGrid {
     }
 }
 
-/// Solve `(A − Δt·K) x = rhs` by Jacobi-preconditioned CG, warm-started at `x0`.
+/// Solve the diffusion step `(A − Δt·K) x = rhs` by Jacobi-preconditioned CG,
+/// warm-started at `x0` — the mesh operator [`apply_step`] fed to [`jacobi_pcg`].
 fn solve_step(
     mesh: &MeshGrid,
     faces: &FaceGeometry,
@@ -169,45 +165,15 @@ fn solve_step(
     rhs: &[f64],
     x0: Vec<f64>,
 ) -> Vec<f64> {
-    let n = rhs.len();
-    let rhs_norm2 = dot(rhs, rhs);
-    let mut x = x0;
-    if rhs_norm2 == 0.0 {
-        x.iter_mut().for_each(|v| *v = 0.0);
-        return x;
-    }
-    let thresh = 1e-16 * rhs_norm2; // relative residual tolerance 1e-8
-    let max_iter = 10 * n + 50;
-
-    let mut kbuf = vec![0.0; n];
-    let mut ax = vec![0.0; n];
-    apply_step(mesh, faces, areas, dt, &x, &mut ax, &mut kbuf);
-    let mut r: Vec<f64> = (0..n).map(|i| rhs[i] - ax[i]).collect();
-    let mut z: Vec<f64> = (0..n).map(|i| r[i] / diag[i]).collect();
-    let mut p = z.clone();
-    let mut rz = dot(&r, &z);
-    let mut mp = vec![0.0; n];
-    for _ in 0..max_iter {
-        if dot(&r, &r) <= thresh {
-            break;
-        }
-        apply_step(mesh, faces, areas, dt, &p, &mut mp, &mut kbuf);
-        let alpha = rz / dot(&p, &mp);
-        for i in 0..n {
-            x[i] += alpha * p[i];
-            r[i] -= alpha * mp[i];
-        }
-        for i in 0..n {
-            z[i] = r[i] / diag[i];
-        }
-        let rz_new = dot(&r, &z);
-        let beta = rz_new / rz;
-        for i in 0..n {
-            p[i] = z[i] + beta * p[i];
-        }
-        rz = rz_new;
-    }
-    x
+    let mut kbuf = vec![0.0; rhs.len()];
+    jacobi_pcg(
+        |x, out| apply_step(mesh, faces, areas, dt, x, out, &mut kbuf),
+        diag,
+        rhs,
+        x0,
+        1e-8,
+        10 * rhs.len() + 50,
+    )
 }
 
 #[cfg(test)]

@@ -12,8 +12,11 @@
 //! * `svd` — one-sided Jacobi SVD and a Tikhonov-regularized pseudo-inverse
 //!   for small, ill-conditioned dense systems.
 //! * `quad` — adaptive Simpson quadrature for smooth 1D integrands.
+//! * `cg` — Jacobi-preconditioned conjugate gradient for an SPD operator given
+//!   as a closure.
 
 pub(crate) mod binomial;
+pub(crate) mod cg;
 pub(crate) mod double_double;
 pub(crate) mod error_free;
 pub(crate) mod quad;
