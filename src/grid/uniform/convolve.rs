@@ -22,23 +22,28 @@ impl PixelGrid {
     /// Requires power-of-two dimensions; errors otherwise (via [`Self::fft2d`]).
     pub fn convolve(&self, kernel: &Kernel) -> Result<Self> {
         match kernel {
-            Kernel::Gaussian { sigma } => self.convolve_gaussian(*sigma),
+            Kernel::Gaussian { sigma } => self.convolve_gaussian_mixture(&[(1.0, *sigma)]),
+            Kernel::GaussianMixture(components) => self.convolve_gaussian_mixture(components),
         }
     }
 
-    /// Convolve with an isotropic Gaussian of standard deviation `sigma` by
-    /// multiplying the spectrum with `exp(-k²σ²/2)`.
+    /// Convolve with a Gaussian mixture by multiplying the spectrum with
+    /// `Σ wₖ exp(-k²σₖ²/2)` — a single FFT pass for any number of components.
     ///
     /// # Arguments
-    /// * `sigma` - Gaussian standard deviation in domain length units.
-    fn convolve_gaussian(&self, sigma: f64) -> Result<Self> {
+    /// * `components` - the `(weight, sigma)` Gaussian components.
+    fn convolve_gaussian_mixture(&self, components: &[(f64, f64)]) -> Result<Self> {
         let mut spec = self.fft2d()?;
         let (kx, ky) = self.grid.wavenumbers();
-        let half_s2 = 0.5 * sigma * sigma;
         for (j, mut row) in spec.axis_iter_mut(Axis(0)).enumerate() {
             let ky2 = ky[j] * ky[j];
             Zip::from(&mut row).and(&kx).for_each(|fhat, &kxi| {
-                *fhat *= (-(kxi * kxi + ky2) * half_s2).exp();
+                let k2 = kxi * kxi + ky2;
+                let m: f64 = components
+                    .iter()
+                    .map(|&(w, s)| w * (-k2 * s * s * 0.5).exp())
+                    .sum();
+                *fhat *= m;
             });
         }
         self.with_values(Self::ifft2d_unchecked(&spec))
@@ -86,6 +91,22 @@ mod tests {
         assert!((ScalarField2D::sum(&out) - 1.0).abs() < 1e-9);
         assert!(out.values[[16, 16]] < 1.0);
         assert!(out.values[[16, 17]] > 0.0);
+    }
+
+    #[test]
+    fn mixture_equals_the_weighted_sum_of_its_components() {
+        // A Gaussian mixture convolution is the weighted sum of single-Gaussian
+        // convolutions of the same field.
+        let grid = Grid2D::square(32, 3.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (x + 0.5 * y).sin());
+        let mix = pg
+            .convolve(&Kernel::gaussian_mixture(vec![(0.25, 0.3), (0.75, 0.6)]))
+            .unwrap();
+        let a = pg.convolve(&Kernel::gaussian(0.3)).unwrap();
+        let b = pg.convolve(&Kernel::gaussian(0.6)).unwrap();
+        for ((m, va), vb) in mix.values.iter().zip(a.values.iter()).zip(b.values.iter()) {
+            assert!((m - (0.25 * va + 0.75 * vb)).abs() < 1e-9);
+        }
     }
 
     #[test]

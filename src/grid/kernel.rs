@@ -16,6 +16,9 @@ pub enum Kernel {
         /// Standard deviation (> 0).
         sigma: f64,
     },
+    /// Sum of isotropic Gaussians as `(weight, sigma)` pairs — a Gaussian-mixture
+    /// PSF (e.g. a Moffat fit). Weights should sum to one for unit integral.
+    GaussianMixture(Vec<(f64, f64)>),
 }
 
 impl Kernel {
@@ -25,6 +28,14 @@ impl Kernel {
     /// * `sigma` - standard deviation in domain length units (> 0).
     pub fn gaussian(sigma: f64) -> Self {
         Self::Gaussian { sigma }
+    }
+
+    /// A Gaussian-mixture kernel from `(weight, sigma)` components.
+    ///
+    /// # Arguments
+    /// * `components` - the `(weight, sigma)` pairs; weights should sum to one.
+    pub fn gaussian_mixture(components: Vec<(f64, f64)>) -> Self {
+        Self::GaussianMixture(components)
     }
 }
 

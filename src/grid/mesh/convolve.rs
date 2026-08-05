@@ -50,23 +50,25 @@ impl MeshGrid {
     /// * `kernel` - the convolution kernel.
     pub fn convolve(&self, kernel: &Kernel) -> Result<Self> {
         match kernel {
-            Kernel::Gaussian { sigma } => self.convolve_gaussian(*sigma),
+            Kernel::Gaussian { sigma } => self.convolve_gaussian_mixture(&[(1.0, *sigma)]),
+            Kernel::GaussianMixture(components) => self.convolve_gaussian_mixture(components),
         }
     }
 
-    /// Convolve with an isotropic Gaussian of standard deviation `sigma` by
-    /// diffusing the field to time $t = \sigma^2/2$ (backward Euler).
+    /// Convolve with a Gaussian mixture: each component diffuses the original
+    /// field to time $t = \sigma_k^2/2$, and the results are summed with weights.
     ///
     /// # Arguments
-    /// * `sigma` - Gaussian standard deviation in domain length units.
-    fn convolve_gaussian(&self, sigma: f64) -> Result<Self> {
+    /// * `components` - the `(weight, sigma)` Gaussian components.
+    fn convolve_gaussian_mixture(&self, components: &[(f64, f64)]) -> Result<Self> {
         let n = self.len();
-        if sigma <= 0.0 || n == 0 {
+        if n == 0 {
             return self.with_values(FieldArray1D::from_vec(self.values().to_vec()));
         }
         let faces = FaceGeometry::build(self.mesh());
         let areas: Vec<f64> = (0..n).map(|i| self.area(i)).collect();
-        // Jacobi preconditioner: diag(M)ᵢ = Aᵢ + Δt·Σⱼ Tᵢⱼ (transmissibility sum).
+        // Transmissibility sum per cell: Σⱼ Tᵢⱼ, the off-diagonal weight the
+        // Jacobi preconditioner needs (Δt-independent, so built once).
         let tsum: Vec<f64> = (0..n)
             .map(|i| {
                 let si = self.site(i);
@@ -81,6 +83,35 @@ impl MeshGrid {
             })
             .collect();
 
+        let orig = self.values();
+        let mut acc = vec![0.0f64; n];
+        for &(weight, sigma) in components {
+            if sigma <= 0.0 {
+                // A zero-width Gaussian is the identity.
+                for i in 0..n {
+                    acc[i] += weight * orig[i];
+                }
+                continue;
+            }
+            let diffused = self.diffuse(&faces, &areas, &tsum, sigma, orig);
+            for i in 0..n {
+                acc[i] += weight * diffused[i];
+            }
+        }
+        self.with_values(FieldArray1D::from_vec(acc))
+    }
+
+    /// Diffuse `u0` to time $t = \sigma^2/2$ by backward-Euler sub-steps, returning
+    /// the diffused values (one per cell).
+    fn diffuse(
+        &self,
+        faces: &FaceGeometry,
+        areas: &[f64],
+        tsum: &[f64],
+        sigma: f64,
+        u0: &[f64],
+    ) -> Vec<f64> {
+        let n = u0.len();
         let dt = 0.5 * sigma * sigma / DIFFUSION_STEPS as f64;
         let diag: Vec<f64> = (0..n)
             .map(|i| {
@@ -88,13 +119,12 @@ impl MeshGrid {
                 if d > 0.0 { d } else { 1.0 }
             })
             .collect();
-
-        let mut u = self.values().to_vec();
+        let mut u = u0.to_vec();
         for _ in 0..DIFFUSION_STEPS {
             let rhs: Vec<f64> = (0..n).map(|i| areas[i] * u[i]).collect();
-            u = solve_step(self, &faces, &areas, &diag, dt, &rhs, u);
+            u = solve_step(self, faces, areas, &diag, dt, &rhs, u);
         }
-        self.with_values(FieldArray1D::from_vec(u))
+        u
     }
 }
 
@@ -200,6 +230,21 @@ mod tests {
         assert!(out.value(nb) > 0.0);
         for i in 0..out.len() {
             assert!(out.value(i) >= -1e-12, "cell {i} went negative: {}", out.value(i));
+        }
+    }
+
+    #[test]
+    fn mixture_equals_the_weighted_sum_of_its_components() {
+        // The mixture diffuses each component off the original field and sums them.
+        let m = mesh_from(|x, y| x * x - 0.3 * y);
+        let mix = m
+            .convolve(&Kernel::gaussian_mixture(vec![(0.4, 0.05), (0.6, 0.09)]))
+            .unwrap();
+        let a = m.convolve(&Kernel::gaussian(0.05)).unwrap();
+        let b = m.convolve(&Kernel::gaussian(0.09)).unwrap();
+        for i in 0..m.len() {
+            let want = 0.4 * a.value(i) + 0.6 * b.value(i);
+            assert!((mix.value(i) - want).abs() < 1e-9, "cell {i}");
         }
     }
 
