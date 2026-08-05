@@ -11,7 +11,7 @@
 //! of the same name (inherent methods win method resolution over trait methods).
 
 use super::pixelgrid::PixelGrid;
-use crate::grid::{ContourSegment, FieldOps, Point2D, PoissonConfig};
+use crate::grid::{ContourSegment, FieldOps, Kernel, Point2D, PoissonConfig};
 use crate::{Result, SolveInfo};
 
 impl FieldOps for PixelGrid {
@@ -45,5 +45,9 @@ impl FieldOps for PixelGrid {
 
     fn contour(&self, level: f64) -> Vec<ContourSegment> {
         PixelGrid::contour(self, level)
+    }
+
+    fn convolve(&self, kernel: &Kernel) -> Result<Self> {
+        PixelGrid::convolve(self, kernel)
     }
 }

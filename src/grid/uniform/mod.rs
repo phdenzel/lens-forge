@@ -15,6 +15,7 @@
 //! * `poisson` — Poisson solvers ($\nabla^2 \psi = f$).
 
 mod contour;
+mod convolve;
 mod diff;
 mod fieldops;
 mod grid2d;
