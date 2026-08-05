@@ -84,6 +84,51 @@ impl<P: KdPoint> KdTree<P> {
         best
     }
 
+    /// Indices of all indexed points within Euclidean `radius` of `q`.
+    ///
+    /// # Arguments
+    /// * `q` - the query point.
+    /// * `radius` - the search radius; points at distance `≤ radius` are returned.
+    ///
+    /// Returns the matching indices in unspecified order.
+    pub(crate) fn within_radius(&self, q: P, radius: f64) -> Vec<usize> {
+        let mut hits = Vec::new();
+        self.range_search(self.root, q, 0, radius * radius, &mut hits);
+        hits
+    }
+
+    /// Collect into `hits` every point of the subtree at `node` within `r2`
+    /// (squared radius) of `q`.
+    ///
+    /// # Arguments
+    /// * `node` - root of the subtree to search (`None` ends the branch).
+    /// * `q` - the query point.
+    /// * `depth` - current tree depth; selects the split axis (`depth % DIM`).
+    /// * `r2` - squared search radius.
+    /// * `hits` - accumulator of matching point indices.
+    fn range_search(&self, node: Option<u32>, q: P, depth: usize, r2: f64, hits: &mut Vec<usize>) {
+        let Some(node) = node else {
+            return;
+        };
+        let n = &self.nodes[node as usize];
+        let pt = self.pts[n.index];
+        if pt.distance_squared(&q) <= r2 {
+            hits.push(n.index);
+        }
+        let axis = depth % P::DIM;
+        let diff = q[axis] - pt[axis];
+        let (near, far) = if diff < 0.0 {
+            (n.left, n.right)
+        } else {
+            (n.right, n.left)
+        };
+        self.range_search(near, q, depth + 1, r2, hits);
+        // The far side can only hold matches if the split plane is within radius.
+        if diff * diff <= r2 {
+            self.range_search(far, q, depth + 1, r2, hits);
+        }
+    }
+
     /// Recursively refine the nearest-point search over the subtree at `node`.
     ///
     /// # Arguments
@@ -211,5 +256,23 @@ mod tests {
         let pts = [Point2D::new(3.0, 4.0)];
         let tree = KdTree::new(&pts);
         assert_eq!(tree.nearest(Point2D::new(0.0, 0.0)), Some(0));
+    }
+
+    #[test]
+    fn within_radius_matches_brute_force() {
+        let mut rng = Lcg::new(0xBEEF);
+        let pts: Vec<Point2D> = (0..500).map(|_| Point2D::new(rng.f(), rng.f())).collect();
+        let tree = KdTree::new(&pts);
+        for _ in 0..200 {
+            let q = Point2D::new(rng.f(), rng.f());
+            let r = 0.15;
+            let mut got = tree.within_radius(q, r);
+            got.sort_unstable();
+            let mut want: Vec<usize> = (0..pts.len())
+                .filter(|&i| pts[i].distance_squared(&q) <= r * r)
+                .collect();
+            want.sort_unstable();
+            assert_eq!(got, want);
+        }
     }
 }

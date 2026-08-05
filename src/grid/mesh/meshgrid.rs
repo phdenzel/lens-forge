@@ -227,6 +227,17 @@ impl MeshGrid {
         self.mesh.triangles()
     }
 
+    /// Indices of all cells whose site lies within `radius` of `q` (k-d tree
+    /// range query, order unspecified).
+    ///
+    /// # Arguments
+    /// * `q` - the query point.
+    /// * `radius` - the search radius.
+    #[inline]
+    pub fn cells_within(&self, q: Point2D, radius: f64) -> Vec<usize> {
+        self.mesh.sites_within(q, radius)
+    }
+
     /// Area-weighted centroids of every cell.
     #[inline]
     pub fn centroids(&self) -> Vec<Point2D> {

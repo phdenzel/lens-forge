@@ -355,6 +355,16 @@ impl VoronoiMesh {
             .expect("VoronoiMesh always has at least one site")
     }
 
+    /// Indices of all sites within Euclidean `radius` of `q`, via an `O(log n)`
+    /// k-d tree range query (order unspecified).
+    ///
+    /// # Arguments
+    /// * `q` - the query point.
+    /// * `radius` - the search radius (sites at distance `≤ radius` are returned).
+    pub fn sites_within(&self, q: Point2D, radius: f64) -> Vec<usize> {
+        self.kdtree.within_radius(q, radius)
+    }
+
     /// Index of the cell containing `q`, via a warm-started greedy walk on the
     /// Voronoi adjacency: step to the nearest neighbouring site until none is
     /// closer.
@@ -511,6 +521,22 @@ mod tests {
 
     fn unit() -> BBox {
         BBox::from_lims(0.0, 1.0, 0.0, 1.0)
+    }
+
+    #[test]
+    fn sites_within_matches_brute_force() {
+        let mut rng = Lcg::new(0x51DE5);
+        let sites: Vec<Point2D> = (0..300).map(|_| p(rng.f(), rng.f())).collect();
+        let m = VoronoiMesh::new(&sites, unit()).unwrap();
+        let q = p(0.5, 0.5);
+        let r = 0.2;
+        let mut got = m.sites_within(q, r);
+        got.sort_unstable();
+        let mut want: Vec<usize> = (0..sites.len())
+            .filter(|&i| sites[i].distance(&q) <= r)
+            .collect();
+        want.sort_unstable();
+        assert_eq!(got, want);
     }
 
     #[test]
