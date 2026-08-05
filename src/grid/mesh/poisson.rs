@@ -22,13 +22,8 @@ use super::diff::apply_stiffness;
 use super::faces::{FaceGeometry, boundary_transmissibilities};
 use super::meshgrid::MeshGrid;
 use crate::grid::{BoundaryCondition, FieldArray1D, PoissonConfig};
+use crate::utils::cg::jacobi_pcg;
 use crate::{Result, SolveInfo};
-
-/// Dot product of two equal-length slices.
-#[inline]
-fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b).map(|(x, y)| x * y).sum()
-}
 
 impl MeshGrid {
     /// Solve $\nabla^2 \psi = f$ by conjugate gradient, taking this grid's field
@@ -78,21 +73,6 @@ impl MeshGrid {
             0.0
         };
         let b: Vec<f64> = (0..n).map(|i| -areas[i] * (self.value(i) - fbar)).collect();
-        let bnorm2 = dot(&b, &b);
-
-        let mut x = vec![0.0f64; n];
-        if bnorm2 == 0.0 {
-            let psi = self.with_values(FieldArray1D::from_vec(x))?;
-            return Ok((
-                psi,
-                SolveInfo {
-                    iterations: 0,
-                    residual: 0.0,
-                    converged: true,
-                },
-            ));
-        }
-        let thresh = cfg.tol * cfg.tol * bnorm2;
 
         // Jacobi preconditioner M = diag(A): the per-cell transmissibility sum
         // (plus the Dirichlet boundary term). Positive on any connected cell; the
@@ -114,51 +94,24 @@ impl MeshGrid {
             })
             .collect();
 
-        // Jacobi-preconditioned CG with A p = -K p (+ diag(w) p for Dirichlet).
-        let mut r = b;
-        let mut z: Vec<f64> = (0..n).map(|k| r[k] / diag[k]).collect();
-        let mut p = z.clone();
+        // A p = -K p (+ diag(w) p for the pinned Dirichlet boundary).
         let mut kp = vec![0.0f64; n];
-        let mut ap = vec![0.0f64; n];
-        let mut rs = dot(&r, &r);
-        let mut rz = dot(&r, &z);
-        let mut iterations = 0;
-        let mut converged = rs <= thresh;
-        while iterations < cfg.max_iter && !converged {
-            apply_stiffness(self, &faces, &p, &mut kp);
-            for k in 0..n {
-                ap[k] = -kp[k];
-                if dirichlet {
-                    ap[k] += bweight[k] * p[k];
+        let (mut x, info) = jacobi_pcg(
+            |p, ap| {
+                apply_stiffness(self, &faces, p, &mut kp);
+                for k in 0..n {
+                    ap[k] = -kp[k];
+                    if dirichlet {
+                        ap[k] += bweight[k] * p[k];
+                    }
                 }
-            }
-            let pap = dot(&p, &ap);
-            if pap <= 0.0 {
-                break; // constant (null-space) direction; nothing more to resolve
-            }
-            let alpha = rz / pap;
-            for k in 0..n {
-                x[k] += alpha * p[k];
-                r[k] -= alpha * ap[k];
-            }
-            let rs_new = dot(&r, &r);
-            iterations += 1;
-            if rs_new <= thresh {
-                rs = rs_new;
-                converged = true;
-                break;
-            }
-            for k in 0..n {
-                z[k] = r[k] / diag[k];
-            }
-            let rz_new = dot(&r, &z);
-            let beta = rz_new / rz;
-            for k in 0..n {
-                p[k] = z[k] + beta * p[k];
-            }
-            rz = rz_new;
-            rs = rs_new;
-        }
+            },
+            Some(&diag),
+            &b,
+            vec![0.0f64; n],
+            cfg.tol,
+            cfg.max_iter,
+        );
 
         // Neumann is singular: fix the additive-constant gauge (zero area-weighted
         // mean). Dirichlet is unique, so the solution is kept as solved.
@@ -169,11 +122,6 @@ impl MeshGrid {
             }
         }
         let psi = self.with_values(FieldArray1D::from_vec(x))?;
-        let info = SolveInfo {
-            iterations,
-            residual: (rs / bnorm2).sqrt(),
-            converged,
-        };
         Ok((psi, info))
     }
 }

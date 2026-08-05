@@ -18,14 +18,10 @@
 
 use super::diff::{BoundaryCondition, apply_laplacian_5pt_symm};
 use crate::grid::{FieldArray2D, PixelGrid, PoissonConfig};
+use crate::utils::cg::jacobi_pcg;
 use crate::{LensForgeError, Result, SolveInfo};
 use ndarray::{Array2, Axis, Zip};
 use num::complex::Complex;
-
-#[inline]
-fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b).map(|(&x, &y)| x * y).sum()
-}
 
 /// Reshape a row-major buffer into a `(ny, nx)` field.
 #[inline]
@@ -115,60 +111,19 @@ impl PixelGrid {
         } else {
             0.0
         };
-        // A x = b with A = -∇², b = -(f - mean).
+        // A x = b with A = -∇² (negated spacings fold the sign in), b = -(f - mean).
+        // Plain CG: the 5-point Laplacian has a constant diagonal, so Jacobi
+        // preconditioning would be a no-op.
         let b: Vec<f64> = f.iter().map(|&v| -(v - mean)).collect();
-        let bnorm2 = dot(&b, &b);
-
-        let mut x = vec![0.0f64; m];
-        // `x` always has length m = nx*ny, so the reshape cannot fail.
-        if bnorm2 == 0.0 {
-            let psi = to_field(x, ny, nx).expect("x has length nx*ny");
-            return Ok((
-                psi,
-                SolveInfo {
-                    iterations: 0,
-                    residual: 0.0,
-                    converged: true,
-                },
-            ));
-        }
-        let thresh = cfg.tol * cfg.tol * bnorm2;
-
-        let mut r = b;
-        let mut p = r.clone();
-        let mut ap = vec![0.0f64; m];
-        let mut rs = dot(&r, &r);
-        let mut iterations = 0;
-        let mut converged = rs <= thresh;
-
-        while iterations < cfg.max_iter && !converged {
-            // ap = A p with A = -∇²: negated spacings fold the sign in.
-            apply_laplacian_5pt_symm(&p, nx, ny, -inv_dx2, -inv_dy2, cfg.bc, &mut ap);
-            let alpha = rs / dot(&p, &ap);
-            for k in 0..m {
-                x[k] += alpha * p[k];
-                r[k] -= alpha * ap[k];
-            }
-            let rs_new = dot(&r, &r);
-            iterations += 1;
-            if rs_new <= thresh {
-                rs = rs_new;
-                converged = true;
-                break;
-            }
-            let beta = rs_new / rs;
-            for k in 0..m {
-                p[k] = r[k] + beta * p[k];
-            }
-            rs = rs_new;
-        }
-
+        let (x, info) = jacobi_pcg(
+            |p, ap| apply_laplacian_5pt_symm(p, nx, ny, -inv_dx2, -inv_dy2, cfg.bc, ap),
+            None,
+            &b,
+            vec![0.0f64; m],
+            cfg.tol,
+            cfg.max_iter,
+        );
         let psi = to_field(x, ny, nx).expect("x has length nx*ny");
-        let info = SolveInfo {
-            iterations,
-            residual: (rs / bnorm2).sqrt(),
-            converged,
-        };
         Ok((psi, info))
     }
 }
