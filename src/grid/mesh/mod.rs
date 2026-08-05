@@ -33,6 +33,7 @@ mod faces;
 mod meshgrid;
 pub use meshgrid::{MeshCell, MeshGrid};
 
+mod contour;
 mod diff;
 mod fieldops;
 mod interp;

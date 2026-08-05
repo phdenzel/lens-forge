@@ -14,7 +14,7 @@
 //! rather than in either representation's module; the mesh solver reads only its
 //! `tol` and `max_iter`.
 
-use crate::grid::{BoundaryCondition, Point2D, ScalarField2D};
+use crate::grid::{BoundaryCondition, ContourSegment, Point2D, ScalarField2D};
 use crate::{Result, SolveInfo};
 
 /// Configuration for the iterative conjugate-gradient Poisson solvers
@@ -114,6 +114,13 @@ pub trait FieldOps: ScalarField2D + Sized {
     /// * `cfg` - solver configuration (defaults if `None`).
     fn poisson(&self, cfg: Option<PoissonConfig>) -> Result<(Self, SolveInfo)>;
 
+    /// Extract the iso-contour `v = level` as unordered line segments, each
+    /// representation marching its natural cells.
+    ///
+    /// # Arguments
+    /// * `level` - the contour value.
+    fn contour(&self, level: f64) -> Vec<ContourSegment>;
+
     /// Continuously interpolate the field at `p`, returning `0.0` outside the
     /// domain.
     ///
@@ -174,6 +181,8 @@ mod tests {
         let (psi, info) = f.poisson(None).unwrap();
         assert_eq!(psi.len(), f.len());
         assert!(info.residual >= 0.0); // solver ran and reported diagnostics
+        // The mean level crosses the field, so the contour returns segments.
+        assert!(!f.contour(f.mean()).is_empty());
         // Return interior-ish scalars so callers can sanity-check the values.
         let mid = f.len() / 2;
         (

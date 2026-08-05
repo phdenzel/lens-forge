@@ -74,6 +74,7 @@ pub type FourierSymbols = (ComplexArray1D, ComplexArray1D);
 
 mod adaptive;
 mod bbox;
+mod contour;
 mod field;
 mod mesh;
 mod ops;
@@ -81,6 +82,7 @@ mod point;
 mod uniform;
 
 pub use bbox::BBox;
+pub use contour::ContourSegment;
 pub use field::ScalarField2D;
 pub use ops::{FieldOps, PoissonConfig};
 pub use point::Point2D;

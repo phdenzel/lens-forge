@@ -14,6 +14,7 @@
 //! * `diff` — finite-difference derivatives (gradient, Laplacian).
 //! * `poisson` — Poisson solvers ($\nabla^2 \psi = f$).
 
+mod contour;
 mod diff;
 mod fieldops;
 mod grid2d;

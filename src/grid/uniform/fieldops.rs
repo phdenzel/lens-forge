@@ -11,7 +11,7 @@
 //! of the same name (inherent methods win method resolution over trait methods).
 
 use super::pixelgrid::PixelGrid;
-use crate::grid::{FieldOps, Point2D, PoissonConfig};
+use crate::grid::{ContourSegment, FieldOps, Point2D, PoissonConfig};
 use crate::{Result, SolveInfo};
 
 impl FieldOps for PixelGrid {
@@ -41,5 +41,9 @@ impl FieldOps for PixelGrid {
     fn poisson(&self, cfg: Option<PoissonConfig>) -> Result<(Self, SolveInfo)> {
         let (psi, info) = self.poisson_cg(cfg)?;
         Ok((self.with_values(psi)?, info))
+    }
+
+    fn contour(&self, level: f64) -> Vec<ContourSegment> {
+        PixelGrid::contour(self, level)
     }
 }
