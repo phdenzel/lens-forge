@@ -105,16 +105,24 @@ pub trait LensModel {
         theta - self.deflection(theta)
     }
 
-    /// Signed magnification μ = 1/det(A) with A = I − H(ψ).
+    /// Jacobian determinant det A = det(I − H(ψ)).
     ///
-    /// Diverges (returns ±∞) on critical curves where det(A) = 0.
-    fn magnification(&self, theta: Point2D) -> f64 {
+    /// Zero on the critical curves; the magnification is its reciprocal
+    /// μ = 1/det A. Override where det A is a primary output.
+    fn jacobian_det(&self, theta: Point2D) -> f64 {
         let h = self.jet(theta).hessian;
         let a11 = 1.0 - h[0][0];
         let a22 = 1.0 - h[1][1];
         let a12 = -h[0][1];
         let a21 = -h[1][0];
-        1.0 / (a11 * a22 - a12 * a21)
+        a11 * a22 - a12 * a21
+    }
+
+    /// Signed magnification μ = 1/det(A) with A = I − H(ψ).
+    ///
+    /// Diverges (returns ±∞) on critical curves where det(A) = 0.
+    fn magnification(&self, theta: Point2D) -> f64 {
+        1.0 / self.jacobian_det(theta)
     }
 }
 
@@ -140,5 +148,26 @@ mod tests {
         assert_eq!(c.psi, 1.5);
         assert_eq!(c.alpha, Point2D::new(1.0, 7.0));
         assert_eq!(c.hessian, [[3.0, 1.5], [1.5, 2.0]]);
+    }
+
+    /// A lens with a constant Hessian, for testing the derived quantities.
+    struct ConstHessian([[f64; 2]; 2]);
+    impl LensModel for ConstHessian {
+        fn jet(&self, _theta: Point2D) -> LensJet {
+            LensJet {
+                psi: 0.0,
+                alpha: Point2D::origin(),
+                hessian: self.0,
+            }
+        }
+    }
+
+    #[test]
+    fn jacobian_det_and_magnification_are_reciprocals() {
+        // H = diag(0.5, −0.5) ⇒ A = diag(0.5, 1.5), det A = 0.75, μ = 1/0.75.
+        let lens = ConstHessian([[0.5, 0.0], [0.0, -0.5]]);
+        let p = Point2D::origin();
+        assert!((lens.jacobian_det(p) - 0.75).abs() < 1e-12);
+        assert!((lens.magnification(p) - 1.0 / 0.75).abs() < 1e-12);
     }
 }
