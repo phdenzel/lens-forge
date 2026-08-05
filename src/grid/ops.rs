@@ -14,8 +14,8 @@
 //! rather than in either representation's module; the mesh solver reads only its
 //! `tol` and `max_iter`.
 
-use crate::grid::{BoundaryCondition, ContourSegment, Point2D, ScalarField2D};
-use crate::{Result, SolveInfo};
+use crate::grid::{BoundaryCondition, ContourSegment, Kernel, Point2D, ScalarField2D};
+use crate::{LensForgeError, Result, SolveInfo};
 
 /// Configuration for the iterative conjugate-gradient Poisson solvers
 /// ([`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg) and
@@ -120,6 +120,20 @@ pub trait FieldOps: ScalarField2D + Sized {
     /// # Arguments
     /// * `level` - the contour value.
     fn contour(&self, level: f64) -> Vec<ContourSegment>;
+
+    /// Convolve the field with `kernel` (a PSF / smoothing profile), returning a
+    /// same-representation field. Each representation overrides this with its
+    /// native transform (FFT on the grid, diffusion on the mesh); the default
+    /// reports that convolution is unavailable.
+    ///
+    /// # Arguments
+    /// * `kernel` - the convolution kernel.
+    fn convolve(&self, kernel: &Kernel) -> Result<Self> {
+        let _ = kernel;
+        Err(LensForgeError::computation_error(
+            "convolve is not implemented for this field representation",
+        ))
+    }
 
     /// Continuously interpolate the field at `p`, returning `0.0` outside the
     /// domain.
