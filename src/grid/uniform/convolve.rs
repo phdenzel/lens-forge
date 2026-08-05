@@ -3,13 +3,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Convolution for [`PixelGrid`] via the FFT.
 //!
-//! A Gaussian PSF is an analytic k-space multiplier: convolving with an isotropic
-//! Gaussian of width σ multiplies the spectrum by `exp(-k²σ²/2)`, so no kernel
-//! stamp is sampled. The zero-frequency mode is left unchanged, so total flux is
-//! preserved. Requires power-of-two dimensions (the `phastft` backend).
+//! A Gaussian kernel is an analytic k-space multiplier: convolving with an
+//! isotropic Gaussian of width σ multiplies the spectrum by `exp(-k²σ²/2)`, so no
+//! kernel is sampled. The zero-frequency mode is left unchanged, so flux is preserved.
+//! Requires power-of-two dimensions (the `phastft` backend). A [`Sampled`] kernel
+//! instead convolves directly with its pixel values.
+//!
+//! [`Sampled`]: crate::grid::Kernel::Sampled
 
 use super::pixelgrid::PixelGrid;
-use crate::grid::Kernel;
+use crate::grid::{FieldArray2D, Kernel, Point2D};
 use crate::Result;
 use ndarray::{Axis, Zip};
 
@@ -24,7 +27,35 @@ impl PixelGrid {
         match kernel {
             Kernel::Gaussian { sigma } => self.convolve_gaussian_mixture(&[(1.0, *sigma)]),
             Kernel::GaussianMixture(components) => self.convolve_gaussian_mixture(components),
+            Kernel::Sampled(kernel) => self.convolve_sampled(kernel),
         }
+    }
+
+    /// Convolve with a sampled `kernel` by direct summation over its pixels, with
+    /// out-of-domain samples treated as zero. Works on any grid size (no FFT).
+    ///
+    /// # Arguments
+    /// * `kernel` - the sampled kernel image, centred on the origin.
+    fn convolve_sampled(&self, kernel: &PixelGrid) -> Result<Self> {
+        let da = kernel.grid.pixel_area();
+        // Each kernel pixel is an offset and a weight wᵦ = Kᵦ·(pixel area) (Σ wᵦ = 1).
+        let taps: Vec<(Point2D, f64)> = kernel
+            .grid
+            .iter_pixels()
+            .map(|(a, b)| (kernel.grid.pixel_center(a, b), kernel.get(a, b) * da))
+            .collect();
+        let (nx, ny) = (self.grid.nx, self.grid.ny);
+        let mut out = FieldArray2D::zeros((ny, nx));
+        for j in 0..ny {
+            for i in 0..nx {
+                let x = self.grid.pixel_center(i, j);
+                out[[j, i]] = taps
+                    .iter()
+                    .map(|&(o, w)| self.interpolate_or(x - o, 0.0) * w)
+                    .sum();
+            }
+        }
+        self.with_values(out)
     }
 
     /// Convolve with a Gaussian mixture by multiplying the spectrum with
@@ -114,5 +145,34 @@ mod tests {
         let grid = Grid2D::square(30, 2.0).unwrap();
         let pg = PixelGrid::constant(grid, 1.0);
         assert!(pg.convolve(&Kernel::gaussian(0.5)).is_err());
+    }
+
+    #[test]
+    fn delta_kernel_is_identity() {
+        // A single-pixel unit-integral kernel reproduces the field.
+        let grid = Grid2D::square(16, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| (x - 0.3 * y).cos());
+        let sg = Grid2D::square(1, 0.5).unwrap();
+        let kernel = PixelGrid::constant(sg, 1.0 / sg.pixel_area());
+        let out = pg.convolve(&Kernel::sampled(kernel)).unwrap();
+        for (o, v) in out.values.iter().zip(pg.values.iter()) {
+            assert!((o - v).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn box_kernel_reproduces_a_linear_field_in_the_interior() {
+        // A symmetric unit box convolves a linear field to itself (interior),
+        // and the kernel taps land exactly on neighbouring pixel centres.
+        let grid = Grid2D::square(16, 2.0).unwrap(); // dx = 0.25
+        let pg = PixelGrid::from_func(grid, |x, y| 2.0 * x - 3.0 * y + 1.0);
+        let sg = Grid2D::square(3, 0.375).unwrap(); // kernel dx = 0.25, commensurate
+        let kernel = PixelGrid::constant(sg, 1.0 / (9.0 * sg.pixel_area()));
+        let out = pg.convolve(&Kernel::sampled(kernel)).unwrap();
+        for j in 2..14 {
+            for i in 2..14 {
+                assert!((out.values[[j, i]] - pg.values[[j, i]]).abs() < 1e-9);
+            }
+        }
     }
 }

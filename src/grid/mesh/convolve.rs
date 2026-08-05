@@ -14,7 +14,7 @@
 use super::diff::apply_stiffness;
 use super::faces::FaceGeometry;
 use super::meshgrid::MeshGrid;
-use crate::grid::{FieldArray1D, Kernel};
+use crate::grid::{FieldArray1D, Kernel, PixelGrid};
 use crate::Result;
 
 /// Backward-Euler sub-steps used to reach the diffusion time $t = \sigma^2/2$;
@@ -52,7 +52,38 @@ impl MeshGrid {
         match kernel {
             Kernel::Gaussian { sigma } => self.convolve_gaussian_mixture(&[(1.0, *sigma)]),
             Kernel::GaussianMixture(components) => self.convolve_gaussian_mixture(components),
+            Kernel::Sampled(kernel) => self.convolve_sampled(kernel),
         }
+    }
+
+    /// Convolve with a sampled `kernel` by kernel-gather: for each cell, gather the
+    /// cells within the kernel's support (a k-d tree range query) and form the
+    /// kernel-weighted average `Σ K·Aⱼ·vⱼ / Σ K·Aⱼ`. Normalizing per cell keeps a
+    /// constant field exactly fixed and the output within the input's range.
+    ///
+    /// # Arguments
+    /// * `kernel` - the sampled kernel image, centred on the origin.
+    fn convolve_sampled(&self, kernel: &PixelGrid) -> Result<Self> {
+        let n = self.len();
+        // Support radius = the kernel's farthest corner from the origin.
+        let bb = kernel.grid.bbox;
+        let hx = bb.min.x.abs().max(bb.max.x.abs());
+        let hy = bb.min.y.abs().max(bb.max.y.abs());
+        let radius = (hx * hx + hy * hy).sqrt();
+
+        let out: Vec<f64> = (0..n)
+            .map(|i| {
+                let xi = self.site(i);
+                let (mut num, mut den) = (0.0, 0.0);
+                for j in self.cells_within(xi, radius) {
+                    let w = kernel.interpolate_or(xi - self.site(j), 0.0) * self.area(j);
+                    num += w * self.value(j);
+                    den += w;
+                }
+                if den > 0.0 { num / den } else { self.value(i) }
+            })
+            .collect();
+        self.with_values(FieldArray1D::from_vec(out))
     }
 
     /// Convolve with a Gaussian mixture: each component diffuses the original
@@ -182,8 +213,14 @@ fn solve_step(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid::{BBox, Point2D, ScalarField2D};
+    use crate::grid::{BBox, Grid2D, Point2D, ScalarField2D};
     use crate::utils::rng::Lcg;
+
+    /// A positive Gaussian kernel image (unnormalized: the gather normalizes per cell).
+    fn gaussian_kernel() -> PixelGrid {
+        let sg = Grid2D::square(7, 0.2).unwrap();
+        PixelGrid::from_func(sg, |x, y| (-(x * x + y * y) / (2.0 * 0.08 * 0.08)).exp())
+    }
 
     /// A jittered lattice over the unit box, valued by `f`.
     fn mesh_from<F: Fn(f64, f64) -> f64>(f: F) -> MeshGrid {
@@ -245,6 +282,32 @@ mod tests {
         for i in 0..m.len() {
             let want = 0.4 * a.value(i) + 0.6 * b.value(i);
             assert!((mix.value(i) - want).abs() < 1e-9, "cell {i}");
+        }
+    }
+
+    #[test]
+    fn sampled_gather_leaves_a_constant_field_unchanged() {
+        // The per-cell normalization makes the weighted gather exact on constants.
+        let m = mesh_from(|_, _| 4.0);
+        let out = m.convolve(&Kernel::sampled(gaussian_kernel())).unwrap();
+        for i in 0..out.len() {
+            assert!((out.value(i) - 4.0).abs() < 1e-9, "cell {i}: {}", out.value(i));
+        }
+    }
+
+    #[test]
+    fn sampled_gather_smooths_a_peak_and_stays_bounded() {
+        // A hot cell spreads to its support; the normalized average keeps every
+        // value within the input's [0, 1] range.
+        let mut m = mesh_from(|_, _| 0.0);
+        let peak = m.len() / 2;
+        m.set(peak, 1.0);
+        let out = m.convolve(&Kernel::sampled(gaussian_kernel())).unwrap();
+        assert!(out.value(peak) < 1.0);
+        assert!((0..m.len()).any(|i| i != peak && out.value(i) > 0.0));
+        for i in 0..m.len() {
+            let v = out.value(i);
+            assert!((-1e-12..=1.0 + 1e-12).contains(&v), "cell {i}: {v}");
         }
     }
 
