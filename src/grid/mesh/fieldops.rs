@@ -9,7 +9,7 @@
 //! (inherent methods win method resolution over trait methods).
 
 use super::meshgrid::MeshGrid;
-use crate::grid::{ContourSegment, FieldOps, Point2D, PoissonConfig};
+use crate::grid::{ContourSegment, FieldOps, Kernel, Point2D, PoissonConfig};
 use crate::{Result, SolveInfo};
 
 impl FieldOps for MeshGrid {
@@ -39,5 +39,9 @@ impl FieldOps for MeshGrid {
 
     fn contour(&self, level: f64) -> Vec<ContourSegment> {
         MeshGrid::contour(self, level)
+    }
+
+    fn convolve(&self, kernel: &Kernel) -> Result<Self> {
+        MeshGrid::convolve(self, kernel)
     }
 }

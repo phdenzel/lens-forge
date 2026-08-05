@@ -34,6 +34,7 @@ mod meshgrid;
 pub use meshgrid::{MeshCell, MeshGrid};
 
 mod contour;
+mod convolve;
 mod diff;
 mod fieldops;
 mod interp;
