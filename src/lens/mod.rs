@@ -5,14 +5,12 @@
 
 pub mod composite;
 pub mod external;
-pub mod mesh;
+pub mod freeform;
 pub mod model;
 pub mod parametric;
-pub mod pixel;
 
 pub use composite::CompositeLens;
 pub use external::ExternalShear;
-pub use mesh::MeshLens;
+pub use freeform::{MeshLens, PixelLens};
 pub use model::{LensJet, LensModel, MassElement};
 pub use parametric::{NFW, PointMass, SIE, SIS};
-pub use pixel::PixelLens;
