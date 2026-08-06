@@ -13,7 +13,7 @@
 //! mesh-native method (e.g. a Voronoi Poisson solve) has the geometry it needs.
 
 use crate::fastsum::{Backend, Summation, build_summation};
-use crate::grid::{FieldArray1D, MeshGrid, Point2D, ScalarField2D};
+use crate::grid::{FieldArray1D, MeshGrid, Point2D, ScalarField2D, VoronoiMesh};
 use crate::lens::model::{LensJet, LensModel, MassElement};
 use crate::lens::{FieldMethod, FreeFormLens};
 use crate::{LensForgeError, Result};
@@ -68,6 +68,25 @@ impl MeshLens {
         let values: Vec<f64> = sites.iter().map(|&p| self.mesh.sample(p)).collect();
         let mesh = MeshGrid::new(sites, self.mesh.bounds(), FieldArray1D::from_vec(values))?;
         Self::build(mesh, self.method)
+    }
+
+    /// Rebuild after `iterations` Lloyd (CVT) relaxation sweeps, resampling the current
+    /// κ onto the relaxed generators and preserving the method.
+    ///
+    /// Each sweep moves every site to its cell centroid, regularizing toward uniform,
+    /// near-hexagonal cells — so it *removes* any adaptive concentration (it regularizes
+    /// an irregular mesh, it does not adapt one to the lensing field).
+    ///
+    /// # Arguments
+    /// * `iterations` - number of relaxation sweeps (`0` resamples onto the current sites).
+    ///
+    /// # Errors
+    /// Propagates the mesh rebuild.
+    pub fn with_lloyd_iters(self, iterations: usize) -> Result<Self> {
+        let relaxed =
+            VoronoiMesh::new(self.mesh.sites(), self.mesh.bounds())?.with_lloyd_iters(iterations)?;
+        let sites = relaxed.sites;
+        self.with_sites(&sites)
     }
 
     /// Number of cells.
@@ -344,6 +363,16 @@ mod tests {
         let relensed = MeshLens::new(mg).unwrap().with_sites(&scattered(60)).unwrap();
         assert_eq!(relensed.len(), 60);
         assert!((relensed.convergence(Point2D::new(0.5, 0.2)) - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn with_lloyd_iters_regularizes_and_preserves_kappa() {
+        // Relaxing a uniform-κ mesh keeps κ and cell count and yields a finite field.
+        let mg = mesh(&scattered(80), &[0.3; 80]);
+        let relaxed = MeshLens::new(mg).unwrap().with_lloyd_iters(3).unwrap();
+        assert_eq!(relaxed.len(), 80);
+        assert!((relaxed.convergence(Point2D::new(0.4, -0.3)) - 0.3).abs() < 1e-12);
+        assert!(relaxed.deflection(Point2D::new(2.5, 1.0)).norm().is_finite());
     }
 
     #[test]
