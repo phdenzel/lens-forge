@@ -13,7 +13,7 @@
 //! `pseudo_inverse`) rather than deriving anything analytically. Evaluation
 //! reuses [`Jet::add_monopole`], as the densities are just monopoles.
 
-use crate::fastsum::{ExpansionOps, FieldSolver, Jet, Monopole, SolverConfig, TreeFmm};
+use crate::fastsum::{ExpansionOps, Summation, Jet, Monopole, SumConfig, TreeFmm};
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
 use crate::utils::svd::pseudo_inverse;
@@ -158,7 +158,7 @@ impl ExpansionOps for KernelIndependent {
     type Outgoing = Vec<Monopole>;
     type Incoming = Vec<Monopole>;
 
-    fn build(cfg: SolverConfig, root_half: f64, max_depth: usize) -> Self {
+    fn build(cfg: SumConfig, root_half: f64, max_depth: usize) -> Self {
         let n = (4 * cfg.order).max(16);
         let equiv = circle(n, None);
         let check = circle(OVERSAMPLE * n, None);
@@ -254,8 +254,8 @@ pub struct Kifmm {
     engine: TreeFmm<KernelIndependent>,
 }
 
-impl FieldSolver for Kifmm {
-    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
+impl Summation for Kifmm {
+    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
         Kifmm {
             engine: TreeFmm::build(sources, cfg),
         }
@@ -293,7 +293,7 @@ mod tests {
         // Full three-pass kiFMM against the exact sum at interior targets: the
         // equivalent-density local expansion plus the near field.
         let bodies = random_bodies(3000, 24680);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let ki = Kifmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let mut rng = Lcg::new(13);
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn far_target_uses_root_expansion() {
         let bodies = random_bodies(200, 7);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let ki = Kifmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let theta = Point2D::new(20.0, -15.0);
@@ -321,12 +321,12 @@ mod tests {
 
     #[test]
     fn empty_and_single_body() {
-        let ki = Kifmm::build(&[], SolverConfig::default());
+        let ki = Kifmm::build(&[], SumConfig::default());
         assert_eq!(ki.gradient(Point2D::new(1.0, 1.0)), Point2D::origin());
 
         let one = [Monopole::new(Point2D::new(0.1, 0.1), 0.5)];
-        let ki = Kifmm::build(&one, SolverConfig::default());
-        let direct = DirectSum::build(&one, SolverConfig::default());
+        let ki = Kifmm::build(&one, SumConfig::default());
+        let direct = DirectSum::build(&one, SumConfig::default());
         let theta = Point2D::new(3.0, 2.0);
         let rel =
             ki.gradient(theta).distance(&direct.gradient(theta)) / direct.gradient(theta).norm();
@@ -337,7 +337,7 @@ mod tests {
     fn hessian_matches_direct() {
         // The Hessian (κ/shear) follows the same equivalent densities.
         let bodies = random_bodies(3000, 555);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let ki = Kifmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let theta = Point2D::new(0.4, -0.35);
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn query_at_a_source_is_finite() {
         let bodies = random_bodies(500, 111);
-        let ki = Kifmm::build(&bodies, SolverConfig::default().with_order(8));
+        let ki = Kifmm::build(&bodies, SumConfig::default().with_order(8));
         let j = ki.jet(bodies[0].position);
         assert!(j.gradient.x.is_finite() && j.gradient.y.is_finite() && j.scalar.is_finite());
     }
@@ -392,7 +392,7 @@ mod tests {
                 rng.range(0.0, 0.3),
             ));
         }
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let ki = Kifmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         for _ in 0..30 {

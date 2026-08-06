@@ -7,7 +7,7 @@
 //! An *outgoing* expansion sends a box's sources' influence outward; an
 //! *incoming* expansion receives it at a target.
 
-use crate::fastsum::{Jet, Monopole, SolverConfig};
+use crate::fastsum::{Jet, Monopole, SumConfig};
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
 
@@ -25,7 +25,7 @@ pub(crate) trait ExpansionOps: Sized {
     /// * `cfg` - solver configuration (order, tolerance, softening).
     /// * `root_half` - half side-length of the root box.
     /// * `max_depth` - deepest tree level (the scale range to precompute).
-    fn build(cfg: SolverConfig, root_half: f64, max_depth: usize) -> Self;
+    fn build(cfg: SumConfig, root_half: f64, max_depth: usize) -> Self;
 
     /// S2M: leaf `sources` → the outgoing expansion of box `b`.
     ///

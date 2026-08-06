@@ -13,7 +13,7 @@
 //! the outgoing carrier and [`LocalExpansion`] (Taylor) as the receiver.
 
 use crate::fastsum::{
-    ExpansionOps, FieldSolver, Jet, LocalExpansion, Monopole, Multipole, SolverConfig, TreeFmm,
+    ExpansionOps, Summation, Jet, LocalExpansion, Monopole, Multipole, SumConfig, TreeFmm,
 };
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
@@ -30,7 +30,7 @@ impl ExpansionOps for Cauchy {
     type Outgoing = Multipole;
     type Incoming = LocalExpansion;
 
-    fn build(cfg: SolverConfig, _root_half: f64, _max_depth: usize) -> Self {
+    fn build(cfg: SumConfig, _root_half: f64, _max_depth: usize) -> Self {
         Cauchy { order: cfg.order }
     }
 
@@ -79,8 +79,8 @@ pub struct Fmm {
     engine: TreeFmm<Cauchy>,
 }
 
-impl FieldSolver for Fmm {
-    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
+impl Summation for Fmm {
+    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
         Fmm {
             engine: TreeFmm::build(sources, cfg),
         }
@@ -118,7 +118,7 @@ mod tests {
         // Full three-pass FMM against the exact sum, at targets inside the source
         // region (exercises the local expansion + near-field path).
         let bodies = random_bodies(3000, 24680);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let fmm = Fmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let mut rng = Lcg::new(13);
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn far_target_uses_root_multipole() {
         let bodies = random_bodies(200, 7);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let fmm = Fmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let theta = Point2D::new(20.0, -15.0);
@@ -148,12 +148,12 @@ mod tests {
 
     #[test]
     fn empty_and_single_body() {
-        let fmm = Fmm::build(&[], SolverConfig::default());
+        let fmm = Fmm::build(&[], SumConfig::default());
         assert_eq!(fmm.gradient(Point2D::new(1.0, 1.0)), Point2D::origin());
 
         let one = [Monopole::new(Point2D::new(0.1, 0.1), 0.5)];
-        let fmm = Fmm::build(&one, SolverConfig::default());
-        let direct = DirectSum::build(&one, SolverConfig::default());
+        let fmm = Fmm::build(&one, SumConfig::default());
+        let direct = DirectSum::build(&one, SumConfig::default());
         let theta = Point2D::new(3.0, 2.0);
         assert!(fmm.gradient(theta).distance(&direct.gradient(theta)) < 1e-9);
     }
@@ -163,7 +163,7 @@ mod tests {
         // The Hessian (κ/shear in lensing) follows the same expansions; check it
         // against the exact sum at an interior target.
         let bodies = random_bodies(3000, 555);
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let fmm = Fmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let theta = Point2D::new(0.4, -0.35);
@@ -189,11 +189,11 @@ mod tests {
         // The near field is exact regardless of order, so a shrinking error with
         // order confirms the far-field M2L/L2L truncation is wired correctly.
         let bodies = random_bodies(2000, 321);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = Point2D::new(0.5, 0.2);
         let exact = direct.gradient(theta);
         let err = |order: usize| {
-            Fmm::build(&bodies, SolverConfig::default().with_order(order))
+            Fmm::build(&bodies, SumConfig::default().with_order(order))
                 .gradient(theta)
                 .distance(&exact)
         };
@@ -206,7 +206,7 @@ mod tests {
         // leaf_size = 1 forces the deepest tree, exercising the multi-level M2M
         // (upward) and L2L (downward) translation chains.
         let bodies = random_bodies(1500, 909);
-        let cfg = SolverConfig::default().with_order(12).with_leaf_size(1);
+        let cfg = SumConfig::default().with_order(12).with_leaf_size(1);
         let fmm = Fmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let mut rng = Lcg::new(4242);
@@ -222,11 +222,11 @@ mod tests {
     fn query_at_a_source_is_finite() {
         let bodies = random_bodies(500, 111);
         // eps2 = 0: the coincident source is skipped, the result stays finite.
-        let fmm = Fmm::build(&bodies, SolverConfig::default().with_order(8));
+        let fmm = Fmm::build(&bodies, SumConfig::default().with_order(8));
         let j = fmm.jet(bodies[0].position);
         assert!(j.gradient.x.is_finite() && j.gradient.y.is_finite() && j.scalar.is_finite());
         // eps2 > 0: the near-field softening also keeps it finite.
-        let fmm = Fmm::build(&bodies, SolverConfig::default().with_softening(0.05));
+        let fmm = Fmm::build(&bodies, SumConfig::default().with_softening(0.05));
         let j = fmm.jet(bodies[0].position);
         assert!(j.gradient.x.is_finite() && j.gradient.y.is_finite() && j.scalar.is_finite());
     }
@@ -259,7 +259,7 @@ mod tests {
                 rng.range(0.0, 0.3),
             ));
         }
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let fmm = Fmm::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         for _ in 0..30 {

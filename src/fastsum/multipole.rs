@@ -228,7 +228,7 @@ impl Add for Multipole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fastsum::{DirectSum, FieldSolver, SolverConfig};
+    use crate::fastsum::{DirectSum, Summation, SumConfig};
     use crate::utils::rng::Lcg;
 
     /// A small cluster of monopoles within `radius` of the origin.
@@ -248,7 +248,7 @@ mod tests {
         // Centred on the source, the order-0 expansion is exact, not approximate.
         let s = Monopole::new(Point2D::new(0.1, -0.2), 0.7);
         let mp = Multipole::from(s);
-        let direct = DirectSum::build(&[s], SolverConfig::default());
+        let direct = DirectSum::build(&[s], SumConfig::default());
         let theta = Point2D::new(3.0, 1.0);
         let a = mp.eval_jet(theta);
         let b = direct.jet(theta);
@@ -272,7 +272,7 @@ mod tests {
     fn multipole_converges_to_direct_far_field() {
         // Error at a far point must shrink as the retained order grows.
         let bodies = cluster(40, 0xB19, 0.3);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = Point2D::new(5.0, 3.0);
         let exact = direct.jet(theta);
         let err = |order: usize| {
@@ -314,7 +314,7 @@ mod tests {
         let bodies = cluster(30, 0x7, 0.3);
         let mp1 = Multipole::from_monopoles(&bodies, Point2D::new(0.05, -0.02), 10);
         let mp2 = mp1.translate(Point2D::new(-0.1, 0.08));
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = Point2D::new(6.0, -4.0);
         let a = mp2.eval_jet(theta);
         let b = direct.jet(theta);
@@ -330,7 +330,7 @@ mod tests {
         let mp = Multipole::from_monopoles(&bodies, Point2D::origin(), 12);
         let target = Point2D::new(8.0, 0.0);
         let le = mp.to_local(target);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = target + Point2D::new(0.3, -0.2);
         let a = le.eval_jet(theta);
         let b = direct.jet(theta);

@@ -22,7 +22,7 @@
 //! * [`Kifmm`]      — kernel-independent FMM (equivalent densities), $O(N)$.
 //! * *(planned)* $\mathcal{H}$-matrix — hierarchical low-rank matrix (also invertible).
 //!
-//! All backends implement [`FieldSolver`], so the lens models are method-agnostic.
+//! All backends implement [`Summation`], so the lens models are method-agnostic.
 
 pub mod barnes_hut;
 pub mod direct;
@@ -33,7 +33,7 @@ pub mod kifmm;
 pub mod local_expansion;
 pub mod monopole;
 pub mod multipole;
-pub mod solver;
+pub mod sum;
 pub(crate) mod tree_fmm;
 
 pub use barnes_hut::BarnesHut;
@@ -44,7 +44,7 @@ pub use kifmm::Kifmm;
 pub use local_expansion::LocalExpansion;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
-pub use solver::{FieldSolver, SolverConfig, SolverKind, build_solver};
+pub use sum::{Summation, SumConfig, Backend, build_summation};
 
 pub(crate) use expansion::ExpansionOps;
 pub(crate) use tree_fmm::TreeFmm;

@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Backend configuration, the [`FieldSolver`] trait, and runtime selection.
+//! Summation configuration ([`SumConfig`]), the [`Summation`] trait, and runtime
+//! [`Backend`] selection.
 
 use crate::fastsum::{BarnesHut, DirectSum, Fmm, Jet, Kifmm, Monopole};
 use crate::grid::Point2D;
@@ -9,7 +10,7 @@ use crate::grid::Point2D;
 /// Shared configuration for the fast-summation backends. Not every field is used
 /// by every backend (e.g. `order` is ignored by [`DirectSum`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SolverConfig {
+pub struct SumConfig {
     /// Barnes–Hut / FMM opening angle $\theta_\mathrm{bh}$ (multipole acceptance
     /// criterion).
     pub theta_bh: f64,
@@ -23,7 +24,7 @@ pub struct SolverConfig {
     pub tol: f64,
 }
 
-impl Default for SolverConfig {
+impl Default for SumConfig {
     fn default() -> Self {
         Self {
             theta_bh: 0.5,
@@ -35,7 +36,7 @@ impl Default for SolverConfig {
     }
 }
 
-impl SolverConfig {
+impl SumConfig {
     /// Set the opening angle (clamped to `>= 0`).
     ///
     /// # Arguments
@@ -84,9 +85,9 @@ impl SolverConfig {
 }
 
 /// A fast-summation backend for 2D Green's functions.
-pub trait FieldSolver {
+pub trait Summation {
     /// Build the backend from source elements and a configuration.
-    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self
+    fn build(sources: &[Monopole], cfg: SumConfig) -> Self
     where
         Self: Sized;
 
@@ -104,13 +105,13 @@ pub trait FieldSolver {
         thetas.iter().map(|&t| self.jet(t)).collect()
     }
 
-    /// Short identifier of the type of solver.
+    /// Short identifier of the summation backend.
     fn name(&self) -> &'static str;
 }
 
 /// Runtime selector over the available backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SolverKind {
+pub enum Backend {
     /// Exact $O(N^2)$ direct summation.
     Direct,
     /// Quadtree treecode with monopole acceptance, $O(N \log N)$.
@@ -122,29 +123,29 @@ pub enum SolverKind {
     // planned: HMatrix
 }
 
-impl SolverKind {
+impl Backend {
     /// All currently-implemented backends (handy for comparison loops).
-    pub fn implemented() -> &'static [SolverKind] {
+    pub fn implemented() -> &'static [Backend] {
         &[
-            SolverKind::Direct,
-            SolverKind::BarnesHut,
-            SolverKind::Fmm,
-            SolverKind::Kifmm,
+            Backend::Direct,
+            Backend::BarnesHut,
+            Backend::Fmm,
+            Backend::Kifmm,
         ]
     }
 }
 
 /// Build a boxed backend by kind.
-pub fn build_solver(
-    kind: SolverKind,
+pub fn build_summation(
+    kind: Backend,
     sources: &[Monopole],
-    cfg: SolverConfig,
-) -> Box<dyn FieldSolver + Send + Sync> {
+    cfg: SumConfig,
+) -> Box<dyn Summation + Send + Sync> {
     match kind {
-        SolverKind::Direct => Box::new(DirectSum::build(sources, cfg)),
-        SolverKind::BarnesHut => Box::new(BarnesHut::build(sources, cfg)),
-        SolverKind::Fmm => Box::new(Fmm::build(sources, cfg)),
-        SolverKind::Kifmm => Box::new(Kifmm::build(sources, cfg)),
+        Backend::Direct => Box::new(DirectSum::build(sources, cfg)),
+        Backend::BarnesHut => Box::new(BarnesHut::build(sources, cfg)),
+        Backend::Fmm => Box::new(Fmm::build(sources, cfg)),
+        Backend::Kifmm => Box::new(Kifmm::build(sources, cfg)),
     }
 }
 
@@ -162,49 +163,49 @@ mod tests {
 
     #[test]
     fn config_defaults_and_builders() {
-        let d = SolverConfig::default();
+        let d = SumConfig::default();
         assert_eq!(
             (d.theta_bh, d.order, d.eps2, d.leaf_size, d.tol),
             (0.5, 8, 0.0, 16, 1e-6)
         );
         // Builders clamp / transform their inputs.
-        assert_eq!(SolverConfig::default().with_theta(-1.0).theta_bh, 0.0);
-        assert_eq!(SolverConfig::default().with_softening(0.5).eps2, 0.25);
-        assert_eq!(SolverConfig::default().with_order(3).order, 3);
-        assert_eq!(SolverConfig::default().with_leaf_size(0).leaf_size, 1);
-        assert_eq!(SolverConfig::default().with_tol(1e-9).tol, 1e-9);
+        assert_eq!(SumConfig::default().with_theta(-1.0).theta_bh, 0.0);
+        assert_eq!(SumConfig::default().with_softening(0.5).eps2, 0.25);
+        assert_eq!(SumConfig::default().with_order(3).order, 3);
+        assert_eq!(SumConfig::default().with_leaf_size(0).leaf_size, 1);
+        assert_eq!(SumConfig::default().with_tol(1e-9).tol, 1e-9);
     }
 
     #[test]
     fn implemented_lists_every_backend() {
-        let ks = SolverKind::implemented();
-        assert!(ks.contains(&SolverKind::Direct));
-        assert!(ks.contains(&SolverKind::BarnesHut));
-        assert!(ks.contains(&SolverKind::Fmm));
-        assert!(ks.contains(&SolverKind::Kifmm));
+        let ks = Backend::implemented();
+        assert!(ks.contains(&Backend::Direct));
+        assert!(ks.contains(&Backend::BarnesHut));
+        assert!(ks.contains(&Backend::Fmm));
+        assert!(ks.contains(&Backend::Kifmm));
     }
 
     #[test]
-    fn build_solver_dispatches_named_backends() {
+    fn build_summation_dispatches_named_backends() {
         let src = bodies();
-        let cfg = SolverConfig::default();
-        let names: Vec<_> = SolverKind::implemented()
+        let cfg = SumConfig::default();
+        let names: Vec<_> = Backend::implemented()
             .iter()
-            .map(|&k| build_solver(k, &src, cfg).name())
+            .map(|&k| build_summation(k, &src, cfg).name())
             .collect();
         assert_eq!(names, vec!["direct", "barnes-hut", "fmm", "kifmm"]);
     }
 
     #[test]
     fn every_backend_agrees_with_direct_in_the_far_field() {
-        // Validates that build_solver wires each kind to a working field; each
+        // Validates that build_summation wires each kind to a working field; each
         // backend's precision is pinned in its own module.
         let src = bodies();
-        let cfg = SolverConfig::default().with_order(12);
+        let cfg = SumConfig::default().with_order(12);
         let theta = Point2D::new(6.0, -4.0);
-        let reference = build_solver(SolverKind::Direct, &src, cfg).jet(theta);
-        for &kind in SolverKind::implemented() {
-            let s = build_solver(kind, &src, cfg);
+        let reference = build_summation(Backend::Direct, &src, cfg).jet(theta);
+        for &kind in Backend::implemented() {
+            let s = build_summation(kind, &src, cfg);
             let rel = s.jet(theta).gradient.distance(&reference.gradient)
                 / reference.gradient.norm().max(1e-6);
             assert!(rel < 5e-2, "{} rel err {rel}", s.name());
@@ -214,14 +215,14 @@ mod tests {
     #[test]
     fn default_batch_and_gradient_are_consistent() {
         let src = bodies();
-        let cfg = SolverConfig::default().with_order(10);
+        let cfg = SumConfig::default().with_order(10);
         let targets = [
             Point2D::new(3.0, 1.0),
             Point2D::new(-2.0, 2.5),
             Point2D::new(5.0, -1.0),
         ];
-        for &kind in SolverKind::implemented() {
-            let s = build_solver(kind, &src, cfg);
+        for &kind in Backend::implemented() {
+            let s = build_summation(kind, &src, cfg);
             let batch = s.jet_batch(&targets);
             for (i, &t) in targets.iter().enumerate() {
                 let j = s.jet(t);

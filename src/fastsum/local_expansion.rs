@@ -142,7 +142,7 @@ impl AddAssign<&LocalExpansion> for LocalExpansion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fastsum::{DirectSum, FieldSolver, SolverConfig};
+    use crate::fastsum::{DirectSum, Summation, SumConfig};
     use crate::utils::rng::Lcg;
 
     /// A ring of monopoles at `radius`, far from the origin.
@@ -163,7 +163,7 @@ mod tests {
         let bodies = far_ring(24, 0x11, 5.0);
         let center = Point2D::new(0.2, -0.1);
         let le = LocalExpansion::from_monopoles(&bodies, center, 2);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let a = le.eval_jet(center);
         let b = direct.jet(center);
         assert!(a.gradient.distance(&b.gradient) < 1e-12);
@@ -179,7 +179,7 @@ mod tests {
     fn local_expansion_converges_near_center() {
         // Away from the centre the truncated series improves with order.
         let bodies = far_ring(24, 0x22, 5.0);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = Point2D::new(0.4, 0.3);
         let exact = direct.jet(theta);
         let err = |order: usize| {
@@ -218,7 +218,7 @@ mod tests {
         let le1 = LocalExpansion::from_monopoles(&bodies, Point2D::origin(), 12);
         let t2 = Point2D::new(0.3, -0.2);
         let le2 = le1.translate(t2);
-        let direct = DirectSum::build(&bodies, SolverConfig::default());
+        let direct = DirectSum::build(&bodies, SumConfig::default());
         let theta = t2 + Point2D::new(0.1, 0.05);
         let a = le2.eval_jet(theta);
         let b = direct.jet(theta);

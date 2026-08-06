@@ -19,7 +19,7 @@
 //! and near field are kernel-independent; the [`ExpansionOps`] scheme supplies
 //! the rest.
 
-use crate::fastsum::{ExpansionOps, Jet, Monopole, SolverConfig};
+use crate::fastsum::{ExpansionOps, Jet, Monopole, SumConfig};
 use crate::grid::{BBox, Point2D};
 use crate::tree::QuadTree;
 
@@ -143,7 +143,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
     /// # Arguments
     /// * `sources` - the monopole bodies.
     /// * `cfg` - solver configuration (order, leaf size, softening).
-    pub(crate) fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
+    pub(crate) fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
         let positions: Vec<Point2D> = sources.iter().map(|s| s.position).collect();
         let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
         let n = tree.nodes.len();

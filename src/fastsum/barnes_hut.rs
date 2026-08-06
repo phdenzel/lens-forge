@@ -13,7 +13,7 @@
 //! monopole; otherwise its children are visited. Leaves sum their elements
 //! directly.
 
-use crate::fastsum::{FieldSolver, Jet, Monopole, SolverConfig};
+use crate::fastsum::{Summation, Jet, Monopole, SumConfig};
 use crate::grid::Point2D;
 use crate::tree::QuadTree;
 
@@ -88,8 +88,8 @@ impl BarnesHut {
     }
 }
 
-impl FieldSolver for BarnesHut {
-    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
+impl Summation for BarnesHut {
+    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
         let positions: Vec<Point2D> = sources.iter().map(|b| b.position).collect();
         let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
         let (mass, com) = Self::aggregate(&tree, sources);
@@ -138,7 +138,7 @@ mod tests {
         let m = 0.4;
         let bh = BarnesHut::build(
             &[Monopole::new(Point2D::origin(), m)],
-            SolverConfig::default(),
+            SumConfig::default(),
         );
         let a = bh.gradient(Point2D::new(2.0, 0.0));
         let expected = m * FRAC_1_PI * 0.5; // θ_x/|θ|² = 2/4
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn matches_direct_within_tolerance() {
         let bodies = random_bodies(2000, 12345);
-        let cfg = SolverConfig::default().with_theta(0.5);
+        let cfg = SumConfig::default().with_theta(0.5);
         let bh = BarnesHut::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let mut rng = Lcg::new(999);
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn zero_opening_angle_is_exact() {
         let bodies = random_bodies(500, 7);
-        let cfg = SolverConfig::default().with_theta(0.0);
+        let cfg = SumConfig::default().with_theta(0.0);
         let bh = BarnesHut::build(&bodies, cfg);
         let direct = DirectSum::build(&bodies, cfg);
         let theta = Point2D::new(0.3, -0.7);
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn hessian_is_trace_free_away_from_masses() {
         let bodies = random_bodies(300, 42);
-        let bh = BarnesHut::build(&bodies, SolverConfig::default().with_theta(0.0));
+        let bh = BarnesHut::build(&bodies, SumConfig::default().with_theta(0.0));
         let h = bh.jet(Point2D::new(5.0, 5.0)).hessian;
         assert!((h[0][0] + h[1][1]).abs() < 1e-9);
         assert!((h[0][1] - h[1][0]).abs() < 1e-15);

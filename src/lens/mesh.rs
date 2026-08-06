@@ -10,7 +10,7 @@
 //! the interchangeable [`fastsum`](crate::fastsum) backends (Barnes–Hut by default;
 //! also the exact direct sum, and — planned — FMM / KIFMM / $\mathcal{H}$-matrix).
 
-use crate::fastsum::{FieldSolver, SolverConfig, SolverKind, build_solver};
+use crate::fastsum::{Summation, SumConfig, Backend, build_summation};
 use crate::grid::{Point2D, ScalarField2D};
 use crate::lens::model::{LensJet, LensModel, MassElement};
 use crate::{LensForgeError, Result};
@@ -18,14 +18,14 @@ use crate::{LensForgeError, Result};
 /// Lens on a Voronoi/adaptive plane.
 ///
 /// Each field cell becomes a mass element `m = κ · area` at its centroid; the
-/// potential and its derivatives are delegated to a pluggable [`FieldSolver`]
+/// potential and its derivatives are delegated to a pluggable [`Summation`]
 /// backend. Convergence is read back from the nearest cell (the Voronoi definition).
 pub struct MeshLens {
     sources: Vec<MassElement>,
     kappa: Vec<f64>,
-    kind: SolverKind,
-    cfg: SolverConfig,
-    solver: Box<dyn FieldSolver + Send + Sync>,
+    kind: Backend,
+    cfg: SumConfig,
+    solver: Box<dyn Summation + Send + Sync>,
 }
 
 impl MeshLens {
@@ -35,14 +35,14 @@ impl MeshLens {
     /// Chain [`with_solver`](Self::with_solver) and [`configure`](Self::configure)
     /// to pick a faster-to-query backend (e.g. Barnes–Hut) or a configuration.
     pub fn new(field: &impl ScalarField2D) -> Result<Self> {
-        Self::from_field(field, SolverKind::Direct, SolverConfig::default())
+        Self::from_field(field, Backend::Direct, SumConfig::default())
     }
 
     /// Switch the fast-summation backend, rebuilding the solver (chainable).
     ///
     /// # Arguments
     /// * `kind` - fast-summation backend to switch to.
-    pub fn with_solver(mut self, kind: SolverKind) -> Self {
+    pub fn with_solver(mut self, kind: Backend) -> Self {
         self.kind = kind;
         self.rebuild();
         self
@@ -52,7 +52,7 @@ impl MeshLens {
     ///
     /// # Arguments
     /// * `cfg` - backend configuration to apply.
-    pub fn configure(mut self, cfg: SolverConfig) -> Self {
+    pub fn configure(mut self, cfg: SumConfig) -> Self {
         self.cfg = cfg;
         self.rebuild();
         self
@@ -60,7 +60,7 @@ impl MeshLens {
 
     /// Rebuild the boxed backend from the stored sources, kind and config.
     fn rebuild(&mut self) {
-        self.solver = build_solver(self.kind, &self.sources, self.cfg);
+        self.solver = build_summation(self.kind, &self.sources, self.cfg);
     }
 
     /// Build a lens from a scalar κ field, choosing the fast-summation backend.
@@ -79,8 +79,8 @@ impl MeshLens {
     /// cell has a non-finite centroid/κ or a non-positive, non-finite area.
     pub fn from_field(
         field: &impl ScalarField2D,
-        kind: SolverKind,
-        cfg: SolverConfig,
+        kind: Backend,
+        cfg: SumConfig,
     ) -> Result<Self> {
         let n = field.len();
         if n == 0 {
@@ -107,7 +107,7 @@ impl MeshLens {
             kappa.push(k);
             sources.push(MassElement::new(center, k * area));
         }
-        let solver = build_solver(kind, &sources, cfg);
+        let solver = build_summation(kind, &sources, cfg);
         Ok(Self {
             sources,
             kappa,
@@ -195,7 +195,7 @@ mod tests {
         let sites = scattered(64);
         let kappa: Vec<f64> = (0..64).map(|i| 0.1 + 0.01 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
-        let lens = MeshLens::from_field(&mg, SolverKind::Direct, SolverConfig::default()).unwrap();
+        let lens = MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
         // Reference: sum monopole deflections from the mesh's own cells (m = κ·area).
         let field: &dyn ScalarField2D = &mg;
         let theta = Point2D::new(4.0, 3.0);
@@ -258,9 +258,9 @@ mod tests {
         let sites = scattered(200);
         let kappa: Vec<f64> = (0..200).map(|i| 0.1 + 0.01 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
-        let bh = MeshLens::from_field(&mg, SolverKind::BarnesHut, SolverConfig::default()).unwrap();
+        let bh = MeshLens::from_field(&mg, Backend::BarnesHut, SumConfig::default()).unwrap();
         let direct =
-            MeshLens::from_field(&mg, SolverKind::Direct, SolverConfig::default()).unwrap();
+            MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
         let theta = Point2D::new(3.0, 2.0);
         let rel = bh.deflection(theta).distance(&direct.deflection(theta))
             / direct.deflection(theta).norm().max(1e-6);
@@ -274,7 +274,7 @@ mod tests {
         let mg = mesh(&sites, &kappa);
         let theta = Point2D::new(3.0, 2.0);
         let direct =
-            MeshLens::from_field(&mg, SolverKind::Direct, SolverConfig::default()).unwrap();
+            MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
         // new() defaults to the exact direct sum: matches from_field(Direct) exactly.
         assert!(
             MeshLens::new(&mg)
@@ -286,9 +286,9 @@ mod tests {
         // A switch to Barnes–Hut then back must rebuild and again equal Direct exactly.
         let chained = MeshLens::new(&mg)
             .unwrap()
-            .with_solver(SolverKind::BarnesHut)
-            .with_solver(SolverKind::Direct)
-            .configure(SolverConfig::default());
+            .with_solver(Backend::BarnesHut)
+            .with_solver(Backend::Direct)
+            .configure(SumConfig::default());
         assert!(
             chained
                 .deflection(theta)
@@ -303,7 +303,7 @@ mod tests {
         let sharp = MeshLens::new(&mg).unwrap();
         let softened = MeshLens::new(&mg)
             .unwrap()
-            .configure(SolverConfig::default().with_softening(0.5));
+            .configure(SumConfig::default().with_softening(0.5));
         // Softening the kernel measurably changes the deflection inside the cloud.
         let p = Point2D::new(0.8, 0.4);
         assert!(sharp.deflection(p).distance(&softened.deflection(p)) > 1e-3);

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Exact $O(N^2)$ direct summation — the accuracy oracle for the other backends.
 
-use crate::fastsum::{FieldSolver, Jet, Monopole, SolverConfig};
+use crate::fastsum::{Summation, Jet, Monopole, SumConfig};
 use crate::grid::Point2D;
 
 /// Brute-force summation over all source elements. Exact (up to summation order),
@@ -14,8 +14,8 @@ pub struct DirectSum {
     eps2: f64,
 }
 
-impl FieldSolver for DirectSum {
-    fn build(sources: &[Monopole], cfg: SolverConfig) -> Self {
+impl Summation for DirectSum {
+    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
         Self {
             elements: sources.to_vec(),
             eps2: cfg.eps2,
