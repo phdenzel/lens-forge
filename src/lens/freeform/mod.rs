@@ -5,7 +5,9 @@
 //! [`LensModel`](crate::lens::LensModel).
 
 pub mod mesh;
+pub mod model;
 pub mod pixel;
 
 pub use mesh::MeshLens;
+pub use model::{FieldMethod, FreeFormLens};
 pub use pixel::PixelLens;

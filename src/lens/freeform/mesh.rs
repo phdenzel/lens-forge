@@ -3,162 +3,167 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens on an adaptive/Voronoi lens plane.
 //!
-//! Its irregular sampling rules out the spectral (FFT) solve the uniform
-//! [`PixelGrid`](crate::grid::PixelGrid) lens uses for $\nabla^2\psi = 2\kappa$.
-//! Instead each cell is a mass element $m_i = \kappa_i \cdot \mathrm{area}_i$ at its
-//! centroid, and the field is summed from the 2D Poisson Green's function by one of
-//! the interchangeable [`fastsum`](crate::fastsum) backends (Barnes–Hut by default;
-//! also the exact direct sum, and — planned — FMM / KIFMM / $\mathcal{H}$-matrix).
+//! The unstructured counterpart to [`PixelLens`](crate::lens::PixelLens). Its
+//! irregular sampling rules out the pixel-only [`Spectral`](FieldMethod::Spectral)
+//! and [`Analytic`](FieldMethod::Analytic) methods, so it supports only
+//! [`FastSum`](FieldMethod::FastSum): each cell is a mass element
+//! $m_i = \kappa_i \cdot \mathrm{area}_i$ at its centroid, and the field is summed
+//! from the 2D Poisson Green's function by one of the interchangeable
+//! [`fastsum`](crate::fastsum) backends. The `MeshGrid` is stored, so a future
+//! mesh-native method (e.g. a Voronoi Poisson solve) has the geometry it needs.
 
-use crate::fastsum::{Summation, SumConfig, Backend, build_summation};
-use crate::grid::{Point2D, ScalarField2D};
+use crate::fastsum::{Backend, Summation, build_summation};
+use crate::grid::{FieldArray1D, MeshGrid, Point2D, ScalarField2D};
 use crate::lens::model::{LensJet, LensModel, MassElement};
+use crate::lens::{FieldMethod, FreeFormLens};
 use crate::{LensForgeError, Result};
 
 /// Lens on a Voronoi/adaptive plane.
 ///
-/// Each field cell becomes a mass element `m = κ · area` at its centroid; the
-/// potential and its derivatives are delegated to a pluggable [`Summation`]
-/// backend. Convergence is read back from the nearest cell (the Voronoi definition).
+/// Stores the [`MeshGrid`]; the field is produced by a chosen [`FieldMethod`]
+/// (only [`FastSum`](FieldMethod::FastSum) is valid on an unstructured mesh).
+/// Convergence is the nearest-cell κ (the Voronoi definition).
 pub struct MeshLens {
-    sources: Vec<MassElement>,
-    kappa: Vec<f64>,
-    kind: Backend,
-    cfg: SumConfig,
-    solver: Box<dyn Summation + Send + Sync>,
+    mesh: MeshGrid,
+    method: FieldMethod,
+    field: MeshField,
+}
+
+/// The realised field behind a [`MeshLens`], one variant per (mesh) [`FieldMethod`].
+enum MeshField {
+    /// On-demand free-space monopole summation over cell mass elements.
+    FastSum(Box<dyn Summation + Send + Sync>),
+    // extension point: a Voronoi-native Poisson solve (the mesh counterpart to pixel
+    // `Spectral`) would land here as a further variant, plus a new `FieldMethod`.
 }
 
 impl MeshLens {
-    /// Build a lens from a scalar κ field using the direct summation backend
-    /// (exact but does not scale).
+    /// Build from any scalar κ field, tessellating its cell centres into a
+    /// [`MeshGrid`] (default method) — so `MeshLens` always holds a real mesh.
     ///
-    /// Chain [`with_solver`](Self::with_solver) and [`configure`](Self::configure)
-    /// to pick a faster-to-query backend (e.g. Barnes–Hut) or a configuration.
-    pub fn new(field: &impl ScalarField2D) -> Result<Self> {
-        Self::from_field(field, Backend::Direct, SumConfig::default())
-    }
-
-    /// Switch the fast-summation backend, rebuilding the solver (chainable).
+    /// A [`MeshGrid`] κ round-trips to the same tessellation; any other
+    /// [`ScalarField2D`] (e.g. a [`PixelGrid`](crate::grid::PixelGrid)) is meshed
+    /// from its cell centres. Chain [`with_method`](FreeFormLens::with_method) for a
+    /// non-default backend/config.
     ///
     /// # Arguments
-    /// * `kind` - fast-summation backend to switch to.
-    pub fn with_solver(mut self, kind: Backend) -> Self {
-        self.kind = kind;
-        self.rebuild();
-        self
-    }
-
-    /// Replace the backend configuration, rebuilding the solver (chainable).
-    ///
-    /// # Arguments
-    /// * `cfg` - backend configuration to apply.
-    pub fn configure(mut self, cfg: SumConfig) -> Self {
-        self.cfg = cfg;
-        self.rebuild();
-        self
-    }
-
-    /// Rebuild the boxed backend from the stored sources, kind and config.
-    fn rebuild(&mut self) {
-        self.solver = build_summation(self.kind, &self.sources, self.cfg);
-    }
-
-    /// Build a lens from a scalar κ field, choosing the fast-summation backend.
-    ///
-    /// Reads each cell's centroid, value (κ) and area straight off the
-    /// [`ScalarField2D`] — a [`MeshGrid`](crate::grid::MeshGrid) κ field drops in
-    /// with no intermediate representation.
-    ///
-    /// # Arguments
-    /// * `field` - convergence κ sampled per cell (centroid, value, area).
-    /// * `kind` - fast-summation backend.
-    /// * `cfg` - backend configuration.
+    /// * `field` - convergence κ sampled per cell (centroid + value).
     ///
     /// # Errors
-    /// Returns [`LensForgeError::InvalidParameter`] if the field is empty or any
-    /// cell has a non-finite centroid/κ or a non-positive, non-finite area.
-    pub fn from_field(
-        field: &impl ScalarField2D,
-        kind: Backend,
-        cfg: SumConfig,
-    ) -> Result<Self> {
-        let n = field.len();
-        if n == 0 {
-            return Err(LensForgeError::invalid_parameter(
-                "MeshLens requires a non-empty field",
-            ));
-        }
-        let mut sources = Vec::with_capacity(n);
-        let mut kappa = Vec::with_capacity(n);
-        for i in 0..n {
-            let center = field.center(i);
-            let k = field.value_at(i);
-            let area = field.cell_area(i);
-            if !center.is_finite() || !k.is_finite() {
-                return Err(LensForgeError::invalid_parameter(format!(
-                    "cell {i} has a non-finite centre or κ"
-                )));
-            }
-            if !(area.is_finite() && area > 0.0) {
-                return Err(LensForgeError::invalid_parameter(format!(
-                    "cell {i} has a non-positive or non-finite area"
-                )));
-            }
-            kappa.push(k);
-            sources.push(MassElement::new(center, k * area));
-        }
-        let solver = build_summation(kind, &sources, cfg);
-        Ok(Self {
-            sources,
-            kappa,
-            kind,
-            cfg,
-            solver,
-        })
+    /// Propagates [`MeshGrid::new`] failure (empty or degenerate cell centres).
+    pub fn from_field(field: &impl ScalarField2D) -> Result<Self> {
+        Self::new(Self::tessellate(field)?)
+    }
+
+    /// Rebuild on new Voronoi generators `sites`, resampling the current κ and
+    /// preserving the method — the mesh counterpart to
+    /// [`PixelLens::with_grid`](crate::lens::PixelLens::with_grid).
+    ///
+    /// # Arguments
+    /// * `sites` - new generating points; the current κ is sampled at each.
+    ///
+    /// # Errors
+    /// Propagates [`MeshGrid::new`] failure (empty or degenerate sites).
+    pub fn with_sites(self, sites: &[Point2D]) -> Result<Self> {
+        let values: Vec<f64> = sites.iter().map(|&p| self.mesh.sample(p)).collect();
+        let mesh = MeshGrid::new(sites, self.mesh.bounds(), FieldArray1D::from_vec(values))?;
+        Self::build(mesh, self.method)
     }
 
     /// Number of cells.
     pub fn len(&self) -> usize {
-        self.sources.len()
+        self.mesh.len()
     }
 
     /// Whether the lens has no cells (never true for a constructed lens).
     pub fn is_empty(&self) -> bool {
-        self.sources.is_empty()
+        self.mesh.is_empty()
+    }
+
+    /// Tessellate a scalar field's cell centres/values into a [`MeshGrid`].
+    fn tessellate(field: &impl ScalarField2D) -> Result<MeshGrid> {
+        let n = field.len();
+        let mut sites = Vec::with_capacity(n);
+        let mut values = Vec::with_capacity(n);
+        for i in 0..n {
+            sites.push(field.center(i));
+            values.push(field.value_at(i));
+        }
+        MeshGrid::new(&sites, field.bounds(), FieldArray1D::from_vec(values))
+    }
+
+    /// Per-cell mass elements `m = κ·area` at cell centroids for the summation.
+    fn mass_elements(field: &impl ScalarField2D) -> Vec<MassElement> {
+        (0..field.len())
+            .map(|i| MassElement::new(field.center(i), field.value_at(i) * field.cell_area(i)))
+            .collect()
+    }
+}
+
+impl FreeFormLens for MeshLens {
+    type Repr = MeshGrid;
+
+    /// The exact direct summation — its only method family's reference backend.
+    fn default_method() -> FieldMethod {
+        FieldMethod::fast_sum(Backend::Direct)
+    }
+
+    /// A mesh supports only [`FastSum`](FieldMethod::FastSum).
+    fn supports(method: FieldMethod) -> bool {
+        matches!(method, FieldMethod::FastSum { .. })
+    }
+
+    fn build(mesh: MeshGrid, method: FieldMethod) -> Result<Self> {
+        let field = match method {
+            FieldMethod::FastSum { backend, config } => {
+                let sources = Self::mass_elements(&mesh);
+                MeshField::FastSum(build_summation(backend, &sources, config))
+            }
+            FieldMethod::Spectral | FieldMethod::Analytic => {
+                return Err(LensForgeError::invalid_parameter(
+                    "MeshLens supports only the FastSum method (no Spectral/Analytic on an unstructured mesh)",
+                ));
+            }
+        };
+        Ok(Self {
+            mesh,
+            method,
+            field,
+        })
+    }
+
+    fn method(&self) -> FieldMethod {
+        self.method
+    }
+
+    fn with_method(self, method: FieldMethod) -> Result<Self> {
+        Self::build(self.mesh, method)
     }
 }
 
 impl LensModel for MeshLens {
     fn jet(&self, theta: Point2D) -> LensJet {
-        self.solver.jet(theta).into()
+        match &self.field {
+            MeshField::FastSum(s) => s.jet(theta).into(),
+        }
     }
 
     fn jet_batch(&self, thetas: &[Point2D]) -> Vec<LensJet> {
-        self.solver
-            .jet_batch(thetas)
-            .into_iter()
-            .map(Into::into)
-            .collect()
+        match &self.field {
+            MeshField::FastSum(s) => s.jet_batch(thetas).into_iter().map(Into::into).collect(),
+        }
     }
 
     /// Deflection only — cheaper than a full [`jet`](Self::jet) (skips the Hessian).
     fn deflection(&self, theta: Point2D) -> Point2D {
-        self.solver.gradient(theta)
+        match &self.field {
+            MeshField::FastSum(s) => s.gradient(theta),
+        }
     }
 
-    /// Convergence at `theta` — the κ of the containing Voronoi cell, i.e. the
-    /// nearest site (that is exactly the Voronoi definition).
+    /// Convergence at `theta` — the κ of the containing Voronoi cell (nearest site).
     fn convergence(&self, theta: Point2D) -> f64 {
-        let mut best = 0;
-        let mut best_d2 = f64::INFINITY;
-        for (i, s) in self.sources.iter().enumerate() {
-            let d2 = theta.distance_squared(&s.position);
-            if d2 < best_d2 {
-                best_d2 = d2;
-                best = i;
-            }
-        }
-        self.kappa[best]
+        self.mesh.sample(theta)
     }
 }
 
@@ -166,7 +171,8 @@ impl LensModel for MeshLens {
 mod tests {
     use super::*;
     use crate::Lcg;
-    use crate::grid::{BBox, FieldArray1D, MeshGrid};
+    use crate::fastsum::SumConfig;
+    use crate::grid::{BBox, PixelGrid};
     use std::f64::consts::FRAC_1_PI;
 
     fn bbox() -> BBox {
@@ -191,11 +197,20 @@ mod tests {
     }
 
     #[test]
+    fn new_defaults_to_direct_fast_sum() {
+        let mg = mesh(&scattered(24), &[0.3; 24]);
+        assert_eq!(
+            MeshLens::new(mg).unwrap().method(),
+            FieldMethod::fast_sum(Backend::Direct)
+        );
+    }
+
+    #[test]
     fn deflection_matches_direct_monopole_sum() {
         let sites = scattered(64);
         let kappa: Vec<f64> = (0..64).map(|i| 0.1 + 0.01 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
-        let lens = MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
+        let lens = MeshLens::new(mg.clone()).unwrap();
         // Reference: sum monopole deflections from the mesh's own cells (m = κ·area).
         let field: &dyn ScalarField2D = &mg;
         let theta = Point2D::new(4.0, 3.0);
@@ -226,15 +241,15 @@ mod tests {
             Point2D::new(0.0, 1.5),
         ];
         let mg = mesh(&sites, &[0.2, 0.9, 0.5]);
-        let lens = MeshLens::new(&mg).unwrap();
+        let lens = MeshLens::new(mg).unwrap();
         assert_eq!(lens.convergence(Point2D::new(-0.9, 0.0)), 0.2);
         assert_eq!(lens.convergence(Point2D::new(0.9, 0.0)), 0.9);
     }
 
     #[test]
     fn len_reports_cell_count() {
-        let mg = mesh(&scattered(24), &vec![0.3; 24]);
-        let lens = MeshLens::new(&mg).unwrap();
+        let mg = mesh(&scattered(24), &[0.3; 24]);
+        let lens = MeshLens::new(mg).unwrap();
         assert_eq!(lens.len(), 24);
         assert!(!lens.is_empty());
     }
@@ -243,7 +258,7 @@ mod tests {
     fn jet_batch_matches_jet() {
         let kappa: Vec<f64> = (0..50).map(|i| 0.2 + 0.01 * i as f64).collect();
         let mg = mesh(&scattered(50), &kappa);
-        let lens = MeshLens::new(&mg).unwrap();
+        let lens = MeshLens::new(mg).unwrap();
         let pts = [Point2D::new(3.0, 2.0), Point2D::new(-2.0, 1.5)];
         for (b, &p) in lens.jet_batch(&pts).iter().zip(&pts) {
             let s = lens.jet(p);
@@ -258,9 +273,8 @@ mod tests {
         let sites = scattered(200);
         let kappa: Vec<f64> = (0..200).map(|i| 0.1 + 0.01 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
-        let bh = MeshLens::from_field(&mg, Backend::BarnesHut, SumConfig::default()).unwrap();
-        let direct =
-            MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
+        let bh = MeshLens::build(mg.clone(), FieldMethod::fast_sum(Backend::BarnesHut)).unwrap();
+        let direct = MeshLens::build(mg, FieldMethod::fast_sum(Backend::Direct)).unwrap();
         let theta = Point2D::new(3.0, 2.0);
         let rel = bh.deflection(theta).distance(&direct.deflection(theta))
             / direct.deflection(theta).norm().max(1e-6);
@@ -268,42 +282,34 @@ mod tests {
     }
 
     #[test]
-    fn chaining_selects_backend() {
+    fn switching_method_rebuilds_the_backend() {
         let sites = scattered(80);
         let kappa: Vec<f64> = (0..80).map(|i| 0.2 + 0.005 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
         let theta = Point2D::new(3.0, 2.0);
-        let direct =
-            MeshLens::from_field(&mg, Backend::Direct, SumConfig::default()).unwrap();
-        // new() defaults to the exact direct sum: matches from_field(Direct) exactly.
-        assert!(
-            MeshLens::new(&mg)
-                .unwrap()
-                .deflection(theta)
-                .distance(&direct.deflection(theta))
-                < 1e-12
-        );
-        // A switch to Barnes–Hut then back must rebuild and again equal Direct exactly.
-        let chained = MeshLens::new(&mg)
+        let direct = MeshLens::new(mg.clone()).unwrap();
+        // new() defaults to Direct; switching to Barnes–Hut then back equals it exactly.
+        let chained = MeshLens::new(mg)
             .unwrap()
-            .with_solver(Backend::BarnesHut)
-            .with_solver(Backend::Direct)
-            .configure(SumConfig::default());
-        assert!(
-            chained
-                .deflection(theta)
-                .distance(&direct.deflection(theta))
-                < 1e-12
-        );
+            .with_method(FieldMethod::fast_sum(Backend::BarnesHut))
+            .unwrap()
+            .with_method(FieldMethod::fast_sum(Backend::Direct))
+            .unwrap();
+        assert!(chained.deflection(theta).distance(&direct.deflection(theta)) < 1e-12);
     }
 
     #[test]
-    fn configure_softening_changes_the_field() {
-        let mg = mesh(&scattered(60), &vec![0.4; 60]);
-        let sharp = MeshLens::new(&mg).unwrap();
-        let softened = MeshLens::new(&mg)
-            .unwrap()
-            .configure(SumConfig::default().with_softening(0.5));
+    fn softening_changes_the_field() {
+        let mg = mesh(&scattered(60), &[0.4; 60]);
+        let sharp = MeshLens::new(mg.clone()).unwrap();
+        let softened = MeshLens::build(
+            mg,
+            FieldMethod::FastSum {
+                backend: Backend::Direct,
+                config: SumConfig::default().with_softening(0.5),
+            },
+        )
+        .unwrap();
         // Softening the kernel measurably changes the deflection inside the cloud.
         let p = Point2D::new(0.8, 0.4);
         assert!(sharp.deflection(p).distance(&softened.deflection(p)) > 1e-3);
@@ -313,74 +319,52 @@ mod tests {
     fn ray_trace_and_magnification_are_finite() {
         let sites = scattered(100);
         let mg = MeshGrid::from_func(&sites, bbox(), |_, _| 0.3).unwrap();
-        let lens = MeshLens::new(&mg).unwrap();
+        let lens = MeshLens::new(mg).unwrap();
         let theta = Point2D::new(2.5, 0.0);
         assert!(lens.ray_trace(theta).is_finite());
         assert!(lens.magnification(theta).is_finite());
     }
 
-    /// A minimal explicit-cell [`ScalarField2D`], for driving a lens directly and for
-    /// the bad-input cases a well-formed mesh can't produce.
-    struct CellField {
-        kappa: Vec<f64>,
-        area: Vec<f64>,
+    #[test]
+    fn rejects_pixel_only_methods() {
+        let mg = mesh(&scattered(24), &[0.3; 24]);
+        assert!(MeshLens::build(mg.clone(), FieldMethod::Spectral).is_err());
+        assert!(
+            MeshLens::new(mg)
+                .unwrap()
+                .with_method(FieldMethod::Analytic)
+                .is_err()
+        );
     }
-    impl ScalarField2D for CellField {
-        fn len(&self) -> usize {
-            self.kappa.len()
-        }
-        fn value_at(&self, i: usize) -> f64 {
-            self.kappa[i]
-        }
-        fn center(&self, _i: usize) -> Point2D {
-            Point2D::origin()
-        }
-        fn cell_area(&self, i: usize) -> f64 {
-            self.area[i]
-        }
-        fn bounds(&self) -> BBox {
-            bbox()
-        }
-        fn sample(&self, _p: Point2D) -> f64 {
-            0.0
-        }
+
+    #[test]
+    fn with_sites_resamples_onto_new_generators() {
+        // Uniform κ: resampling onto any generators preserves it; cell count follows sites.
+        let mg = mesh(&scattered(40), &[0.3; 40]);
+        let relensed = MeshLens::new(mg).unwrap().with_sites(&scattered(60)).unwrap();
+        assert_eq!(relensed.len(), 60);
+        assert!((relensed.convergence(Point2D::new(0.5, 0.2)) - 0.3).abs() < 1e-12);
     }
 
     #[test]
     fn builds_from_a_generic_scalar_field() {
-        // Any ScalarField2D drives a MeshLens, not only a MeshGrid.
-        let field = CellField {
-            kappa: vec![0.5],
-            area: vec![1.0],
-        };
-        let lens = MeshLens::new(&field).unwrap();
-        assert_eq!(lens.len(), 1);
+        // Any ScalarField2D drives a MeshLens: a PixelGrid κ is tessellated into a mesh.
+        let pg = PixelGrid::from_func_sq(8, 2.0, |_, _| 0.5);
+        let lens = MeshLens::from_field(&pg).unwrap();
+        assert_eq!(lens.len(), 64);
         assert!(!lens.is_empty());
-        assert_eq!(field.bounds(), bbox());
-        assert_eq!(field.sample(Point2D::origin()), 0.0);
     }
 
     #[test]
-    fn rejects_empty_and_bad_fields() {
-        let empty = CellField {
-            kappa: vec![],
-            area: vec![],
-        };
-        assert!(MeshLens::new(&empty).is_err());
-        let zero_area = CellField {
-            kappa: vec![0.5],
-            area: vec![0.0],
-        };
-        assert!(MeshLens::new(&zero_area).is_err());
-        let neg_area = CellField {
-            kappa: vec![0.5],
-            area: vec![-1.0],
-        };
-        assert!(MeshLens::new(&neg_area).is_err());
-        let nan_kappa = CellField {
-            kappa: vec![f64::NAN],
-            area: vec![1.0],
-        };
-        assert!(MeshLens::new(&nan_kappa).is_err());
+    fn from_field_rejects_empty() {
+        // An empty field has no cell centres to tessellate: MeshGrid::new rejects it.
+        assert!(MeshLens::from_field(&PixelGrid::default()).is_err());
+    }
+
+    #[test]
+    fn supports_only_fast_sum() {
+        assert!(MeshLens::supports(FieldMethod::fast_sum(Backend::Direct)));
+        assert!(!MeshLens::supports(FieldMethod::Spectral));
+        assert!(!MeshLens::supports(FieldMethod::Analytic));
     }
 }
