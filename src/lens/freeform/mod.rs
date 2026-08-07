@@ -7,7 +7,9 @@
 pub mod mesh;
 pub mod model;
 pub mod pixel;
+pub mod source;
 
 pub use mesh::MeshLens;
 pub use model::{FieldMethod, FreeFormLens};
 pub use pixel::PixelLens;
+pub use source::MassElement;

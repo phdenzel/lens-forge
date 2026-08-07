@@ -14,8 +14,8 @@
 
 use crate::fastsum::{Backend, Summation, build_summation};
 use crate::grid::{FieldArray1D, MeshGrid, Point2D, ScalarField2D, VoronoiMesh};
-use crate::lens::model::{LensJet, LensModel, MassElement};
-use crate::lens::{FieldMethod, FreeFormLens};
+use crate::lens::model::{LensJet, LensModel};
+use crate::lens::{FieldMethod, FreeFormLens, MassElement};
 use crate::{LensForgeError, Result};
 
 /// Lens on a Voronoi/adaptive plane.

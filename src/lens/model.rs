@@ -15,13 +15,9 @@
 //! * deflection: $\alpha = \nabla\psi$
 //! * Jacobian: $A = \partial\beta/\partial\theta = I - H(\psi)$, magnification $\mu = 1/\det A$
 
-use crate::fastsum::{Jet, Monopole};
+use crate::fastsum::Jet;
 use crate::grid::Point2D;
 use std::ops::{Add, AddAssign};
-
-/// A point-mass element `m = κ · area` — the lens-domain name for a fastsum
-/// [`Monopole`], the mass a cell contributes to the deflection field.
-pub type MassElement = Monopole;
 
 /// Lensing potential ψ and its derivatives at one point: ψ, deflection α = ∇ψ, Hessian H.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]

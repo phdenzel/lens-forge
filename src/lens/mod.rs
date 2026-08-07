@@ -11,6 +11,6 @@ pub mod parametric;
 
 pub use composite::CompositeLens;
 pub use external::ExternalShear;
-pub use freeform::{FieldMethod, FreeFormLens, MeshLens, PixelLens};
-pub use model::{LensJet, LensModel, MassElement};
+pub use freeform::{FieldMethod, FreeFormLens, MassElement, MeshLens, PixelLens};
+pub use model::{LensJet, LensModel};
 pub use parametric::{NFW, PointMass, SIE, SIS};

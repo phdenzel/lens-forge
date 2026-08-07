@@ -21,8 +21,8 @@
 use crate::Result;
 use crate::fastsum::{Summation, build_summation};
 use crate::grid::{ComplexFieldArray2D, Grid2D, PixelGrid, Point2D, ScalarField2D};
-use crate::lens::model::{LensJet, LensModel, MassElement};
-use crate::lens::{FieldMethod, FreeFormLens};
+use crate::lens::model::{LensJet, LensModel};
+use crate::lens::{FieldMethod, FreeFormLens, MassElement};
 use num::complex::Complex;
 use rayon::prelude::*;
 
