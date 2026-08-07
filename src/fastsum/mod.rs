@@ -26,13 +26,10 @@
 
 pub mod barnes_hut;
 pub mod direct;
-pub(crate) mod expansion;
 pub mod fmm;
 pub mod jet;
+pub mod kernel;
 pub mod kifmm;
-pub mod local_expansion;
-pub mod monopole;
-pub mod multipole;
 pub mod sum;
 pub(crate) mod tree_fmm;
 
@@ -40,11 +37,9 @@ pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use fmm::Fmm;
 pub use jet::Jet;
+pub use kernel::{LocalExpansion, Monopole, Multipole};
 pub use kifmm::Kifmm;
-pub use local_expansion::LocalExpansion;
-pub use monopole::Monopole;
-pub use multipole::Multipole;
-pub use sum::{Summation, SumConfig, Backend, build_summation};
+pub use sum::{Backend, SumConfig, Summation, build_summation};
 
-pub(crate) use expansion::ExpansionOps;
+pub(crate) use kernel::ExpansionOps;
 pub(crate) use tree_fmm::TreeFmm;
