@@ -88,6 +88,8 @@ pub use field::ScalarField2D;
 pub use kernel::Kernel;
 pub use ops::{FieldOps, PoissonConfig};
 pub use point::Point2D;
-pub use uniform::{BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid};
+pub use uniform::{
+    BilinearKernel, BoundaryCondition, DerivativeStencil, Grid2D, PixelGrid, square_log_kernel,
+};
 // pub use adaptive::AdaGrid;
-pub use mesh::{MeshCell, MeshGrid, VoronoiMesh};
+pub use mesh::{MeshCell, MeshGrid, VoronoiMesh, polygon_log_kernel};

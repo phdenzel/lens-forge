@@ -11,7 +11,10 @@
 //! Same $1/\pi$ normalization as `fastsum`, so the two agree in the far field.
 
 use crate::grid::{PixelGrid, Point2D};
-use std::f64::consts::{FRAC_1_PI, FRAC_PI_2};
+use std::f64::consts::FRAC_1_PI;
+
+/// `1/(2π)`
+const FRAC_1_2PI: f64 = 0.5 * FRAC_1_PI;
 
 impl PixelGrid {
     /// Four-corner difference of the uniform square-pixel log-potential kernel for
@@ -24,48 +27,55 @@ impl PixelGrid {
     pub fn log_kernel(&self, i: usize, theta: Point2D) -> [f64; 6] {
         let (ix, jy) = self.grid.unflatten_index(i);
         let c = self.grid.pixel_center(ix, jy);
-        let (hx, hy) = (0.5 * self.dx(), 0.5 * self.dy());
-        let (dx, dy) = (theta.x - c.x, theta.y - c.y);
-        // Relative coordinates θ − pixel corner, on the left/right and bottom/top edges.
-        let (left, right) = (dx + hx, dx - hx);
-        let (bottom, top) = (dy + hy, dy - hy);
-        let top_right = pixel_kernel(right, top);
-        let bottom_right = pixel_kernel(right, bottom);
-        let top_left = pixel_kernel(left, top);
-        let bottom_left = pixel_kernel(left, bottom);
-        std::array::from_fn(|j| top_right[j] - bottom_right[j] - top_left[j] + bottom_left[j])
+        square_log_kernel(c, 0.5 * self.dx(), 0.5 * self.dy(), theta)
     }
+}
+
+/// Free-space log-potential kernel of one uniform square cell (centre `center`,
+/// half-widths `hx`, `hy`) at `theta`, per unit value: `[ψ, ψ_x, ψ_y, ψ_xx, ψ_xy,
+/// ψ_yy]` with the `1/π` normalization — the four-corner difference of the mixed
+/// antiderivative.
+///
+/// # Arguments
+/// * `center` - cell centre.
+/// * `hx` - half-width in x.
+/// * `hy` - half-width in y.
+/// * `theta` - evaluation point.
+pub fn square_log_kernel(center: Point2D, hx: f64, hy: f64, theta: Point2D) -> [f64; 6] {
+    let (dx, dy) = (theta.x - center.x, theta.y - center.y);
+    // Relative coordinates θ − pixel corner, on the left/right and bottom/top edges.
+    let (left, right) = (dx + hx, dx - hx);
+    let (bottom, top) = (dy + hy, dy - hy);
+    let top_right = pixel_kernel(right, top);
+    let bottom_right = pixel_kernel(right, bottom);
+    let top_left = pixel_kernel(left, top);
+    let bottom_left = pixel_kernel(left, bottom);
+    std::array::from_fn(|j| top_right[j] - bottom_right[j] - top_left[j] + bottom_left[j])
 }
 
 /// Mixed antiderivatives `[ψ̃, ∂x, ∂y, ∂xx, ∂xy, ∂yy]` of the square-pixel log
 /// integral at relative coordinates `(x, y)`, whose pixel integral is the
 /// four-corner difference of each.
+///
+/// Uses the principal `(y/x).atan()` (not `atan2`): the builtin already gives `±π/2`
+/// for `x = 0` (via `±∞`), so only the `0/0` corner (`r² = 0`, also the `ln`
+/// singularity) needs guarding, taken as zero.
 fn pixel_kernel(x: f64, y: f64) -> [f64; 6] {
     let r2 = x * x + y * y;
-    let ln = if r2 > 0.0 { r2.ln() } else { 0.0 };
-    let atan_yx = atan_ratio(y, x);
-    let atan_xy = atan_ratio(x, y);
+    if r2 == 0.0 {
+        return [0.0; 6];
+    }
+    let ln = r2.ln();
+    let atan_yx = (y / x).atan();
+    let atan_xy = (x / y).atan();
     [
-        0.5 * FRAC_1_PI * (x * x * atan_yx + y * y * atan_xy + x * y * ln - 3.0 * x * y),
+        FRAC_1_2PI * (x * x * atan_yx + y * y * atan_xy + x * y * ln - 3.0 * x * y),
         FRAC_1_PI * (x * atan_yx + 0.5 * y * ln - y),
         FRAC_1_PI * (y * atan_xy + 0.5 * x * ln - x),
         FRAC_1_PI * atan_yx,
-        0.5 * FRAC_1_PI * ln,
+        FRAC_1_2PI * ln,
         FRAC_1_PI * atan_xy,
     ]
-}
-
-/// Principal `atan(a/b)`, continued to `±π/2` where `b = 0`.
-fn atan_ratio(a: f64, b: f64) -> f64 {
-    if b != 0.0 {
-        (a / b).atan()
-    } else if a > 0.0 {
-        FRAC_PI_2
-    } else if a < 0.0 {
-        -FRAC_PI_2
-    } else {
-        0.0
-    }
 }
 
 #[cfg(test)]

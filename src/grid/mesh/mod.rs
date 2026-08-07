@@ -22,6 +22,7 @@
 //!   barycentric-linear fallback).
 //! * `diff` — finite-volume gradient (least-squares) and Laplacian (TPFA).
 //! * `poisson` — conjugate-gradient Poisson solver ($\nabla^2 \psi = f$).
+//! * `greenfn` — real-space convex-polygon log-potential kernel.
 
 mod generators;
 mod predicates;
@@ -37,5 +38,7 @@ mod contour;
 mod convolve;
 mod diff;
 mod fieldops;
+mod greenfn;
 mod interp;
 mod poisson;
+pub use greenfn::polygon_log_kernel;

@@ -27,6 +27,7 @@ mod poisson;
 mod spectral;
 
 pub use diff::{BoundaryCondition, DerivativeStencil};
+pub use greenfn::square_log_kernel;
 pub use grid2d::Grid2D;
 pub use interp::BilinearKernel;
 pub use pixelgrid::PixelGrid;
