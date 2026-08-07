@@ -13,11 +13,13 @@
 //! * `spectral` — FFT transforms and `k`-space derivatives.
 //! * `diff` — finite-difference derivatives (gradient, Laplacian).
 //! * `poisson` — Poisson solvers ($\nabla^2 \psi = f$).
+//! * `greenfn` — real-space square-pixel log-potential kernel.
 
 mod contour;
 mod convolve;
 mod diff;
 mod fieldops;
+mod greenfn;
 mod grid2d;
 mod interp;
 mod pixelgrid;
