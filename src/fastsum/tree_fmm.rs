@@ -77,6 +77,7 @@ fn leaf_neighbors(tree: &QuadTree, colleagues: &[Vec<usize>], x: usize) -> Vec<u
 
 /// The `(center, strength)` monopole moments of the sources at `indices` — the
 /// far-field expansion input, derived from any [`SourceKernel`].
+#[inline]
 fn monopole_moments<S: SourceKernel>(sources: &[S], indices: &[usize]) -> Vec<Monopole> {
     indices
         .iter()
@@ -138,7 +139,7 @@ impl<E: ExpansionOps, S: SourceKernel> TreeFmm<E, S> {
         let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &i in &node.indices {
-                *f += self.sources[i].near_jet(theta, self.eps2);
+                self.sources[i].accumulate_near(f, theta, self.eps2);
             }
         } else {
             for &c in node.children.iter().flatten() {

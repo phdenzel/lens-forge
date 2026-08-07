@@ -18,14 +18,16 @@ use crate::grid::{MeshGrid, Point2D, ScalarField2D, polygon_log_kernel, square_l
 /// free-form lens (a fastsum [`Monopole`]).
 pub type MassElement = Monopole;
 
-/// Pack a per-unit-κ kernel `[ψ, ψ_x, ψ_y, ψ_xx, ψ_xy, ψ_yy]` scaled by `kappa`
-/// into a [`Jet`].
-fn kernel_jet(k: [f64; 6], kappa: f64) -> Jet {
-    Jet {
-        scalar: kappa * k[0],
-        gradient: Point2D::new(kappa * k[1], kappa * k[2]),
-        hessian: [[kappa * k[3], kappa * k[4]], [kappa * k[4], kappa * k[5]]],
-    }
+/// Add a per-unit-κ kernel `[ψ, ψ_x, ψ_y, ψ_xx, ψ_xy, ψ_yy]` scaled by `kappa` into
+/// `field` (in place, for the backends' hot near-field loop).
+fn add_kernel(field: &mut Jet, k: [f64; 6], kappa: f64) {
+    field.scalar += kappa * k[0];
+    field.gradient.x += kappa * k[1];
+    field.gradient.y += kappa * k[2];
+    field.hessian[0][0] += kappa * k[3];
+    field.hessian[0][1] += kappa * k[4];
+    field.hessian[1][0] += kappa * k[4];
+    field.hessian[1][1] += kappa * k[5];
 }
 
 /// A uniform-κ square pixel as an [`Analytic`](crate::lens::FieldMethod::Analytic)
@@ -67,11 +69,12 @@ impl SourceKernel for PixelCellSource {
         self.kappa * 4.0 * self.hx * self.hy
     }
 
-    fn near_jet(&self, theta: Point2D, _eps2: f64) -> Jet {
-        kernel_jet(
+    fn accumulate_near(&self, field: &mut Jet, theta: Point2D, _eps2: f64) {
+        add_kernel(
+            field,
             square_log_kernel(self.center, self.hx, self.hy, theta),
             self.kappa,
-        )
+        );
     }
 }
 
@@ -112,7 +115,7 @@ impl SourceKernel for VoronoiCellSource {
         self.kappa * self.area
     }
 
-    fn near_jet(&self, theta: Point2D, _eps2: f64) -> Jet {
-        kernel_jet(polygon_log_kernel(&self.verts, theta), self.kappa)
+    fn accumulate_near(&self, field: &mut Jet, theta: Point2D, _eps2: f64) {
+        add_kernel(field, polygon_log_kernel(&self.verts, theta), self.kappa);
     }
 }

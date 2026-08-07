@@ -32,7 +32,7 @@ impl<S: SourceKernel> Summation for DirectSum<S> {
     fn jet(&self, theta: Point2D) -> Jet {
         let mut f = Jet::default();
         for e in &self.elements {
-            f += e.near_jet(theta, self.eps2);
+            e.accumulate_near(&mut f, theta, self.eps2);
         }
         f
     }

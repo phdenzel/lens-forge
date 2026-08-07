@@ -88,7 +88,7 @@ impl<S: SourceKernel> BarnesHut<S> {
         let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &b in &node.indices {
-                *field += self.sources[b].near_jet(theta, self.eps2);
+                self.sources[b].accumulate_near(field, theta, self.eps2);
             }
             return;
         }
