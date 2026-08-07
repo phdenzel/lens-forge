@@ -37,7 +37,7 @@ pub use barnes_hut::BarnesHut;
 pub use direct::DirectSum;
 pub use fmm::Fmm;
 pub use jet::Jet;
-pub use kernel::{LocalExpansion, Monopole, Multipole};
+pub use kernel::{LocalExpansion, Monopole, Multipole, SourceKernel};
 pub use kifmm::Kifmm;
 pub use sum::{Backend, SumConfig, Summation, build_summation};
 

@@ -13,7 +13,8 @@
 //! the outgoing carrier and [`LocalExpansion`] (Taylor) as the receiver.
 
 use crate::fastsum::{
-    ExpansionOps, Summation, Jet, LocalExpansion, Monopole, Multipole, SumConfig, TreeFmm,
+    ExpansionOps, Jet, LocalExpansion, Monopole, Multipole, SourceKernel, SumConfig, Summation,
+    TreeFmm,
 };
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
@@ -75,17 +76,24 @@ impl ExpansionOps for Cauchy {
 }
 
 /// Fast Multipole Method backend (adaptive quadtree, analytic log-kernel scheme).
-pub struct Fmm {
-    engine: TreeFmm<Cauchy>,
+pub struct Fmm<S> {
+    engine: TreeFmm<Cauchy, S>,
 }
 
-impl Summation for Fmm {
-    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
+impl<S: SourceKernel> Fmm<S> {
+    /// Build the backend from source elements and a configuration.
+    ///
+    /// # Arguments
+    /// * `sources` - the source kernels to sum.
+    /// * `cfg` - solver configuration (order, leaf size, softening).
+    pub fn build(sources: &[S], cfg: SumConfig) -> Self {
         Fmm {
             engine: TreeFmm::build(sources, cfg),
         }
     }
+}
 
+impl<S: SourceKernel> Summation for Fmm<S> {
     fn jet(&self, theta: Point2D) -> Jet {
         self.engine.jet(theta)
     }
@@ -148,7 +156,7 @@ mod tests {
 
     #[test]
     fn empty_and_single_body() {
-        let fmm = Fmm::build(&[], SumConfig::default());
+        let fmm = Fmm::build(&[] as &[Monopole], SumConfig::default());
         assert_eq!(fmm.gradient(Point2D::new(1.0, 1.0)), Point2D::origin());
 
         let one = [Monopole::new(Point2D::new(0.1, 0.1), 0.5)];

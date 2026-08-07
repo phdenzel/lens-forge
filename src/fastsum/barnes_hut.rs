@@ -13,15 +13,15 @@
 //! monopole; otherwise its children are visited. Leaves sum their elements
 //! directly.
 
-use crate::fastsum::{Summation, Jet, Monopole, SumConfig};
+use crate::fastsum::{Jet, SourceKernel, SumConfig, Summation};
 use crate::grid::Point2D;
 use crate::tree::QuadTree;
 
 /// Barnes–Hut backend.
 #[derive(Debug)]
-pub struct BarnesHut {
+pub struct BarnesHut<S> {
     /// Bodies in the simulation
-    sources: Vec<Monopole>,
+    sources: Vec<S>,
     /// Spatial partitioning
     tree: QuadTree,
     /// Center of mass per node (indexed by node id)
@@ -34,13 +34,32 @@ pub struct BarnesHut {
     eps2: f64,
 }
 
-impl BarnesHut {
+impl<S: SourceKernel> BarnesHut<S> {
+    /// Build the backend from source elements and a configuration.
+    ///
+    /// # Arguments
+    /// * `sources` - the source kernels to sum.
+    /// * `cfg` - solver configuration (opening angle, leaf size, softening).
+    pub fn build(sources: &[S], cfg: SumConfig) -> Self {
+        let positions: Vec<Point2D> = sources.iter().map(|b| b.center()).collect();
+        let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
+        let (mass, com) = Self::aggregate(&tree, sources);
+        Self {
+            sources: sources.to_vec(),
+            tree,
+            mass,
+            com,
+            theta2: cfg.theta_bh * cfg.theta_bh,
+            eps2: cfg.eps2,
+        }
+    }
+
     /// Aggregate each node's monopole (total mass and centre of mass).
     ///
     /// Nodes are pushed parent-before-children, so a reverse pass visits every
     /// child before its parent: leaves sum their bodies, internal nodes sum
     /// their children.
-    fn aggregate(tree: &QuadTree, sources: &[Monopole]) -> (Vec<f64>, Vec<Point2D>) {
+    fn aggregate(tree: &QuadTree, sources: &[S]) -> (Vec<f64>, Vec<Point2D>) {
         let n = tree.nodes.len();
         let mut mass = vec![0.0; n];
         let mut com = vec![Point2D::origin(); n];
@@ -49,9 +68,9 @@ impl BarnesHut {
             let (mut m, mut c) = (0.0, Point2D::origin());
             if node.is_leaf() {
                 for &b in &node.indices {
-                    let e = sources[b];
-                    m += e.strength;
-                    c += e.position * e.strength;
+                    let (mi, ci) = (sources[b].strength(), sources[b].center());
+                    m += mi;
+                    c += ci * mi;
                 }
             } else {
                 for &ch in node.children.iter().flatten() {
@@ -69,8 +88,7 @@ impl BarnesHut {
         let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &b in &node.indices {
-                let e = self.sources[b];
-                field.add_monopole(theta, e.position, e.strength, self.eps2);
+                *field += self.sources[b].near_jet(theta, self.eps2);
             }
             return;
         }
@@ -88,21 +106,7 @@ impl BarnesHut {
     }
 }
 
-impl Summation for BarnesHut {
-    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
-        let positions: Vec<Point2D> = sources.iter().map(|b| b.position).collect();
-        let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
-        let (mass, com) = Self::aggregate(&tree, sources);
-        Self {
-            sources: sources.to_vec(),
-            tree,
-            mass,
-            com,
-            theta2: cfg.theta_bh * cfg.theta_bh,
-            eps2: cfg.eps2,
-        }
-    }
-
+impl<S: SourceKernel> Summation for BarnesHut<S> {
     fn jet(&self, theta: Point2D) -> Jet {
         let mut f = Jet::default();
         self.accumulate(self.tree.root, theta, &mut f);
@@ -117,7 +121,7 @@ impl Summation for BarnesHut {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fastsum::DirectSum;
+    use crate::fastsum::{DirectSum, Monopole};
     use crate::utils::rng::Lcg;
     use std::f64::consts::FRAC_1_PI;
 

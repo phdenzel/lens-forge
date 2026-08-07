@@ -3,29 +3,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Exact $O(N^2)$ direct summation — the accuracy oracle for the other backends.
 
-use crate::fastsum::{Summation, Jet, Monopole, SumConfig};
+use crate::fastsum::{Jet, SourceKernel, SumConfig, Summation};
 use crate::grid::Point2D;
 
 /// Brute-force summation over all source elements. Exact (up to summation order),
 /// used to validate and benchmark the accelerated backends.
 #[derive(Debug, Clone)]
-pub struct DirectSum {
-    elements: Vec<Monopole>,
+pub struct DirectSum<S> {
+    elements: Vec<S>,
     eps2: f64,
 }
 
-impl Summation for DirectSum {
-    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
+impl<S: SourceKernel> DirectSum<S> {
+    /// Build the backend from source elements and a configuration.
+    ///
+    /// # Arguments
+    /// * `sources` - the source kernels to sum.
+    /// * `cfg` - solver configuration (only `eps2` is used).
+    pub fn build(sources: &[S], cfg: SumConfig) -> Self {
         Self {
             elements: sources.to_vec(),
             eps2: cfg.eps2,
         }
     }
+}
 
+impl<S: SourceKernel> Summation for DirectSum<S> {
     fn jet(&self, theta: Point2D) -> Jet {
         let mut f = Jet::default();
         for e in &self.elements {
-            f.add_monopole(theta, e.position, e.strength, self.eps2);
+            f += e.near_jet(theta, self.eps2);
         }
         f
     }

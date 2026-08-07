@@ -4,7 +4,7 @@
 //! Summation configuration ([`SumConfig`]), the [`Summation`] trait, and runtime
 //! [`Backend`] selection.
 
-use crate::fastsum::{BarnesHut, DirectSum, Fmm, Jet, Kifmm, Monopole};
+use crate::fastsum::{BarnesHut, DirectSum, Fmm, Jet, Kifmm, SourceKernel};
 use crate::grid::Point2D;
 
 /// Shared configuration for the fast-summation backends. Not every field is used
@@ -84,13 +84,10 @@ impl SumConfig {
     }
 }
 
-/// A fast-summation backend for 2D Green's functions.
+/// A fast-summation backend for 2D Green's functions — the query interface shared
+/// by every backend. Construct one with each backend's inherent `build` (generic
+/// over the [`SourceKernel`]), or [`build_summation`] for a boxed backend by kind.
 pub trait Summation {
-    /// Build the backend from source elements and a configuration.
-    fn build(sources: &[Monopole], cfg: SumConfig) -> Self
-    where
-        Self: Sized;
-
     /// The field's full 2-jet (scalar, gradient, hessian) at `theta`.
     fn jet(&self, theta: Point2D) -> Jet;
 
@@ -135,10 +132,15 @@ impl Backend {
     }
 }
 
-/// Build a boxed backend by kind.
-pub fn build_summation(
+/// Build a boxed backend by kind over any [`SourceKernel`].
+///
+/// # Arguments
+/// * `kind` - which backend to build.
+/// * `sources` - the source kernels to sum.
+/// * `cfg` - solver configuration.
+pub fn build_summation<S: SourceKernel + 'static>(
     kind: Backend,
-    sources: &[Monopole],
+    sources: &[S],
     cfg: SumConfig,
 ) -> Box<dyn Summation + Send + Sync> {
     match kind {
@@ -152,6 +154,7 @@ pub fn build_summation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fastsum::Monopole;
 
     fn bodies() -> Vec<Monopole> {
         vec![

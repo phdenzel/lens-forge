@@ -19,14 +19,15 @@
 //! and near field are kernel-independent; the [`ExpansionOps`] scheme supplies
 //! the rest.
 
-use crate::fastsum::{ExpansionOps, Jet, Monopole, SumConfig};
+use crate::fastsum::{ExpansionOps, Jet, Monopole, SourceKernel, SumConfig};
 use crate::grid::{BBox, Point2D};
 use crate::tree::QuadTree;
 
-/// Adaptive-quadtree FMM engine over an [`ExpansionOps`] scheme `E`.
-pub(crate) struct TreeFmm<E: ExpansionOps> {
+/// Adaptive-quadtree FMM engine over an [`ExpansionOps`] scheme `E` and a
+/// [`SourceKernel`] `S` (exact near-field; monopole moments far).
+pub(crate) struct TreeFmm<E: ExpansionOps, S> {
     /// Source bodies (for the direct near-field).
-    sources: Vec<Monopole>,
+    sources: Vec<S>,
     /// Spatial partitioning; leaves hold source indices into `sources`.
     tree: QuadTree,
     /// The expansion scheme and its precompute.
@@ -74,7 +75,16 @@ fn leaf_neighbors(tree: &QuadTree, colleagues: &[Vec<usize>], x: usize) -> Vec<u
     out
 }
 
-impl<E: ExpansionOps> TreeFmm<E> {
+/// The `(center, strength)` monopole moments of the sources at `indices` — the
+/// far-field expansion input, derived from any [`SourceKernel`].
+fn monopole_moments<S: SourceKernel>(sources: &[S], indices: &[usize]) -> Vec<Monopole> {
+    indices
+        .iter()
+        .map(|&k| Monopole::new(sources[k].center(), sources[k].strength()))
+        .collect()
+}
+
+impl<E: ExpansionOps, S: SourceKernel> TreeFmm<E, S> {
     /// Locate the deepest existing box containing `theta` (a leaf, or the box
     /// whose target quadrant is empty).
     ///
@@ -128,8 +138,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
         let node = &self.tree.nodes[node_idx];
         if node.is_leaf() {
             for &i in &node.indices {
-                let e = self.sources[i];
-                f.add_monopole(theta, e.position, e.strength, self.eps2);
+                *f += self.sources[i].near_jet(theta, self.eps2);
             }
         } else {
             for &c in node.children.iter().flatten() {
@@ -143,8 +152,8 @@ impl<E: ExpansionOps> TreeFmm<E> {
     /// # Arguments
     /// * `sources` - the monopole bodies.
     /// * `cfg` - solver configuration (order, leaf size, softening).
-    pub(crate) fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
-        let positions: Vec<Point2D> = sources.iter().map(|s| s.position).collect();
+    pub(crate) fn build(sources: &[S], cfg: SumConfig) -> Self {
+        let positions: Vec<Point2D> = sources.iter().map(|s| s.center()).collect();
         let tree = QuadTree::build(&positions, cfg.leaf_size.max(1));
         let n = tree.nodes.len();
         let root = &tree.nodes[tree.root];
@@ -172,7 +181,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
                 if node.indices.is_empty() {
                     continue;
                 }
-                let subset: Vec<Monopole> = node.indices.iter().map(|&k| sources[k]).collect();
+                let subset = monopole_moments(sources, &node.indices);
                 out[i] = Some(scheme.s2m(b, &subset));
             } else {
                 let mut acc: Option<E::Outgoing> = None;
@@ -237,7 +246,7 @@ impl<E: ExpansionOps> TreeFmm<E> {
             for l in leaf_neighbors(&tree, &colleagues, p) {
                 let ln = &tree.nodes[l];
                 if !ln.indices.is_empty() && !ln.is_adjacent(&tree.nodes[b]) {
-                    let subset: Vec<Monopole> = ln.indices.iter().map(|&k| sources[k]).collect();
+                    let subset = monopole_moments(sources, &ln.indices);
                     scheme.s2l(bb, &subset, &mut incoming[b]);
                 }
             }

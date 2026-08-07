@@ -13,7 +13,7 @@
 //! `pseudo_inverse`) rather than deriving anything analytically. Evaluation
 //! reuses [`Jet::add_monopole`], as the densities are just monopoles.
 
-use crate::fastsum::{ExpansionOps, Summation, Jet, Monopole, SumConfig, TreeFmm};
+use crate::fastsum::{ExpansionOps, Jet, Monopole, SourceKernel, SumConfig, Summation, TreeFmm};
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
 use crate::utils::svd::pseudo_inverse;
@@ -250,17 +250,24 @@ impl ExpansionOps for KernelIndependent {
 }
 
 /// Kernel-independent Fast Multipole Method backend (adaptive quadtree).
-pub struct Kifmm {
-    engine: TreeFmm<KernelIndependent>,
+pub struct Kifmm<S> {
+    engine: TreeFmm<KernelIndependent, S>,
 }
 
-impl Summation for Kifmm {
-    fn build(sources: &[Monopole], cfg: SumConfig) -> Self {
+impl<S: SourceKernel> Kifmm<S> {
+    /// Build the backend from source elements and a configuration.
+    ///
+    /// # Arguments
+    /// * `sources` - the source kernels to sum.
+    /// * `cfg` - solver configuration (order, leaf size, softening).
+    pub fn build(sources: &[S], cfg: SumConfig) -> Self {
         Kifmm {
             engine: TreeFmm::build(sources, cfg),
         }
     }
+}
 
+impl<S: SourceKernel> Summation for Kifmm<S> {
     fn jet(&self, theta: Point2D) -> Jet {
         self.engine.jet(theta)
     }
@@ -321,7 +328,7 @@ mod tests {
 
     #[test]
     fn empty_and_single_body() {
-        let ki = Kifmm::build(&[], SumConfig::default());
+        let ki = Kifmm::build(&[] as &[Monopole], SumConfig::default());
         assert_eq!(ki.gradient(Point2D::new(1.0, 1.0)), Point2D::origin());
 
         let one = [Monopole::new(Point2D::new(0.1, 0.1), 0.5)];

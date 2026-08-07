@@ -6,6 +6,7 @@
 //! The layer the summation backends sum over, separate from the algorithms that
 //! aggregate it:
 //!
+//! * `source` — [`SourceKernel`], the trait a backend sums over.
 //! * `monopole` — [`Monopole`], the point/near source kernel.
 //! * `multipole` — [`Multipole`], the far-field multipole expansion.
 //! * `local_expansion` — [`LocalExpansion`], the local (Taylor) expansion.
@@ -15,9 +16,11 @@ pub(crate) mod expansion;
 pub mod local_expansion;
 pub mod monopole;
 pub mod multipole;
+pub mod source;
 
 pub use local_expansion::LocalExpansion;
 pub use monopole::Monopole;
 pub use multipole::Multipole;
+pub use source::SourceKernel;
 
 pub(crate) use expansion::ExpansionOps;

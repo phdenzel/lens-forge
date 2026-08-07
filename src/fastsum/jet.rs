@@ -100,6 +100,19 @@ impl Jet {
     }
 }
 
+impl std::ops::AddAssign for Jet {
+    /// Accumulate another source's contribution (component-wise).
+    #[inline]
+    fn add_assign(&mut self, rhs: Jet) {
+        self.scalar += rhs.scalar;
+        self.gradient += rhs.gradient;
+        self.hessian[0][0] += rhs.hessian[0][0];
+        self.hessian[0][1] += rhs.hessian[0][1];
+        self.hessian[1][0] += rhs.hessian[1][0];
+        self.hessian[1][1] += rhs.hessian[1][1];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
