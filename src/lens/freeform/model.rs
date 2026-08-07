@@ -18,8 +18,15 @@ use crate::lens::model::LensModel;
 pub enum FieldMethod {
     /// FFT Poisson solve on the pixel grid (periodic, zero-mean). Pixel-only.
     Spectral,
-    /// Closed-form per-pixel log integral (free-space). Pixel-only.
-    Analytic,
+    /// Exact per-cell log integral (free-space): the square-pixel or Voronoi-polygon
+    /// kernel, exact near/inside cells, summed by a fastsum [`Backend`] (softening is
+    /// ignored — the kernel is non-singular). Both representations.
+    Analytic {
+        /// Fast-summation backend (exact direct sum, Barnes–Hut, FMM, …).
+        backend: Backend,
+        /// Summation configuration (opening angle, order; softening unused).
+        config: SumConfig,
+    },
     /// Free-space monopole summation via a fastsum [`Backend`]. Both representations.
     FastSum {
         /// Fast-summation backend (exact direct sum, Barnes–Hut, FMM, …).
@@ -36,6 +43,17 @@ impl FieldMethod {
     /// * `backend` - fast-summation backend.
     pub fn fast_sum(backend: Backend) -> Self {
         Self::FastSum {
+            backend,
+            config: SumConfig::default(),
+        }
+    }
+
+    /// [`Analytic`](Self::Analytic) with the default [`SumConfig`] — the common case.
+    ///
+    /// # Arguments
+    /// * `backend` - fast-summation backend.
+    pub fn analytic(backend: Backend) -> Self {
+        Self::Analytic {
             backend,
             config: SumConfig::default(),
         }

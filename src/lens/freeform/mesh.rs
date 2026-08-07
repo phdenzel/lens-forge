@@ -5,23 +5,27 @@
 //!
 //! The unstructured counterpart to [`PixelLens`](crate::lens::PixelLens). Its
 //! irregular sampling rules out the pixel-only [`Spectral`](FieldMethod::Spectral)
-//! and [`Analytic`](FieldMethod::Analytic) methods, so it supports only
-//! [`FastSum`](FieldMethod::FastSum): each cell is a mass element
-//! $m_i = \kappa_i \cdot \mathrm{area}_i$ at its centroid, and the field is summed
-//! from the 2D Poisson Green's function by one of the interchangeable
-//! [`fastsum`](crate::fastsum) backends. The `MeshGrid` is stored, so a future
-//! mesh-native method (e.g. a Voronoi Poisson solve) has the geometry it needs.
+//! FFT, but it supports both free-space methods: the default
+//! [`Analytic`](FieldMethod::Analytic) sums each cell's exact convex-polygon log
+//! integral ([`polygon_log_kernel`](crate::grid::polygon_log_kernel)) — exact
+//! near/inside cells — while [`FastSum`](FieldMethod::FastSum) reduces each cell to a
+//! monopole $m_i = \kappa_i\cdot\mathrm{area}_i$ at its centroid. Both are summed by
+//! one of the interchangeable [`fastsum`](crate::fastsum) backends and agree in the
+//! far field. The `MeshGrid` is stored, so a future mesh-native method (e.g. a
+//! Voronoi Poisson solve) has the geometry it needs.
 
 use crate::fastsum::{Backend, Summation, build_summation};
 use crate::grid::{FieldArray1D, MeshGrid, Point2D, ScalarField2D, VoronoiMesh};
+use super::source::{MassElement, VoronoiCellSource};
 use crate::lens::model::{LensJet, LensModel};
-use crate::lens::{FieldMethod, FreeFormLens, MassElement};
+use crate::lens::{FieldMethod, FreeFormLens};
 use crate::{LensForgeError, Result};
 
 /// Lens on a Voronoi/adaptive plane.
 ///
 /// Stores the [`MeshGrid`]; the field is produced by a chosen [`FieldMethod`]
-/// (only [`FastSum`](FieldMethod::FastSum) is valid on an unstructured mesh).
+/// (the free-space [`Analytic`](FieldMethod::Analytic) — the default, by direct
+/// summation — or [`FastSum`](FieldMethod::FastSum); not the pixel-only `Spectral`).
 /// Convergence is the nearest-cell κ (the Voronoi definition).
 pub struct MeshLens {
     mesh: MeshGrid,
@@ -33,8 +37,9 @@ pub struct MeshLens {
 enum MeshField {
     /// On-demand free-space monopole summation over cell mass elements.
     FastSum(Box<dyn Summation + Send + Sync>),
-    // extension point: a Voronoi-native Poisson solve (the mesh counterpart to pixel
-    // `Spectral`) would land here as a further variant, plus a new `FieldMethod`.
+    /// On-demand summation over exact per-cell Voronoi-polygon log-integral sources
+    /// (same backends as [`FastSum`](Self::FastSum), exact near/inside cells).
+    Analytic(Box<dyn Summation + Send + Sync>),
 }
 
 impl MeshLens {
@@ -122,14 +127,18 @@ impl MeshLens {
 impl FreeFormLens for MeshLens {
     type Repr = MeshGrid;
 
-    /// The exact direct summation — its only method family's reference backend.
+    /// The exact per-cell polygon integral by direct summation.
     fn default_method() -> FieldMethod {
-        FieldMethod::fast_sum(Backend::Direct)
+        FieldMethod::analytic(Backend::Direct)
     }
 
-    /// A mesh supports only [`FastSum`](FieldMethod::FastSum).
+    /// A mesh supports the free-space methods [`Analytic`](FieldMethod::Analytic) and
+    /// [`FastSum`](FieldMethod::FastSum), but not the pixel-only `Spectral` FFT.
     fn supports(method: FieldMethod) -> bool {
-        matches!(method, FieldMethod::FastSum { .. })
+        matches!(
+            method,
+            FieldMethod::FastSum { .. } | FieldMethod::Analytic { .. }
+        )
     }
 
     fn build(mesh: MeshGrid, method: FieldMethod) -> Result<Self> {
@@ -138,9 +147,13 @@ impl FreeFormLens for MeshLens {
                 let sources = Self::mass_elements(&mesh);
                 MeshField::FastSum(build_summation(backend, &sources, config))
             }
-            FieldMethod::Spectral | FieldMethod::Analytic => {
+            FieldMethod::Analytic { backend, config } => {
+                let sources = VoronoiCellSource::from_mesh(&mesh);
+                MeshField::Analytic(build_summation(backend, &sources, config))
+            }
+            FieldMethod::Spectral => {
                 return Err(LensForgeError::invalid_parameter(
-                    "MeshLens supports only the FastSum method (no Spectral/Analytic on an unstructured mesh)",
+                    "MeshLens has no Spectral method (no FFT on an unstructured mesh)",
                 ));
             }
         };
@@ -164,12 +177,14 @@ impl LensModel for MeshLens {
     fn jet(&self, theta: Point2D) -> LensJet {
         match &self.field {
             MeshField::FastSum(s) => s.jet(theta).into(),
+            MeshField::Analytic(s) => s.jet(theta).into(),
         }
     }
 
     fn jet_batch(&self, thetas: &[Point2D]) -> Vec<LensJet> {
         match &self.field {
             MeshField::FastSum(s) => s.jet_batch(thetas).into_iter().map(Into::into).collect(),
+            MeshField::Analytic(s) => s.jet_batch(thetas).into_iter().map(Into::into).collect(),
         }
     }
 
@@ -177,6 +192,7 @@ impl LensModel for MeshLens {
     fn deflection(&self, theta: Point2D) -> Point2D {
         match &self.field {
             MeshField::FastSum(s) => s.gradient(theta),
+            MeshField::Analytic(s) => s.gradient(theta),
         }
     }
 
@@ -216,11 +232,11 @@ mod tests {
     }
 
     #[test]
-    fn new_defaults_to_direct_fast_sum() {
+    fn new_defaults_to_analytic_direct() {
         let mg = mesh(&scattered(24), &[0.3; 24]);
         assert_eq!(
             MeshLens::new(mg).unwrap().method(),
-            FieldMethod::fast_sum(Backend::Direct)
+            FieldMethod::analytic(Backend::Direct)
         );
     }
 
@@ -229,7 +245,7 @@ mod tests {
         let sites = scattered(64);
         let kappa: Vec<f64> = (0..64).map(|i| 0.1 + 0.01 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
-        let lens = MeshLens::new(mg.clone()).unwrap();
+        let lens = MeshLens::build(mg.clone(), FieldMethod::fast_sum(Backend::Direct)).unwrap();
         // Reference: sum monopole deflections from the mesh's own cells (m = κ·area).
         let field: &dyn ScalarField2D = &mg;
         let theta = Point2D::new(4.0, 3.0);
@@ -306,8 +322,8 @@ mod tests {
         let kappa: Vec<f64> = (0..80).map(|i| 0.2 + 0.005 * i as f64).collect();
         let mg = mesh(&sites, &kappa);
         let theta = Point2D::new(3.0, 2.0);
-        let direct = MeshLens::new(mg.clone()).unwrap();
-        // new() defaults to Direct; switching to Barnes–Hut then back equals it exactly.
+        let direct = MeshLens::build(mg.clone(), FieldMethod::fast_sum(Backend::Direct)).unwrap();
+        // Switching to Barnes–Hut then back to Direct FastSum equals it exactly.
         let chained = MeshLens::new(mg)
             .unwrap()
             .with_method(FieldMethod::fast_sum(Backend::BarnesHut))
@@ -320,7 +336,7 @@ mod tests {
     #[test]
     fn softening_changes_the_field() {
         let mg = mesh(&scattered(60), &[0.4; 60]);
-        let sharp = MeshLens::new(mg.clone()).unwrap();
+        let sharp = MeshLens::build(mg.clone(), FieldMethod::fast_sum(Backend::Direct)).unwrap();
         let softened = MeshLens::build(
             mg,
             FieldMethod::FastSum {
@@ -345,14 +361,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_pixel_only_methods() {
+    fn rejects_spectral_but_accepts_analytic() {
         let mg = mesh(&scattered(24), &[0.3; 24]);
         assert!(MeshLens::build(mg.clone(), FieldMethod::Spectral).is_err());
         assert!(
             MeshLens::new(mg)
                 .unwrap()
-                .with_method(FieldMethod::Analytic)
-                .is_err()
+                .with_method(FieldMethod::analytic(Backend::BarnesHut))
+                .is_ok()
         );
     }
 
@@ -391,9 +407,73 @@ mod tests {
     }
 
     #[test]
-    fn supports_only_fast_sum() {
+    fn supports_free_space_methods_not_spectral() {
         assert!(MeshLens::supports(FieldMethod::fast_sum(Backend::Direct)));
+        assert!(MeshLens::supports(FieldMethod::analytic(Backend::Direct)));
         assert!(!MeshLens::supports(FieldMethod::Spectral));
-        assert!(!MeshLens::supports(FieldMethod::Analytic));
+    }
+
+    #[test]
+    fn analytic_recovers_kappa_inside_a_cell() {
+        // ½ tr H = κ inside the cell containing the query (∇²ψ = 2κ), via Analytic.
+        let sites = [
+            Point2D::new(-1.5, -1.5),
+            Point2D::new(1.5, -1.5),
+            Point2D::new(1.5, 1.5),
+            Point2D::new(-1.5, 1.5),
+            Point2D::new(0.0, 0.0),
+        ];
+        let mg = mesh(&sites, &[0.4; 5]);
+        let lens = MeshLens::new(mg).unwrap(); // default: Analytic(Direct)
+        let h = lens.jet(Point2D::new(0.05, -0.03)).hessian; // inside the central cell
+        assert!((0.5 * (h[0][0] + h[1][1]) - 0.4).abs() < 1e-9, "½trH = {}", 0.5 * (h[0][0] + h[1][1]));
+    }
+
+    #[test]
+    fn analytic_far_field_is_centroid_monopole() {
+        // Each cell's exact integral tends to its monopole m = κ·area at the centroid.
+        let sites = scattered(60);
+        let kappa: Vec<f64> = (0..60).map(|i| 0.1 + 0.01 * i as f64).collect();
+        let mg = mesh(&sites, &kappa);
+        let analytic = MeshLens::new(mg.clone()).unwrap();
+        let theta = Point2D::new(40.0, 30.0);
+        let (mut ax, mut ay) = (0.0, 0.0);
+        for i in 0..mg.len() {
+            let c = mg.centroid(i);
+            let m = mg.value(i) * mg.cell_area(i);
+            let r2 = theta.distance_squared(&c);
+            ax += m * FRAC_1_PI * (theta.x - c.x) / r2;
+            ay += m * FRAC_1_PI * (theta.y - c.y) / r2;
+        }
+        let a = analytic.deflection(theta);
+        assert!((a.x - ax).abs() < 1e-5 && (a.y - ay).abs() < 1e-5, "a=({},{})", a.x, a.y);
+    }
+
+    #[test]
+    fn fast_sum_jet_batch_matches_jet() {
+        // Exercises the FastSum jet / jet_batch dispatch (default is now Analytic).
+        let kappa: Vec<f64> = (0..50).map(|i| 0.2 + 0.01 * i as f64).collect();
+        let mg = mesh(&scattered(50), &kappa);
+        let lens = MeshLens::build(mg, FieldMethod::fast_sum(Backend::Direct)).unwrap();
+        let pts = [Point2D::new(3.0, 2.0), Point2D::new(-2.0, 1.5)];
+        for (b, &p) in lens.jet_batch(&pts).iter().zip(&pts) {
+            let s = lens.jet(p);
+            assert!((b.psi - s.psi).abs() < 1e-12);
+            assert_eq!(b.hessian, s.hessian);
+        }
+    }
+
+    #[test]
+    fn analytic_barnes_hut_matches_direct() {
+        // Accelerating Analytic with Barnes–Hut agrees with the exact direct sum.
+        let sites = scattered(200);
+        let kappa: Vec<f64> = (0..200).map(|i| 0.1 + 0.005 * i as f64).collect();
+        let mg = mesh(&sites, &kappa);
+        let direct = MeshLens::new(mg.clone()).unwrap();
+        let bh = MeshLens::build(mg, FieldMethod::analytic(Backend::BarnesHut)).unwrap();
+        let theta = Point2D::new(3.5, 2.0);
+        let rel = bh.deflection(theta).distance(&direct.deflection(theta))
+            / direct.deflection(theta).norm().max(1e-6);
+        assert!(rel < 2e-2, "rel err {rel}");
     }
 }
