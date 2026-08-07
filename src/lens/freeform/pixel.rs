@@ -11,16 +11,20 @@
 //! deflection and Hessian in that same k-space
 //! ($\hat\alpha = i\mathbf{k}\hat\psi$, $\hat H = -\mathbf{k}\mathbf{k}^\top\hat\psi$),
 //! then interpolates — periodic and zero-mean, so it needs power-of-two side lengths.
-//! [`FastSum`](FieldMethod::FastSum) instead sums a free-space monopole per pixel
-//! (shared with [`MeshLens`](crate::lens::MeshLens)); the two boundary conditions
-//! suit different setups.
+//! The two free-space methods instead impose an isolated (non-periodic) boundary:
+//! [`FastSum`](FieldMethod::FastSum) sums a monopole per pixel (shared with
+//! [`MeshLens`](crate::lens::MeshLens)), while [`Analytic`](FieldMethod::Analytic)
+//! sums the exact square-pixel log integral
+//! ([`log_kernel`](crate::grid::PixelGrid::log_kernel)) — they agree in the far
+//! field but the latter is exact near and inside cells.
 
+use crate::Result;
 use crate::fastsum::{Summation, build_summation};
 use crate::grid::{ComplexFieldArray2D, Grid2D, PixelGrid, Point2D, ScalarField2D};
 use crate::lens::model::{LensJet, LensModel, MassElement};
 use crate::lens::{FieldMethod, FreeFormLens};
-use crate::{LensForgeError, Result};
 use num::complex::Complex;
+use rayon::prelude::*;
 
 /// Lens on a uniform pixel grid.
 ///
@@ -41,6 +45,8 @@ enum PixelField {
     /// On-demand free-space summation over pixel-centre mass elements — cannot be
     /// baked onto the grid (each pixel's monopole is singular at its own node).
     FastSum(Box<dyn Summation + Send + Sync>),
+    /// On-demand exact per-pixel log integral, evaluated from the stored κ grid.
+    Analytic,
 }
 
 /// Precomputed potential, deflection and Hessian grids from the spectral solve.
@@ -108,6 +114,27 @@ impl PixelLens {
             .collect()
     }
 
+    /// Exact per-pixel log integral: the κ-weighted sum of the square-pixel
+    /// [`log_kernel`](PixelGrid::log_kernel) over every cell of the κ grid.
+    fn analytic_jet(&self, theta: Point2D) -> LensJet {
+        let mut acc = [0.0f64; 6];
+        for i in 0..self.kappa.len() {
+            let k = self.kappa.value_at(i);
+            if k == 0.0 {
+                continue;
+            }
+            let ker = self.kappa.log_kernel(i, theta);
+            for j in 0..6 {
+                acc[j] += k * ker[j];
+            }
+        }
+        LensJet {
+            psi: acc[0],
+            alpha: Point2D::new(acc[1], acc[2]),
+            hessian: [[acc[3], acc[4]], [acc[4], acc[5]]],
+        }
+    }
+
     /// Solve $\nabla^2\psi = 2\kappa$ by FFT and precompute the deflection and Hessian
     /// fields in k-space for interpolation.
     fn solve_spectral(kappa: &PixelGrid) -> Result<SpectralGrids> {
@@ -166,11 +193,7 @@ impl FreeFormLens for PixelLens {
                 let sources = Self::mass_elements(&kappa);
                 PixelField::FastSum(build_summation(backend, &sources, config))
             }
-            FieldMethod::Analytic => {
-                return Err(LensForgeError::invalid_parameter(
-                    "the Analytic field method is not yet implemented for PixelLens",
-                ));
-            }
+            FieldMethod::Analytic => PixelField::Analytic,
         };
         Ok(Self {
             kappa,
@@ -206,6 +229,7 @@ impl LensModel for PixelLens {
                 }
             }
             PixelField::FastSum(s) => s.jet(theta).into(),
+            PixelField::Analytic => self.analytic_jet(theta),
         }
     }
 
@@ -227,6 +251,7 @@ impl LensModel for PixelLens {
                     .collect()
             }
             PixelField::FastSum(s) => s.jet_batch(thetas).into_iter().map(Into::into).collect(),
+            PixelField::Analytic => thetas.par_iter().map(|&t| self.analytic_jet(t)).collect(),
         }
     }
 
@@ -380,15 +405,74 @@ mod tests {
         );
     }
 
+    /// Build a linear-ramp κ lens with the exact per-pixel Analytic method.
+    fn analytic_ramp_lens() -> PixelLens {
+        let kappa = PixelGrid::from_func_sq(N, L, |x, y| 0.2 + 0.05 * x - 0.03 * y);
+        PixelLens::new(kappa)
+            .unwrap()
+            .with_method(FieldMethod::Analytic)
+            .unwrap()
+    }
+
     #[test]
-    fn analytic_method_not_yet_implemented() {
+    fn analytic_convergence_inside_matches_kappa() {
+        // ½ tr H = κ inside a uniform field, since ∇²ψ = 2κ pointwise.
         let kappa = PixelGrid::from_func_sq(N, L, |_, _| 0.3);
-        assert!(
-            PixelLens::new(kappa)
-                .unwrap()
-                .with_method(FieldMethod::Analytic)
-                .is_err()
-        );
+        let lens = PixelLens::new(kappa)
+            .unwrap()
+            .with_method(FieldMethod::Analytic)
+            .unwrap();
+        let h = lens.jet(Point2D::new(0.13, -0.07)).hessian;
+        assert!((0.5 * (h[0][0] + h[1][1]) - 0.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn analytic_matches_fast_sum_far_field() {
+        // Each pixel's exact integral tends to its monopole; the two agree far away.
+        let analytic = analytic_ramp_lens();
+        let kappa = PixelGrid::from_func_sq(N, L, |x, y| 0.2 + 0.05 * x - 0.03 * y);
+        let fast = PixelLens::new(kappa)
+            .unwrap()
+            .with_method(FieldMethod::fast_sum(Backend::Direct))
+            .unwrap();
+        let theta = Point2D::new(40.0, 30.0);
+        let (a, b) = (analytic.deflection(theta), fast.deflection(theta));
+        assert!((a.x - b.x).abs() < 1e-5 && (a.y - b.y).abs() < 1e-5, "a=({},{})", a.x, a.y);
+    }
+
+    #[test]
+    fn analytic_alpha_is_gradient_of_psi() {
+        // Central-difference ψ recovers α — validates the potential against its gradient.
+        let lens = analytic_ramp_lens();
+        let (p, e) = (Point2D::new(0.13, -0.07), 1e-4);
+        let dpsi_dx =
+            (lens.jet(Point2D::new(p.x + e, p.y)).psi - lens.jet(Point2D::new(p.x - e, p.y)).psi)
+                / (2.0 * e);
+        assert!((dpsi_dx - lens.jet(p).alpha.x).abs() < 1e-6, "{dpsi_dx}");
+    }
+
+    #[test]
+    fn analytic_skips_zero_pixels() {
+        // Empty (κ = 0) cells are skipped; the field is still finite and non-trivial.
+        let kappa = PixelGrid::from_func_sq(N, L, |x, _| if x > 0.0 { 0.3 } else { 0.0 });
+        let lens = PixelLens::new(kappa)
+            .unwrap()
+            .with_method(FieldMethod::Analytic)
+            .unwrap();
+        let j = lens.jet(Point2D::new(1.0, 0.5));
+        assert!(j.psi.is_finite() && j.alpha.x.abs() > 0.0);
+    }
+
+    #[test]
+    fn analytic_jet_batch_matches_jet() {
+        let lens = analytic_ramp_lens();
+        let pts = [Point2D::new(0.13, -0.07), Point2D::new(2.1, 1.4)];
+        for (b, &p) in lens.jet_batch(&pts).iter().zip(&pts) {
+            let s = lens.jet(p);
+            assert_eq!(b.psi, s.psi);
+            assert_eq!(b.alpha.x, s.alpha.x);
+            assert_eq!(b.hessian, s.hessian);
+        }
     }
 
     #[test]
