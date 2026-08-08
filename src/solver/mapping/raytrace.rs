@@ -19,7 +19,7 @@ use crate::lens::LensModel;
 /// variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RayTracer {
-    /// Direct per-ray evaluation β = θ − α(θ) (A1), batched through
+    /// Direct per-ray evaluation β = θ − α(θ), batched through
     /// [`jet_batch`](LensModel::jet_batch): exact, one jet per ray.
     Direct,
 }

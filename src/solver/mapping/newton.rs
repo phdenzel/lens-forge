@@ -5,9 +5,8 @@
 //!
 //! An image of a point source β is a root of F(θ) = θ − α(θ) − β, whose Jacobian
 //! is the lens Jacobian A = I − H(ψ) — already carried by the
-//! [`jet`](LensModel::jet). This wraps the generic
-//! [`newton2`](crate::numerical::newton::newton2) root-finder, one jet per step
-//! supplying both F and A. It polishes, not globalizes: it converges to whichever
+//! [`jet`](LensModel::jet). This wraps the generic `newton2` root-finder, one jet
+//! per step supplying both F and A. It polishes, not globalizes: it converges to whichever
 //! image basin the seed lies in, so callers seed it (grid search, triangle
 //! mapping, contour intersection) and find *all* images by refining each seed.
 

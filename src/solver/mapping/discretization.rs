@@ -9,7 +9,7 @@
 //! and read the image-plane position back off the same cell. The two realizations
 //! differ only in cell topology: [`MapTessellation`](super::tessellate) uses
 //! Delaunay triangles, [`MapPixellation`](super::pixellate) uses lattice quads;
-//! both reduce to the shared triangle test [`seed_if_contains`].
+//! both reduce to the shared triangle containment test `seed_if_contains`.
 
 use crate::grid::Point2D;
 

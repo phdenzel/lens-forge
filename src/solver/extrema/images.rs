@@ -3,20 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Point-source image finding: solve β = θ − α(θ) for all images of β.
 //!
-//! An [`ImageFinder`] returns every image with its magnification, [`Parity`] and
-//! Fermat potential. Its triangle-mapping backend (D1) is the payoff of the
-//! [`mapping`](crate::solver::mapping) layer: **every**
-//! [`MapDiscretization`](crate::solver::mapping::discretization::MapDiscretization)
-//! *is* an `ImageFinder`, via the blanket impl below. The discretization yields a
-//! coarse seed per predicted image (including folded, near-critical ones),
-//! [`newton`] polishes each to machine precision, duplicates are pruned, and
-//! [`Image::at`] classifies the result — so a [`MapTessellation`] (mesh) or
-//! [`MapPixellation`] (pixel), built once from a lens, answers `images` for many
-//! source positions directly.
-//!
-//! [`Parity`]: crate::solver::image::Parity
-//! [`MapTessellation`]: crate::solver::mapping::tessellate::MapTessellation
-//! [`MapPixellation`]: crate::solver::mapping::pixellate::MapPixellation
+//! An [`ImageFinder`] returns every image with its magnification, parity and
+//! Fermat potential. Every [`MapDiscretization`] is one via the blanket impl below:
+//! its seeds are [`newton`]-polished, deduplicated, and classified by
+//! [`Image::at`]. Build a discretization once and query it for many source positions.
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;
@@ -38,10 +28,10 @@ pub trait ImageFinder {
     fn images(&self, lens: &dyn LensModel, beta: Point2D) -> Vec<Image>;
 }
 
-/// Triangle mapping (D1): every discretized lens map is an image finder. Its seeds
-/// are Newton-polished, deduplicated within [`DEDUP_TOL`], and classified.
+/// Every discretized lens map is an image finder: its seeds are Newton-polished,
+/// deduplicated within `DEDUP_TOL`, and classified.
 ///
-/// The discretization **must** have been built from the same `lens` passed to
+/// The discretization must have been built from the same `lens` passed to
 /// [`images`](ImageFinder::images) (Newton re-evaluates the jet at fresh θ).
 impl<D: MapDiscretization + ?Sized> ImageFinder for D {
     fn images(&self, lens: &dyn LensModel, beta: Point2D) -> Vec<Image> {
