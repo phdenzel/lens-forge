@@ -40,6 +40,14 @@ pub trait ScalarField2D {
     /// nearest-cell for a mesh).
     fn sample(&self, p: Point2D) -> f64;
 
+    /// Cells and weights of the linear stencil reproducing [`sample`](Self::sample)
+    /// at `p`: `sample(p) == Σ weightᵢ · value_at(indexᵢ)`. Empty where `sample`
+    /// reads as zero (outside a pixel grid).
+    ///
+    /// # Arguments
+    /// * `p` - the query point.
+    fn sample_stencil(&self, p: Point2D) -> Vec<(usize, f64)>;
+
     /// Area-weighted integral of the field, `Σ vᵢ · areaᵢ`.
     fn flux(&self) -> f64 {
         (0..self.len())
@@ -103,6 +111,25 @@ impl ScalarField2D for PixelGrid {
 
     fn sample(&self, p: Point2D) -> f64 {
         self.interpolate(p)
+    }
+
+    fn sample_stencil(&self, p: Point2D) -> Vec<(usize, f64)> {
+        let Some(k) = self.grid.bilinear_interp(&p) else {
+            return Vec::new();
+        };
+        let nx = self.grid.nx;
+        let mut stencil: Vec<(usize, f64)> = Vec::with_capacity(4);
+        // Edge clamping can repeat a corner index; accumulate so each cell appears once.
+        for (i, j, w) in
+            [(k.i0, k.j0, k.w00), (k.i1, k.j0, k.w10), (k.i0, k.j1, k.w01), (k.i1, k.j1, k.w11)]
+        {
+            let idx = j * nx + i;
+            match stencil.iter_mut().find(|(c, _)| *c == idx) {
+                Some(e) => e.1 += w,
+                None => stencil.push((idx, w)),
+            }
+        }
+        stencil
     }
 }
 
@@ -195,6 +222,9 @@ mod tests {
         fn sample(&self, _p: Point2D) -> f64 {
             0.0
         }
+        fn sample_stencil(&self, _p: Point2D) -> Vec<(usize, f64)> {
+            Vec::new()
+        }
     }
 
     #[test]
@@ -223,6 +253,18 @@ mod tests {
         assert_eq!(f.max(), 4.0);
         assert_eq!(f.sum(), 7.0);
         assert_eq!(f.mean(), 7.0 / 3.0); // n != 0 branch
+    }
+
+    #[test]
+    fn pixelgrid_sample_stencil_reproduces_sample() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| 0.7 * x - 1.3 * y + 0.2);
+        for p in [Point2D::new(0.3, -0.4), Point2D::new(-1.1, 0.9), Point2D::new(1.99, 1.99)] {
+            let s: f64 = pg.sample_stencil(p).iter().map(|&(i, w)| w * pg.value_at(i)).sum();
+            assert!((s - pg.sample(p)).abs() < 1e-12, "stencil {s} vs sample {}", pg.sample(p));
+        }
+        // Outside the domain the stencil is empty (sample reads 0).
+        assert!(pg.sample_stencil(Point2D::new(10.0, 0.0)).is_empty());
     }
 
     #[test]

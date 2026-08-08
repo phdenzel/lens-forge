@@ -533,6 +533,11 @@ impl ScalarField2D for MeshGrid {
         self.values[self.mesh.cell_of(p)]
     }
 
+    fn sample_stencil(&self, p: Point2D) -> Vec<(usize, f64)> {
+        // Piecewise-constant: the containing cell carries all the weight.
+        vec![(self.mesh.cell_of(p), 1.0)]
+    }
+
     fn sample_batch(&self, points: &[Point2D]) -> Vec<f64> {
         // Warm-started walk: first point cold (k-d tree), each next seeded with the
         // previous. ~O(1) for spatially coherent inputs; exact for any order.
@@ -634,6 +639,17 @@ mod tests {
         // A point deep in the lower-left quadrant is nearest to site 0.
         assert_eq!(m.sample(p(0.1, 0.1)), m.value(0));
         assert_eq!(m.sample(p(0.9, 0.9)), m.value(2));
+    }
+
+    #[test]
+    fn sample_stencil_reproduces_sample() {
+        let m = demo();
+        for q in [p(0.1, 0.1), p(0.9, 0.9), p(0.4, 0.6)] {
+            let stencil = m.sample_stencil(q);
+            assert_eq!(stencil.len(), 1); // piecewise-constant: one cell, weight 1
+            let s: f64 = stencil.iter().map(|&(i, w)| w * m.value_at(i)).sum();
+            assert_eq!(s, m.sample(q));
+        }
     }
 
     #[test]
