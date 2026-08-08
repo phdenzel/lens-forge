@@ -53,9 +53,8 @@ impl Parity {
     }
 }
 
-/// A point image: one solution θ of β = θ − α(θ), with its magnification, parity
-/// and Fermat potential — the currency passed between forward finding and the
-/// inverse point-image constraints.
+/// Source point image: one solution θ of β = θ − α(θ), with its magnification,
+/// parity, and Fermat potential.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Image {
     /// Image-plane position θ.
