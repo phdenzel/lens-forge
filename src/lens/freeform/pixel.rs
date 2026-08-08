@@ -194,6 +194,18 @@ impl LensModel for PixelLens {
         }
     }
 
+    /// Deflection only — cheaper than a full [`jet`](Self::jet) (skips the Hessian).
+    fn deflection(&self, theta: Point2D) -> Point2D {
+        match &self.field {
+            PixelField::Spectral(g) => Point2D::new(
+                g.grad_x.interpolate_or(theta, 0.0),
+                g.grad_y.interpolate_or(theta, 0.0),
+            ),
+            PixelField::FastSum(s) => s.gradient(theta),
+            PixelField::Analytic(s) => s.gradient(theta),
+        }
+    }
+
     /// Convergence at `theta` — the interpolated input κ field.
     fn convergence(&self, theta: Point2D) -> f64 {
         self.kappa.interpolate_or(theta, 0.0)
@@ -255,6 +267,19 @@ mod tests {
                 (kappa - a * (k * x).cos()).abs() < 5e-3,
                 "κ at x={x}: {kappa}"
             );
+        }
+    }
+
+    #[test]
+    fn spectral_deflection_matches_jet_alpha() {
+        // The deflection override must return exactly the full jet's α.
+        let (lens, _, _) = cosine_lens(0.3);
+        for &x in &[-1.3, 0.0, 0.7, 2.1] {
+            let p = Point2D::new(x, 0.4);
+            let a = lens.deflection(p);
+            let j = lens.jet(p);
+            assert_eq!(a.x, j.alpha.x);
+            assert_eq!(a.y, j.alpha.y);
         }
     }
 
