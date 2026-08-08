@@ -164,6 +164,19 @@ pub fn time_delay_distance_from_delay(delta_t_seconds: f64, delta_fermat: f64) -
     units::C * delta_t_seconds / (delta_fermat * units::MPC)
 }
 
+/// Physical time delay (s) from a time-delay distance and a modelled Fermat-potential difference.
+///
+/// The forward of [`time_delay_distance_from_delay`]: $\Delta t = \frac{D_{\Delta t}}{c}\Delta\tau$.
+/// `d_dt_mpc` is the time-delay distance (e.g. from [`Cosmology::time_delay_distance`]) and
+/// `delta_fermat` ($\tfrac12|\theta-\beta|^2-\psi$, rad²) comes from the lens/solver layer.
+///
+/// # Arguments
+/// * `d_dt_mpc` - time-delay distance (Mpc).
+/// * `delta_fermat` - Fermat-potential difference between images (rad²).
+pub fn delay_from_time_delay_distance(d_dt_mpc: f64, delta_fermat: f64) -> f64 {
+    d_dt_mpc * units::MPC * delta_fermat / units::C
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +283,14 @@ mod tests {
         let (dt, dtau) = (100.0 * 86_400.0, 1e-10);
         let expected = 2.997_924_58e8 * dt / (dtau * 3.085_677_581_491_367_3e22);
         assert!((time_delay_distance_from_delay(dt, dtau) - expected).abs() / expected < 1e-12);
+    }
+
+    #[test]
+    fn delay_and_distance_conversions_are_inverse() {
+        // D_Δt → Δt → D_Δt round-trips exactly.
+        let (d_dt, dtau) = (1234.5, 0.02);
+        let dt = delay_from_time_delay_distance(d_dt, dtau);
+        assert!((time_delay_distance_from_delay(dt, dtau) - d_dt).abs() / d_dt < 1e-12);
     }
 }
 
