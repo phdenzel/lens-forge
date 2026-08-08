@@ -8,11 +8,12 @@
 //! * `mapping` — the lens mapping itself: ray-tracing, magnification, critical
 //!   curves and caustics; quantities derived from the deflection field alone.
 //! * `extrema` — stationary points of the Fermat surface: point-source image
-//!   finding (and, later, the arrival-time surface and time delays).
+//!   finding, the arrival-time surface and time delays.
+//! * `extended` — extended-source imaging: the lensed surface-brightness field.
 //!
-//! Forward first; the inverse layers (point-image `extrema`, extended-image
-//! `extended`) follow.
+//! Forward first; the inverse layers grow in place beside these forward primitives.
 
+pub mod extended;
 pub mod extrema;
 pub mod image;
 pub mod mapping;
