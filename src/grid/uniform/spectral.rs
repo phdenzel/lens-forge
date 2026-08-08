@@ -372,6 +372,66 @@ impl PixelGrid {
         let (kx2, ky2) = self.fourier_symbols_lap_exact();
         self.laplacian_spectral_k(&kx2, &ky2)
     }
+
+    /// Solve $\nabla^2\psi = f$ (this grid's field as source $f$) by FFT and
+    /// form $\nabla\psi$ and $\partial^2\psi$ in the same $k$-space pass.
+    ///
+    /// In $k$-space $\hat\psi = -\hat f/k^2$ (the $k=0$ mode set to zero),
+    /// $\hat{\nabla\psi} = i\mathbf{k}\hat\psi$ and $\hat H =
+    /// -\mathbf{k}\mathbf{k}^\top\hat\psi$; each symbol is applied then inverse
+    /// transformed. Errors on non-power-of-two dimensions.
+    pub fn poisson_spectral_jet(&self) -> Result<SpectralJet> {
+        let grid = self.grid;
+        let (kx, ky) = grid.wavenumbers();
+        let (ny, nx) = (grid.ny, grid.nx);
+        let fhat = self.fft2d()?;
+        // ψ̂ = -f̂/k²; the k = 0 (mean) mode is set to zero.
+        let mut psih = ComplexFieldArray2D::zeros((ny, nx));
+        for j in 0..ny {
+            for i in 0..nx {
+                let k2 = kx[i] * kx[i] + ky[j] * ky[j];
+                if k2 > 0.0 {
+                    psih[[j, i]] = fhat[[j, i]] * Complex::new(-1.0 / k2, 0.0);
+                }
+            }
+        }
+        // Multiply ψ̂ by a k-space symbol and transform back to a real field.
+        let deriv = |mult: &dyn Fn(f64, f64) -> Complex<f64>| -> Result<PixelGrid> {
+            let mut spec = ComplexFieldArray2D::zeros((ny, nx));
+            for j in 0..ny {
+                for i in 0..nx {
+                    spec[[j, i]] = psih[[j, i]] * mult(kx[i], ky[j]);
+                }
+            }
+            PixelGrid::from_values(grid, PixelGrid::ifft2d_unchecked(&spec))
+        };
+        Ok(SpectralJet {
+            psi: deriv(&|_, _| Complex::new(1.0, 0.0))?,
+            grad_x: deriv(&|kxi, _| Complex::new(0.0, kxi))?,
+            grad_y: deriv(&|_, kyj| Complex::new(0.0, kyj))?,
+            hess_xx: deriv(&|kxi, _| Complex::new(-kxi * kxi, 0.0))?,
+            hess_xy: deriv(&|kxi, kyj| Complex::new(-kxi * kyj, 0.0))?,
+            hess_yy: deriv(&|_, kyj| Complex::new(-kyj * kyj, 0.0))?,
+        })
+    }
+}
+
+/// Potential ψ (solving $\nabla^2\psi = f$ for a source $f$), its gradient
+/// $\nabla\psi$ and Hessian $\partial^2\psi$, each as a [`PixelGrid`], all formed
+/// from a single FFT of the source by [`PixelGrid::poisson_spectral_jet`].
+pub struct SpectralJet {
+    /// Potential ψ.
+    pub psi: PixelGrid,
+    /// Gradient component ∂ψ/∂x.
+    pub grad_x: PixelGrid,
+    /// Gradient component ∂ψ/∂y.
+    pub grad_y: PixelGrid,
+    /// Hessian component ∂²ψ/∂x².
+    pub hess_xx: PixelGrid,
+    /// Hessian component ∂²ψ/∂x∂y.
+    pub hess_xy: PixelGrid,
+    /// Hessian component ∂²ψ/∂y².
+    pub hess_yy: PixelGrid,
 }
 
 #[cfg(test)]
