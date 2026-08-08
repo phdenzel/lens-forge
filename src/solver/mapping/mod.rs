@@ -13,10 +13,16 @@
 //! * `newton` — Newton's method on the lens map (Jacobian = A), refining a seed
 //!   to an image of a point source.
 //! * `raytrace` — batched image-plane → source-plane ray-tracing.
+//! * `discretization` — the [`MapDiscretization`](discretization::MapDiscretization)
+//!   trait: a discretized θ ↔ β map queried for the images of a source point.
+//! * `tessellate` — [`MapTessellation`](tessellate::MapTessellation), the mesh
+//!   (Delaunay-triangle) discretization.
 
 pub mod convergence;
 pub mod critical;
+pub mod discretization;
 pub mod jacobian;
 pub mod magnification;
 pub mod newton;
 pub mod raytrace;
+pub mod tessellate;
