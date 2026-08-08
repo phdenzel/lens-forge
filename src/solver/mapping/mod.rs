@@ -10,8 +10,11 @@
 //! * `magnification` — signed magnification μ(θ) = 1/det A.
 //! * `convergence` — convergence κ(θ) = ½∇²ψ.
 //! * `critical` — critical curves (det A = 0) and their caustics.
+//! * `newton` — Newton's method on the lens map (Jacobian = A), refining a seed
+//!   to an image of a point source.
 
 pub mod convergence;
 pub mod critical;
 pub mod jacobian;
 pub mod magnification;
+pub mod newton;
