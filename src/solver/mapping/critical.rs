@@ -10,7 +10,8 @@
 //! Both are returned as unordered line segments.
 
 use super::jacobian::det_a_map;
-use crate::grid::{ContourSegment, FieldOps};
+use super::raytrace::RayTracer;
+use crate::grid::{ContourSegment, FieldOps, Point2D};
 use crate::lens::LensModel;
 
 /// The critical curves of `lens`: the image-plane locus det A = 0, as line
@@ -30,9 +31,13 @@ pub fn critical_curves<F: FieldOps>(lens: &dyn LensModel, field: &F) -> Vec<Cont
 /// * `lens` - the lens model.
 /// * `field` - the sampling geometry; it must span the critical curves.
 pub fn caustics<F: FieldOps>(lens: &dyn LensModel, field: &F) -> Vec<ContourSegment> {
-    critical_curves(lens, field)
-        .into_iter()
-        .map(|[a, b]| [lens.ray_trace(a), lens.ray_trace(b)])
+    // Trace every endpoint in one batch, then reassemble the segments.
+    let segments = critical_curves(lens, field);
+    let endpoints: Vec<Point2D> = segments.iter().flatten().copied().collect();
+    RayTracer::Direct
+        .trace(lens, &endpoints)
+        .chunks_exact(2)
+        .map(|s| [s[0], s[1]])
         .collect()
 }
 
