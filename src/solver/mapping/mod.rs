@@ -17,6 +17,8 @@
 //!   trait: a discretized θ ↔ β map queried for the images of a source point.
 //! * `tessellate` — [`MapTessellation`](tessellate::MapTessellation), the mesh
 //!   (Delaunay-triangle) discretization.
+//! * `pixellate` — [`MapPixellation`](pixellate::MapPixellation), the pixel
+//!   (lattice-quad) discretization.
 
 pub mod convergence;
 pub mod critical;
@@ -24,5 +26,6 @@ pub mod discretization;
 pub mod jacobian;
 pub mod magnification;
 pub mod newton;
+pub mod pixellate;
 pub mod raytrace;
 pub mod tessellate;
