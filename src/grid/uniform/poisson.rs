@@ -18,7 +18,7 @@
 
 use super::diff::{BoundaryCondition, apply_laplacian_5pt_symm};
 use crate::grid::{FieldArray2D, PixelGrid, PoissonConfig};
-use crate::utils::cg::jacobi_pcg;
+use crate::numerical::cg::jacobi_pcg;
 use crate::{LensForgeError, Result, SolveInfo};
 use ndarray::{Array2, Axis, Zip};
 use num::complex::Complex;

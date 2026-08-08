@@ -41,7 +41,7 @@ mod tests {
     use super::*;
     use crate::grid::{BBox, Grid2D, MeshGrid, PixelGrid, Point2D};
     use crate::lens::{PointMass, SIS};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     /// Every segment endpoint lies at radius `radius` (within `tol`).
     fn endpoints_on_circle(segments: &[ContourSegment], radius: f64, tol: f64) {

@@ -8,7 +8,7 @@
 
 use super::voronoi::VoronoiMesh;
 use crate::grid::{BBox, Point2D};
-use crate::utils::rng::Lcg;
+use crate::rng::Lcg;
 use crate::{LensForgeError, Result};
 
 impl VoronoiMesh {

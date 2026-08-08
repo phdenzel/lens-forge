@@ -122,7 +122,7 @@ impl<S: SourceKernel> Summation for BarnesHut<S> {
 mod tests {
     use super::*;
     use crate::fastsum::{DirectSum, Monopole};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
     use std::f64::consts::FRAC_1_PI;
 
     fn random_bodies(n: usize, seed: u64) -> Vec<Monopole> {

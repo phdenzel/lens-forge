@@ -513,7 +513,7 @@ fn polygon_area_centroid(poly: &[Point2D], fallback: Point2D) -> (f64, Point2D) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn p(x: f64, y: f64) -> Point2D {
         Point2D::new(x, y)

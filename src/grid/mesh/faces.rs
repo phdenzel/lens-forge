@@ -173,7 +173,7 @@ pub(super) fn boundary_transmissibilities(mesh: &VoronoiMesh) -> Vec<f64> {
 mod tests {
     use super::*;
     use crate::grid::{BBox, Point2D};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn p(x: f64, y: f64) -> Point2D {
         Point2D::new(x, y)

@@ -12,7 +12,7 @@
 
 use crate::fastsum::{Jet, Monopole};
 use crate::grid::Point2D;
-use crate::utils::binomial::pascal;
+use crate::numerical::binomial::pascal;
 use num::complex::Complex;
 use std::f64::consts::FRAC_1_PI;
 use std::ops::AddAssign;
@@ -143,7 +143,7 @@ impl AddAssign<&LocalExpansion> for LocalExpansion {
 mod tests {
     use super::*;
     use crate::fastsum::{DirectSum, Summation, SumConfig};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     /// A ring of monopoles at `radius`, far from the origin.
     fn far_ring(n: usize, seed: u64, radius: f64) -> Vec<Monopole> {

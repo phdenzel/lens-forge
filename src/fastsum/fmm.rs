@@ -107,7 +107,7 @@ impl<S: SourceKernel> Summation for Fmm<S> {
 mod tests {
     use super::*;
     use crate::fastsum::DirectSum;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn random_bodies(n: usize, seed: u64) -> Vec<Monopole> {
         let mut rng = Lcg::new(seed);

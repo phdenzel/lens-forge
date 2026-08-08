@@ -10,7 +10,7 @@
 //! Distances are in Mpc; constants come from [`units`].
 
 use crate::cosmology::units;
-use crate::utils::quad::integrate;
+use crate::numerical::quad::integrate;
 
 /// A homogeneous, isotropic background cosmology.
 pub trait Cosmology {

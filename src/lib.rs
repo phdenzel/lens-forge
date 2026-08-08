@@ -10,13 +10,15 @@ pub mod fastsum;
 pub mod grid;
 pub mod cosmology;
 pub mod lens;
+pub(crate) mod numerical;
+pub(crate) mod rng;
 pub mod solver;
 pub mod source;
 pub(crate) mod tree;
-pub(crate) mod utils;
+pub(crate) mod arithmetic;
 pub mod viz;
 
-pub use utils::rng::Lcg;
+pub use rng::Lcg;
 
 use std::error::Error;
 use std::fmt;

@@ -16,7 +16,7 @@
 use crate::fastsum::{ExpansionOps, Jet, Monopole, SourceKernel, SumConfig, Summation, TreeFmm};
 use crate::grid::Point2D;
 use crate::tree::TreeBox;
-use crate::utils::svd::pseudo_inverse;
+use crate::numerical::svd::pseudo_inverse;
 use ndarray::{Array1, Array2};
 use std::f64::consts::TAU;
 
@@ -281,7 +281,7 @@ impl<S: SourceKernel> Summation for Kifmm<S> {
 mod tests {
     use super::*;
     use crate::fastsum::DirectSum;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn random_bodies(n: usize, seed: u64) -> Vec<Monopole> {
         let mut rng = Lcg::new(seed);

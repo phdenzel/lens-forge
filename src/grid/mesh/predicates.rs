@@ -10,7 +10,7 @@
 //! corrupt the triangulation.
 
 use crate::grid::Point2D;
-use crate::utils::double_double::{dd_add, dd_diff, dd_mul, dd_sqr, dd_sub};
+use crate::arithmetic::double_double::{dd_add, dd_diff, dd_mul, dd_sqr, dd_sub};
 
 /// Machine epsilon for `f64` ($2^{-53}$).
 const EPS: f64 = 1.1102230246251565e-16;

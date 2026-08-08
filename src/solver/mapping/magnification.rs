@@ -24,7 +24,7 @@ mod tests {
     use super::*;
     use crate::grid::{BBox, Grid2D, MeshGrid, PixelGrid, Point2D};
     use crate::lens::SIS;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     /// Each cell of the map holds `lens.magnification` at that cell's centre.
     fn check_matches_lens<F: FieldOps>(lens: &dyn LensModel, field: &F) {

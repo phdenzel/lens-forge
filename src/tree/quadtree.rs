@@ -186,7 +186,7 @@ fn build_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     /// Every point lands in exactly one leaf whose region contains it.
     #[test]

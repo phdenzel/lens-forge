@@ -164,7 +164,7 @@ pub trait FieldOps: ScalarField2D + Sized {
 mod tests {
     use super::*;
     use crate::grid::{BBox, BoundaryCondition, MeshGrid, PixelGrid, Point2D};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn plane(x: f64, y: f64) -> f64 {
         2.0 * x - 3.0 * y + 5.0

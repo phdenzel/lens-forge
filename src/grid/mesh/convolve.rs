@@ -15,7 +15,7 @@ use super::diff::apply_stiffness;
 use super::faces::FaceGeometry;
 use super::meshgrid::MeshGrid;
 use crate::grid::{FieldArray1D, Kernel, PixelGrid};
-use crate::utils::cg::jacobi_pcg;
+use crate::numerical::cg::jacobi_pcg;
 use crate::Result;
 
 /// Backward-Euler sub-steps used to reach the diffusion time $t = \sigma^2/2$;
@@ -181,7 +181,7 @@ impl MeshGrid {
 mod tests {
     use super::*;
     use crate::grid::{BBox, Grid2D, Point2D, ScalarField2D};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     /// A positive Gaussian kernel image (unnormalized: the gather normalizes per cell).
     fn gaussian_kernel() -> PixelGrid {

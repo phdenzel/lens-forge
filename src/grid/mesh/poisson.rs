@@ -22,7 +22,7 @@ use super::diff::apply_stiffness;
 use super::faces::{FaceGeometry, boundary_transmissibilities};
 use super::meshgrid::MeshGrid;
 use crate::grid::{BoundaryCondition, FieldArray1D, PoissonConfig};
-use crate::utils::cg::jacobi_pcg;
+use crate::numerical::cg::jacobi_pcg;
 use crate::{Result, SolveInfo};
 
 impl MeshGrid {
@@ -130,7 +130,7 @@ impl MeshGrid {
 mod tests {
     use super::*;
     use crate::grid::{BBox, Point2D};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn p(x: f64, y: f64) -> Point2D {
         Point2D::new(x, y)

@@ -220,7 +220,7 @@ fn build<P: KdPoint>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     fn brute(pts: &[Point2D], q: Point2D) -> usize {
         (0..pts.len())

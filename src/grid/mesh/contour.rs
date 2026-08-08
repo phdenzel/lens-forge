@@ -38,7 +38,7 @@ impl MeshGrid {
 mod tests {
     use super::*;
     use crate::grid::{BBox, Point2D};
-    use crate::utils::rng::Lcg;
+    use crate::rng::Lcg;
 
     #[test]
     fn contour_of_a_circle_lies_on_the_circle() {
