@@ -8,9 +8,12 @@
 //!   magnification, parity and Fermat potential.
 //! * `fermat` — the Fermat (arrival-time) surface τ(θ; β) and the point-source
 //!   total magnification Σ|μ_i|.
+//! * `delays` — arrival-time differences between images, dimensionless and
+//!   cosmology-scaled to physical time delays.
 //!
-//! Physical time delays (`delays`, cosmology-coupled) follow; the inverse
-//! point-image constraints reuse the same [`Image`](crate::solver::image::Image).
+//! The inverse point-image constraints reuse the same
+//! [`Image`](crate::solver::image::Image).
 
+pub mod delays;
 pub mod fermat;
 pub mod images;
