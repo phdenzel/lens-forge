@@ -20,10 +20,9 @@
 use super::source::{MassElement, PixelCellSource};
 use crate::Result;
 use crate::fastsum::{Backend, Summation, build_summation};
-use crate::grid::{ComplexFieldArray2D, Grid2D, PixelGrid, Point2D, ScalarField2D};
+use crate::grid::{Grid2D, PixelGrid, Point2D, ScalarField2D, SpectralJet};
 use crate::lens::model::{LensJet, LensModel};
 use crate::lens::{FieldMethod, FreeFormLens};
-use num::complex::Complex;
 
 /// Lens on a uniform pixel grid.
 ///
@@ -40,23 +39,13 @@ pub struct PixelLens {
 enum PixelField {
     /// FFT solve: potential, deflection and Hessian precomputed as grids (boxed to
     /// balance the enum), read back by interpolation.
-    Spectral(Box<SpectralGrids>),
+    Spectral(Box<SpectralJet>),
     /// On-demand free-space summation over pixel-centre mass elements — cannot be
     /// baked onto the grid (each pixel's monopole is singular at its own node).
     FastSum(Box<dyn Summation + Send + Sync>),
     /// On-demand summation over exact per-pixel log-integral sources (same backends
     /// as [`FastSum`](Self::FastSum), exact near/inside cells).
     Analytic(Box<dyn Summation + Send + Sync>),
-}
-
-/// Precomputed potential, deflection and Hessian grids from the spectral solve.
-struct SpectralGrids {
-    psi: PixelGrid,
-    alpha_x: PixelGrid,
-    alpha_y: PixelGrid,
-    psi_xx: PixelGrid,
-    psi_xy: PixelGrid,
-    psi_yy: PixelGrid,
 }
 
 impl PixelLens {
@@ -113,43 +102,6 @@ impl PixelLens {
             .map(|i| MassElement::new(field.center(i), field.value_at(i) * field.cell_area(i)))
             .collect()
     }
-
-    /// Solve $\nabla^2\psi = 2\kappa$ by FFT and precompute the deflection and Hessian
-    /// fields in k-space for interpolation.
-    fn solve_spectral(kappa: &PixelGrid) -> Result<SpectralGrids> {
-        let grid = kappa.grid;
-        let (kx, ky) = grid.wavenumbers();
-        let (ny, nx) = (grid.ny, grid.nx);
-        let khat = kappa.fft2d()?;
-        // ψ̂ = -2κ̂/k² (∇²ψ = 2κ); the k = 0 (mean) mode is set to zero.
-        let mut psih = ComplexFieldArray2D::zeros((ny, nx));
-        for j in 0..ny {
-            for i in 0..nx {
-                let k2 = kx[i] * kx[i] + ky[j] * ky[j];
-                if k2 > 0.0 {
-                    psih[[j, i]] = khat[[j, i]] * Complex::new(-2.0 / k2, 0.0);
-                }
-            }
-        }
-        // Multiply ψ̂ by a k-space symbol and transform back to a real field.
-        let deriv = |mult: &dyn Fn(f64, f64) -> Complex<f64>| -> Result<PixelGrid> {
-            let mut spec = ComplexFieldArray2D::zeros((ny, nx));
-            for j in 0..ny {
-                for i in 0..nx {
-                    spec[[j, i]] = psih[[j, i]] * mult(kx[i], ky[j]);
-                }
-            }
-            PixelGrid::from_values(grid, PixelGrid::ifft2d_unchecked(&spec))
-        };
-        Ok(SpectralGrids {
-            psi: deriv(&|_, _| Complex::new(1.0, 0.0))?,
-            alpha_x: deriv(&|kxi, _| Complex::new(0.0, kxi))?,
-            alpha_y: deriv(&|_, kyj| Complex::new(0.0, kyj))?,
-            psi_xx: deriv(&|kxi, _| Complex::new(-kxi * kxi, 0.0))?,
-            psi_xy: deriv(&|kxi, kyj| Complex::new(-kxi * kyj, 0.0))?,
-            psi_yy: deriv(&|_, kyj| Complex::new(-kyj * kyj, 0.0))?,
-        })
-    }
 }
 
 impl FreeFormLens for PixelLens {
@@ -167,7 +119,11 @@ impl FreeFormLens for PixelLens {
 
     fn build(kappa: PixelGrid, method: FieldMethod) -> Result<Self> {
         let field = match method {
-            FieldMethod::Spectral => PixelField::Spectral(Box::new(Self::solve_spectral(&kappa)?)),
+            FieldMethod::Spectral => {
+                // ∇²ψ = 2κ, so the FFT Poisson solve takes 2κ as its source.
+                let source = PixelGrid::from_values(kappa.grid, &kappa.values * 2.0)?;
+                PixelField::Spectral(Box::new(source.poisson_spectral_jet()?))
+            }
             FieldMethod::FastSum { backend, config } => {
                 let sources = Self::mass_elements(&kappa);
                 PixelField::FastSum(build_summation(backend, &sources, config))
@@ -198,16 +154,16 @@ impl LensModel for PixelLens {
     fn jet(&self, theta: Point2D) -> LensJet {
         match &self.field {
             PixelField::Spectral(g) => {
-                let hxy = g.psi_xy.interpolate_or(theta, 0.0);
+                let hxy = g.hess_xy.interpolate_or(theta, 0.0);
                 LensJet {
                     psi: g.psi.interpolate_or(theta, 0.0),
                     alpha: Point2D::new(
-                        g.alpha_x.interpolate_or(theta, 0.0),
-                        g.alpha_y.interpolate_or(theta, 0.0),
+                        g.grad_x.interpolate_or(theta, 0.0),
+                        g.grad_y.interpolate_or(theta, 0.0),
                     ),
                     hessian: [
-                        [g.psi_xx.interpolate_or(theta, 0.0), hxy],
-                        [hxy, g.psi_yy.interpolate_or(theta, 0.0)],
+                        [g.hess_xx.interpolate_or(theta, 0.0), hxy],
+                        [hxy, g.hess_yy.interpolate_or(theta, 0.0)],
                     ],
                 }
             }
@@ -220,11 +176,11 @@ impl LensModel for PixelLens {
         match &self.field {
             PixelField::Spectral(g) => {
                 let psi = g.psi.par_interpolate_batch(thetas);
-                let ax = g.alpha_x.par_interpolate_batch(thetas);
-                let ay = g.alpha_y.par_interpolate_batch(thetas);
-                let hxx = g.psi_xx.par_interpolate_batch(thetas);
-                let hxy = g.psi_xy.par_interpolate_batch(thetas);
-                let hyy = g.psi_yy.par_interpolate_batch(thetas);
+                let ax = g.grad_x.par_interpolate_batch(thetas);
+                let ay = g.grad_y.par_interpolate_batch(thetas);
+                let hxx = g.hess_xx.par_interpolate_batch(thetas);
+                let hxy = g.hess_xy.par_interpolate_batch(thetas);
+                let hyy = g.hess_yy.par_interpolate_batch(thetas);
                 (0..thetas.len())
                     .map(|i| LensJet {
                         psi: psi[i],
