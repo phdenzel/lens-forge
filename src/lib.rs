@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 pub mod fastsum;
+pub(crate) mod fft;
 pub mod grid;
 pub mod cosmology;
 pub mod lens;

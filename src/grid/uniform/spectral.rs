@@ -7,195 +7,50 @@
 //! Finite-difference derivatives live in `diff.rs`.
 
 use super::diff::DerivativeStencil;
+use crate::Result;
 use crate::grid::{
     ComplexArray1D, ComplexFieldArray2D, FieldArray2D, FourierSymbols, PixelGrid, VectorField2D,
 };
-use crate::{LensForgeError, Result};
-use ndarray::{Array2, Axis, Zip};
+use ndarray::{Axis, Zip};
 use num::complex::Complex;
-use phastft::{
-    fft_64_with_opts_and_plan,
-    options::Options,
-    planner::{Direction, Planner64},
-};
 
 impl PixelGrid {
-    /* ================ Spectral methods =================================== */
-    /// Convert real ndarray (row-major) to contiguous complex vector
-    ///
-    /// # Arguments
-    /// * `values` - 2D array to be converted
-    fn ndarray_to_complex_buffer(values: &FieldArray2D) -> Vec<Complex<f64>> {
-        values.iter().map(|&r| Complex::new(r, 0.0)).collect()
-    }
-
-    /// Convert contiguous complex vector to a complex 2D ndarray
-    ///
-    /// # Arguments
-    /// * `buffer` - complex contiguous vector
-    /// * `ny` - size of y axis
-    /// * `nx` - size of x axis
-    fn complex_buffer_to_ndarray(
-        buffer: Vec<Complex<f64>>,
-        ny: usize,
-        nx: usize,
-    ) -> ComplexFieldArray2D {
-        Array2::from_shape_vec((ny, nx), buffer).expect("buffer size mismatch")
-    }
-
-    /// Test whether number is a power of two
-    ///
-    /// # Arguments
-    /// * `n` - number to be tested as a power of two
-    fn is_base2(n: usize) -> bool {
-        n > 0 && (n & (n - 1)) == 0
-    }
-
-    /// Compute 2D FFT (using phastft backend)
+    /* ============ FFT transforms (thin wrappers over crate::fft) ========== */
+    /// Forward 2D FFT of this grid's field. Errors on non-power-of-two dims.
     pub fn fft2d(&self) -> Result<ComplexFieldArray2D> {
-        let nx = self.grid.nx;
-        let ny = self.grid.ny;
-
-        if !Self::is_base2(nx) || !Self::is_base2(ny) {
-            return Err(LensForgeError::invalid_grid_dimension(format!(
-                "FFT (phastft) requires power-of-two dimensions, got ({}, {})",
-                ny, nx
-            )));
-        }
-        let mut buffer = Self::ndarray_to_complex_buffer(&self.values);
-        let opts = Options::default();
-        let row_planner = Planner64::new(nx, Direction::Forward);
-        let col_planner = Planner64::new(ny, Direction::Forward);
-        // row-wise 1D-FFT
-        for j in 0..ny {
-            let ini = j * nx;
-            let fin = ini + nx;
-            let row_slice = &mut buffer[ini..fin];
-            let mut re: Vec<f64> = row_slice.iter().map(|c| c.re).collect();
-            let mut im: Vec<f64> = row_slice.iter().map(|c| c.im).collect();
-            fft_64_with_opts_and_plan(&mut re, &mut im, &opts, &row_planner);
-            for (i, c) in row_slice.iter_mut().enumerate() {
-                *c = Complex::new(re[i], im[i]);
-            }
-        }
-        // column-wise 1D-FFT
-        for i in 0..nx {
-            let mut col_re: Vec<f64> = (0..ny).map(|j| buffer[j * nx + i].re).collect();
-            let mut col_im: Vec<f64> = (0..ny).map(|j| buffer[j * nx + i].im).collect();
-            fft_64_with_opts_and_plan(&mut col_re, &mut col_im, &opts, &col_planner);
-            for j in 0..ny {
-                buffer[j * nx + i] = Complex::new(col_re[j], col_im[j]);
-            }
-        }
-
-        Ok(Self::complex_buffer_to_ndarray(buffer, ny, nx))
+        crate::fft::fft2d(&self.values)
     }
 
-    /// Compute inverse 2D FFT (using phastft backend)
+    /// Inverse 2D FFT to a real field. Errors on non-power-of-two dims.
     ///
     /// # Arguments
-    /// * `arr` - complex ndarray to be inverse transformed
+    /// * `arr` - complex spectrum to inverse-transform
     pub fn ifft2d(arr: &ComplexFieldArray2D) -> Result<FieldArray2D> {
-        let nx = arr.ncols();
-        let ny = arr.nrows();
-
-        if !Self::is_base2(nx) || !Self::is_base2(ny) {
-            return Err(LensForgeError::invalid_grid_dimension(format!(
-                "IFFT (phastft) requires power-of-two dimensions, got ({}, {})",
-                ny, nx
-            )));
-        }
-        Ok(Self::ifft2d_unchecked(arr))
+        crate::fft::ifft2d(arr)
     }
 
     /// Inverse 2D FFT assuming power-of-two dimensions (no validation).
     ///
-    /// Internal fast path for callers that produced `arr` from [`Self::fft2d`],
-    /// so the dimensions are already power-of-two and the transform cannot fail.
-    ///
     /// # Arguments
-    /// * `arr` - complex ndarray to be inverse transformed
+    /// * `arr` - complex spectrum to inverse-transform
     pub(crate) fn ifft2d_unchecked(arr: &ComplexFieldArray2D) -> FieldArray2D {
-        let nx = arr.ncols();
-        let ny = arr.nrows();
-
-        let mut buffer: Vec<Complex<f64>> = arr.iter().cloned().collect();
-        let opts = Options::default();
-        let row_planner = Planner64::new(nx, Direction::Reverse);
-        let col_planner = Planner64::new(ny, Direction::Reverse);
-        // row-wise inverse 1D-FFT
-        for j in 0..ny {
-            let ini = j * nx;
-            let fin = ini + nx;
-            let row_slice = &mut buffer[ini..fin];
-            let mut re: Vec<f64> = row_slice.iter().map(|c| c.re).collect();
-            let mut im: Vec<f64> = row_slice.iter().map(|c| c.im).collect();
-            fft_64_with_opts_and_plan(&mut re, &mut im, &opts, &row_planner);
-            for (i, c) in row_slice.iter_mut().enumerate() {
-                *c = Complex::new(re[i], im[i]);
-            }
-        }
-        // column-wise inverse 1D-FFT
-        for i in 0..nx {
-            let mut col_re: Vec<f64> = (0..ny).map(|j| buffer[j * nx + i].re).collect();
-            let mut col_im: Vec<f64> = (0..ny).map(|j| buffer[j * nx + i].im).collect();
-            fft_64_with_opts_and_plan(&mut col_re, &mut col_im, &opts, &col_planner);
-            for j in 0..ny {
-                buffer[j * nx + i] = Complex::new(col_re[j], col_im[j]);
-            }
-        }
-
-        let values_re: Vec<f64> = buffer.iter().map(|c| c.re).collect();
-        // Length equals ny*nx by construction, so the reshape cannot fail.
-        Array2::from_shape_vec((ny, nx), values_re).expect("buffer length matches (ny, nx)")
+        crate::fft::ifft2d_unchecked(arr)
     }
 
-    /// Compute FFT shift (move zero-frequency component to centre)
+    /// Move the zero-frequency component to the centre.
     ///
     /// # Arguments
     /// * `arr` - complex array to be shifted
     pub fn fftshift(arr: &ComplexFieldArray2D) -> ComplexFieldArray2D {
-        let nx = arr.ncols();
-        let ny = arr.nrows();
-        let nx_half = nx / 2;
-        let ny_half = ny / 2;
-
-        let mut shifted = Array2::zeros((ny, nx));
-
-        // swap quadrants
-        for j in 0..ny {
-            for i in 0..nx {
-                let i_shift = (i + nx_half) % nx;
-                let j_shift = (j + ny_half) % ny;
-                shifted[[j_shift, i_shift]] = arr[[j, i]];
-            }
-        }
-
-        shifted
+        crate::fft::fftshift(arr)
     }
 
-    /// Compute inverse FFT shift (undo fftshift)
+    /// Undo [`Self::fftshift`].
     ///
     /// # Arguments
     /// * `arr` - complex array to be unshifted
     pub fn ifftshift(arr: &ComplexFieldArray2D) -> ComplexFieldArray2D {
-        let nx = arr.ncols();
-        let ny = arr.nrows();
-        let nx_half = nx.div_ceil(2);
-        let ny_half = ny.div_ceil(2);
-
-        let mut unshifted = Array2::zeros((ny, nx));
-
-        // unswap quadrants
-        for j in 0..ny {
-            for i in 0..nx {
-                let i_shift = (i + nx_half) % nx;
-                let j_shift = (j + ny_half) % ny;
-                unshifted[[j_shift, i_shift]] = arr[[j, i]];
-            }
-        }
-
-        unshifted
+        crate::fft::ifftshift(arr)
     }
 
     /// Fourier symbols (for gradients) for given finite difference stencil types
@@ -523,6 +378,7 @@ impl PixelGrid {
 mod tests {
     use super::*;
     use crate::grid::Grid2D;
+    use ndarray::Array2;
 
     fn approx_eq(a: f64, b: f64, eps: impl Into<Option<f64>>) -> bool {
         let eps = eps.into().unwrap_or(1e-12);
