@@ -6,8 +6,11 @@
 //! * `images` — the [`ImageFinder`](images::ImageFinder) trait and its
 //!   discretization-based backend: all images of a point source, each with
 //!   magnification, parity and Fermat potential.
+//! * `fermat` — the Fermat (arrival-time) surface τ(θ; β) and the point-source
+//!   total magnification Σ|μ_i|.
 //!
-//! The arrival-time surface and time delays (`fermat`, `delays`) follow; the
-//! inverse point-image constraints reuse the same [`Image`](crate::solver::image::Image).
+//! Physical time delays (`delays`, cosmology-coupled) follow; the inverse
+//! point-image constraints reuse the same [`Image`](crate::solver::image::Image).
 
+pub mod fermat;
 pub mod images;
