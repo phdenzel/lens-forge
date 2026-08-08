@@ -12,9 +12,11 @@
 //! * `critical` — critical curves (det A = 0) and their caustics.
 //! * `newton` — Newton's method on the lens map (Jacobian = A), refining a seed
 //!   to an image of a point source.
+//! * `raytrace` — batched image-plane → source-plane ray-tracing.
 
 pub mod convergence;
 pub mod critical;
 pub mod jacobian;
 pub mod magnification;
 pub mod newton;
+pub mod raytrace;
