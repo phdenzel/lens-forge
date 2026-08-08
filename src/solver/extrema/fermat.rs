@@ -5,16 +5,17 @@
 //!
 //! The Fermat potential τ(θ; β) = ½|θ − β|² − ψ(θ) is the arrival-time surface of
 //! a source at β; its stationary points are the images (minima, saddles and maxima
-//! by parity). Sampling it onto a field gives a surface to inspect; summing |μ|
-//! over the images gives the total magnification. Physical delays live in `delays`.
+//! by parity). Sampling it onto a field gives a surface to inspect and contour —
+//! the iso-contour at a saddle's τ self-crosses at that saddle. Summing |μ| over
+//! the images gives the total magnification; physical delays live in `delays`.
 //!
 //! Dropping the source-dependent tilting term −θ·β leaves the β-independent
 //! lensing Roche potential ½|θ|² − ψ(θ), a lensing analogue of the binary-star
 //! Roche potential.
 
-use crate::grid::{FieldOps, Point2D};
+use crate::grid::{ContourSegment, FieldOps, Point2D};
 use crate::lens::LensModel;
-use crate::solver::image::Image;
+use crate::solver::image::{Image, Parity};
 
 /// The Fermat potential τ(θ; β) = ½|θ − β|² − ψ(θ) of `lens` at `theta`.
 ///
@@ -49,6 +50,49 @@ pub fn roche_potential(lens: &dyn LensModel, theta: Point2D) -> f64 {
 ///   [`MeshGrid`](crate::grid::MeshGrid)).
 pub fn fermat_surface<F: FieldOps>(lens: &dyn LensModel, beta: Point2D, field: &F) -> F {
     field.map_centers(|theta| fermat_potential(lens, theta, beta))
+}
+
+/// Iso-contours of the Fermat surface τ(θ; β) of `lens`, one per level in `levels`.
+///
+/// # Arguments
+/// * `lens` - the lens model.
+/// * `beta` - source-plane position β.
+/// * `field` - the sampling geometry (a [`PixelGrid`](crate::grid::PixelGrid) or
+///   [`MeshGrid`](crate::grid::MeshGrid)); it must span the region of interest.
+/// * `levels` - the τ values to contour at.
+///
+/// Returns one set of line segments per level, in the order of `levels`.
+pub fn fermat_contours<F: FieldOps>(
+    lens: &dyn LensModel,
+    beta: Point2D,
+    field: &F,
+    levels: &[f64],
+) -> Vec<Vec<ContourSegment>> {
+    let tau = fermat_surface(lens, beta, field);
+    levels.iter().map(|&level| tau.contour(level)).collect()
+}
+
+/// The critical iso-contours through the saddle `images` of a source at `beta`:
+/// the Fermat surface's level set at each saddle's τ, self-crossing at the saddle.
+///
+/// # Arguments
+/// * `lens` - the lens model.
+/// * `beta` - source-plane position β.
+/// * `field` - the sampling geometry (a [`PixelGrid`](crate::grid::PixelGrid) or
+///   [`MeshGrid`](crate::grid::MeshGrid)); it must span the region of interest.
+/// * `images` - the images of β (from an [`ImageFinder`](super::images::ImageFinder));
+///   only the saddles are contoured.
+///
+/// Returns one set of line segments per saddle image, in image order.
+pub fn fermat_saddle_contours<F: FieldOps>(
+    lens: &dyn LensModel,
+    beta: Point2D,
+    field: &F,
+    images: &[Image],
+) -> Vec<Vec<ContourSegment>> {
+    let levels: Vec<f64> =
+        images.iter().filter(|im| im.parity == Parity::SADDLE).map(|im| im.tau).collect();
+    fermat_contours(lens, beta, field, &levels)
 }
 
 /// The total magnification μ_tot = Σ_i |μ_i| of a point source with the given
@@ -118,6 +162,33 @@ mod tests {
             .collect();
         let field = MeshGrid::zeros(&sites, bbox).unwrap();
         check_surface(&lens, Point2D::new(0.1, -0.2), &field);
+    }
+
+    #[test]
+    fn fermat_contours_returns_one_set_per_level() {
+        // SIS θ_E = 1, β = (0.3, 0): the saddle level τ = −0.2 is crossed; a far
+        // level (well above max τ over the domain) is not.
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let field = PixelGrid::constant(Grid2D::square(64, 2.0).unwrap(), 0.0);
+        let contours = fermat_contours(&lens, Point2D::new(0.3, 0.0), &field, &[-0.2, 1000.0]);
+        assert_eq!(contours.len(), 2);
+        assert!(!contours[0].is_empty());
+        assert!(contours[1].is_empty());
+    }
+
+    #[test]
+    fn fermat_saddle_contours_traces_the_single_sis_saddle() {
+        use crate::solver::extrema::images::ImageFinder;
+        use crate::solver::mapping::pixellate::MapPixellation;
+        // The offset SIS source has exactly one saddle, so exactly one critical contour.
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let beta = Point2D::new(0.3, 0.0);
+        let images = MapPixellation::build(&lens, &Grid2D::square(80, 2.0).unwrap()).images(&lens, beta);
+        assert_eq!(images.iter().filter(|im| im.parity == Parity::SADDLE).count(), 1);
+        let field = PixelGrid::constant(Grid2D::square(80, 2.0).unwrap(), 0.0);
+        let contours = fermat_saddle_contours(&lens, beta, &field, &images);
+        assert_eq!(contours.len(), 1);
+        assert!(!contours[0].is_empty());
     }
 
     #[test]
