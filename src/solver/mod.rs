@@ -7,9 +7,12 @@
 //!   shared by the forward image finders and the inverse point-image constraints.
 //! * `mapping` — the lens mapping itself: ray-tracing, magnification, critical
 //!   curves and caustics; quantities derived from the deflection field alone.
+//! * `extrema` — stationary points of the Fermat surface: point-source image
+//!   finding (and, later, the arrival-time surface and time delays).
 //!
 //! Forward first; the inverse layers (point-image `extrema`, extended-image
 //! `extended`) follow.
 
+pub mod extrema;
 pub mod image;
 pub mod mapping;
