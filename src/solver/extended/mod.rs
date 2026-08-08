@@ -4,7 +4,8 @@
 //! Extended-image world: the continuous lensed surface-brightness map.
 //!
 //! * `imaging` — form the lensed surface-brightness field I(θ) = S(θ − α(θ)).
-//!
-//! The sparse lensing operator F (source → image, the inverse bridge) follows.
+//! * `operator` — the sparse lensing operator F (source → image) and its
+//!   transpose, the bridge to semi-linear source inversion.
 
 pub mod imaging;
+pub mod operator;
