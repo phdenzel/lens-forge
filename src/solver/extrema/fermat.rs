@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The Fermat (arrival-time) surface and point-source total magnification.
 //!
-//! The Fermat potential τ(θ; β) = ½|θ − β|² − ψ(θ) is the (dimensionless)
-//! arrival-time surface of a source at β; its stationary points are the images,
-//! with minima, saddles and maxima matching their parities. Sampling it onto a
-//! field gives a surface for inspection; summing |μ| over the found images gives
-//! the total magnification of the (unresolved) point source. Physical delays
-//! (cosmology-scaled) live in `delays`.
+//! The Fermat potential τ(θ; β) = ½|θ − β|² − ψ(θ) is the arrival-time surface of
+//! a source at β; its stationary points are the images (minima, saddles and maxima
+//! by parity). Sampling it onto a field gives a surface to inspect; summing |μ|
+//! over the images gives the total magnification. Physical delays live in `delays`.
 //!
 //! Dropping the source-dependent tilting term −θ·β leaves the β-independent
 //! lensing Roche potential ½|θ|² − ψ(θ), a lensing analogue of the binary-star

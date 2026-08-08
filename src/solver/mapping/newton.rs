@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Newton's method on the lens map: refine a seed θ to an image of β.
 //!
-//! An image of a point source β is a root of F(θ) = θ − α(θ) − β, whose Jacobian
-//! is the lens Jacobian A = I − H(ψ) — already carried by the
-//! [`jet`](LensModel::jet). This wraps the generic `newton2` root-finder, one jet
-//! per step supplying both F and A. It polishes, not globalizes: it converges to whichever
-//! image basin the seed lies in, so callers seed it (grid search, triangle
-//! mapping, contour intersection) and find *all* images by refining each seed.
+//! An image is a root of F(θ) = θ − α(θ) − β, whose Jacobian is the lens Jacobian
+//! A = I − H(ψ) from the [`jet`](LensModel::jet). This wraps the generic `newton2`
+//! root-finder — one jet per step supplies both F and A — and polishes a seed to
+//! its local image, so callers supply seeds to reach all images.
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;

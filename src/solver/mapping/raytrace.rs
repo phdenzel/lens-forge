@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Ray-tracing: mapping image-plane points to the source plane, in batch.
 //!
-//! The lens equation β = θ − α(θ) is a point map; a [`RayTracer`] is the batched
-//! consumer of [`jet_batch`](LensModel::jet_batch) that applies it to a whole set
-//! of rays at once — the shared substrate under imaging, magnification maps and
-//! caustics. It is a bag of variants behind one enum: [`Direct`](RayTracer::Direct)
-//! (one jet per ray) is the baseline; adaptive supersampling and inverse
-//! ray-shooting join as further variants.
+//! The lens equation β = θ − α(θ) is a point map; a [`RayTracer`] applies it to a
+//! whole set of rays at once, batched through [`jet_batch`](LensModel::jet_batch).
+//! [`Direct`](RayTracer::Direct) (one jet per ray) is the baseline; adaptive
+//! supersampling and inverse ray-shooting join as further variants.
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;

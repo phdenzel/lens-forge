@@ -3,13 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! A discretized lens map θ ↔ β, queried for the images of a point source.
 //!
-//! A cloud of image-plane samples is connected into cells and each cell ray-traced
-//! to the source plane; the source-plane cells tile a warped copy of the map. To
-//! find the images of β, ask which source cells contain it — one image per cell —
-//! and read the image-plane position back off the same cell. The two realizations
+//! Image-plane samples are connected into cells, each ray-traced to the source
+//! plane; to find the images of β, ask which source cells contain it (one image
+//! per cell) and read the image-plane position off the same cell. The realizations
 //! differ only in cell topology: [`MapTessellation`](super::tessellate) uses
-//! Delaunay triangles, [`MapPixellation`](super::pixellate) uses lattice quads;
-//! both reduce to the shared triangle containment test `seed_if_contains`.
+//! Delaunay triangles, [`MapPixellation`](super::pixellate) lattice quads; both
+//! reduce to the shared triangle test `seed_if_contains`.
 
 use crate::grid::Point2D;
 
