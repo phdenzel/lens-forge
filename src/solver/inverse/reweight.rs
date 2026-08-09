@@ -214,6 +214,40 @@ mod tests {
     }
 
     #[test]
+    fn a_fully_masked_ensemble_gets_zero_weights() {
+        // No active pixels → every member's source mesh fails → all χ² are ∞ → zero weights.
+        let (image, data, ensemble, noise, _) = arc_scenario();
+        let mask = Mask::from_flags(&vec![false; image.len()]);
+        let (w, ess) =
+            reweight_ensemble(&ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, None);
+        assert!(w.iter().all(|&x| x == 0.0));
+        assert_eq!(ess, 0.0);
+    }
+
+    #[test]
+    fn reweighting_applies_the_psf_in_the_image_plane() {
+        // The PSF branch: the model is convolved before comparison; weights stay valid.
+        let (image, data, ensemble, noise, mask) = arc_scenario();
+        let psf = Psf::gaussian(0.15);
+        let (w, ess) = reweight_ensemble(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, Some(&psf), 1e-4, None,
+        );
+        assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+        assert!(ess > 0.0 && ess <= 2.0 + 1e-9);
+    }
+
+    #[test]
+    fn a_generous_dispersion_cut_keeps_every_member() {
+        // The cull is evaluated but passed (dispersion ≤ cut), so members proceed to the fit.
+        let (image, data, ensemble, noise, mask) = arc_scenario();
+        let (w, ess) = reweight_ensemble(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, Some(1e12),
+        );
+        assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+        assert!(ess > 0.0);
+    }
+
+    #[test]
     fn the_dispersion_cull_zeroes_culled_members() {
         // A cut below every (non-negative) dispersion culls the whole ensemble to zero
         // weight — the deterministic test of the cull plumbing.

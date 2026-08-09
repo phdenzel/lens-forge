@@ -290,6 +290,62 @@ mod tests {
     }
 
     #[test]
+    fn member_accessors_split_masses_and_source_positions() {
+        let m = EnsembleMember { x: vec![1.0, 2.0, 0.3, -0.4, 0.7, 0.8] };
+        assert_eq!(m.masses(2), &[1.0, 2.0]);
+        assert_eq!(m.source(2, 0), Point2D::new(0.3, -0.4));
+        assert_eq!(m.source(2, 1), Point2D::new(0.7, 0.8));
+    }
+
+    #[test]
+    fn inconsistent_equalities_are_rejected() {
+        use ndarray::array;
+        // x = 0.3 and x = 0.7 cannot both hold.
+        let cs = ConstraintSet {
+            n_cells: 1,
+            n_sources: 0,
+            a_ub: array![[-1.0]],
+            b_ub: vec![0.0],
+            a_eq: array![[1.0], [1.0]],
+            b_eq: vec![0.3, 0.7],
+        };
+        assert!(HitAndRun::default().sample(&cs).is_err());
+    }
+
+    #[test]
+    fn an_empty_interior_is_rejected() {
+        use ndarray::array;
+        // x ≤ 0 and x ≥ 1 (−x ≤ −1): no full-dimensional interior.
+        let cs = ConstraintSet {
+            n_cells: 1,
+            n_sources: 0,
+            a_ub: array![[1.0], [-1.0]],
+            b_ub: vec![0.0, -1.0],
+            a_eq: Array2::zeros((0, 1)),
+            b_eq: vec![],
+        };
+        assert!(HitAndRun::default().sample(&cs).is_err());
+    }
+
+    #[test]
+    fn a_fully_determined_system_returns_the_unique_point() {
+        use ndarray::array;
+        // x = 0.5 with x ≥ 0: the null space is empty, so every member is the unique solution.
+        let cs = ConstraintSet {
+            n_cells: 1,
+            n_sources: 0,
+            a_ub: array![[-1.0]],
+            b_ub: vec![0.0],
+            a_eq: array![[1.0]],
+            b_eq: vec![0.5],
+        };
+        let (ens, _) =
+            HitAndRun { walkers: 2, burn_in: 1, per_walker: 3, seed: 1 }.sample(&cs).unwrap();
+        assert!(!ens.is_empty());
+        assert!(ens.members.iter().all(|m| (m.x[0] - 0.5).abs() < 1e-9), "not unique");
+    }
+
+    #[test]
     fn every_member_satisfies_the_lens_polytope() {
         // A real point-image polytope (SIS double on a coarse pixel basis): each draw must
         // satisfy the inequalities and lie on the equality hyperplanes.

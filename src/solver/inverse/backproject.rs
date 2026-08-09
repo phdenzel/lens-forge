@@ -118,6 +118,15 @@ mod tests {
     }
 
     #[test]
+    fn source_mesh_fails_without_active_pixels() {
+        // No active pixels → no generators → mesh construction fails (via the fallback bbox).
+        let lens = SIS::new(Point2D::origin(), 0.5);
+        let image = PixelGrid::constant(Grid2D::square(6, 2.0).unwrap(), 1.0);
+        let mask = Mask::from_flags(&vec![false; image.len()]);
+        assert!(source_mesh(&lens, &image, &mask, 0.1).is_err());
+    }
+
+    #[test]
     fn a_uniform_image_has_no_dispersion() {
         // Every pixel shares the same brightness, so within-bin variance is zero for any lens.
         let lens = SIS::new(Point2D::origin(), 0.7);

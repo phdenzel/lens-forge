@@ -111,6 +111,7 @@ mod tests {
             (0..60).map(|_| Point2D::new(2.0 * rng.f() - 1.0, 2.0 * rng.f() - 1.0)).collect();
         let mesh = MeshGrid::zeros(&sites, BBox::from_lims(-1.0, 1.0, -1.0, 1.0)).unwrap();
         let reg = Regularizer::from_mesh(&mesh);
+        assert!(!reg.is_empty() && reg.len() == mesh.len());
         let mut out = vec![0.0; reg.len()];
         // A constant source has zero graph-Laplacian everywhere.
         reg.apply(&vec![3.0; reg.len()], &mut out);
