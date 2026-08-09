@@ -9,7 +9,10 @@
 //!
 //! * `psf` — point-spread functions, compiled to a [`grid`](crate::grid) `Kernel`
 //!   and applied through [`FieldOps::convolve`](crate::grid::FieldOps::convolve).
+//! * `noise` — the data covariance C: per-cell inverse-variance weighting for the
+//!   likelihood, and Gaussian noise realizations for mock data.
 //!
-//! The data covariance (`noise`) and pixel mask (`mask`) follow.
+//! The pixel mask (`mask`) follows.
 
+pub mod noise;
 pub mod psf;
