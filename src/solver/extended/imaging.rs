@@ -11,6 +11,7 @@
 
 use crate::grid::FieldOps;
 use crate::lens::LensModel;
+use crate::solver::mapping::raytrace::RayTracer;
 use crate::source::SourceModel;
 
 /// An extended-source imaging strategy: (lens, source) → lensed surface-brightness
@@ -37,7 +38,10 @@ impl ImageSimulation {
         field: &F,
     ) -> F {
         match self {
-            ImageSimulation::Direct => field.map_centers(|theta| source.brightness(lens.ray_trace(theta))),
+            // Ray-trace all cell centres in one batch (RayTracer), then sample the
+            // source at each landing point.
+            ImageSimulation::Direct => field
+                .map_centers_batch(|centers| source.brightness_batch(&RayTracer::Direct.trace(lens, centers))),
         }
     }
 }
