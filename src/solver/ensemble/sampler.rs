@@ -1,27 +1,19 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Hit-and-run sampling of the point-image polytope (flat-in-mass).
+//! The lensing overlay on hit-and-run polytope sampling (flat-in-mass).
 //!
-//! The equalities `C x = d` are removed by working in an orthonormal basis `Z` of their
-//! null space: `x = x₀ + Z y` keeps every draw on the constraint hyperplanes, and the
-//! inequalities become `Ã y ≤ b̃` with `Ã = A Z`, `b̃ = b − A x₀`. Because `Z` is
-//! orthonormal, a uniform draw in `y` is a uniform draw in `x` on the subspace — the
-//! flat-in-mass prior. Walkers start from the Chebyshev centre and run independently
-//! (rayon); unbounded (monopole/MSD) directions are clamped to a finite reach.
-
-use ndarray::{Array1, Array2};
-use rayon::prelude::*;
+//! The generic Markov-chain engine lives in [`numerical::mcmc`](crate::numerical::mcmc);
+//! this is the thin domain layer: it adapts a
+//! [`ConstraintSet`](crate::solver::constraints::ConstraintSet) into the polytope the engine
+//! samples and wraps the raw draws as an [`Ensemble`] of [`EnsembleMember`]s (each the full
+//! `x = (m, {β_s})` — cell masses plus recovered source positions). Sampling in mass
+//! coordinates makes the uniform draw a flat-in-mass prior.
 
 use crate::grid::Point2D;
-use crate::numerical::lp::chebyshev_center;
-use crate::numerical::svd::pseudo_inverse;
+use crate::numerical::mcmc::{self, Polytope, PolytopeSample};
 use crate::solver::constraints::ConstraintSet;
 use crate::{LensForgeError, Result, SolveInfo};
-use crate::rng::Lcg;
-
-/// Clamp on an unbounded hit-and-run segment (a degeneracy direction), keeping draws finite.
-const REACH: f64 = 1.0e6;
 
 /// One ensemble draw: the full unknown `x = (m, {β_s})`.
 #[derive(Debug, Clone)]
@@ -101,151 +93,30 @@ impl HitAndRun {
     /// Returns a [`ComputationError`](LensForgeError::ComputationError) when the equalities
     /// are inconsistent, or when the polytope has no full-dimensional interior.
     pub fn sample(&self, cs: &ConstraintSet) -> Result<(Ensemble, SolveInfo)> {
-        let n = cs.n_unknowns();
-        let x0 = particular_solution(&cs.a_eq, &cs.b_eq, n);
-        let residual = equality_residual(&cs.a_eq, &cs.b_eq, &x0);
-        if residual > 1e-6 {
-            return Err(LensForgeError::computation_error(
+        let poly = Polytope {
+            a_ub: &cs.a_ub,
+            b_ub: &cs.b_ub,
+            a_eq: &cs.a_eq,
+            b_eq: &cs.b_eq,
+            n: cs.n_unknowns(),
+        };
+        match mcmc::sample(&poly, self.walkers, self.burn_in, self.per_walker, self.seed) {
+            PolytopeSample::InconsistentEqualities => Err(LensForgeError::computation_error(
                 "inconsistent equality constraints (no solution)",
-            ));
+            )),
+            PolytopeSample::EmptyInterior => Err(LensForgeError::computation_error(
+                "empty or lower-dimensional constraint polytope",
+            )),
+            PolytopeSample::Ok { points, residual } => {
+                let members: Vec<EnsembleMember> =
+                    points.into_iter().map(|x| EnsembleMember { x }).collect();
+                let iterations = members.len();
+                Ok((
+                    Ensemble { n_cells: cs.n_cells, n_sources: cs.n_sources, members },
+                    SolveInfo { iterations, residual, converged: true },
+                ))
+            }
         }
-        let z = null_space(&cs.a_eq, n);
-
-        // Reduced inequalities Ã y ≤ b̃ in the null-space coordinates.
-        let ax0 = cs.a_ub.dot(&x0);
-        let b_tilde: Vec<f64> = cs.b_ub.iter().zip(ax0.iter()).map(|(bi, a)| bi - a).collect();
-        let a_tilde = cs.a_ub.dot(&z);
-        let y_c = chebyshev_center(&a_tilde, &b_tilde).ok_or_else(|| {
-            LensForgeError::computation_error("empty or lower-dimensional constraint polytope")
-        })?;
-
-        let per_walker = self.per_walker;
-        let burn_in = self.burn_in;
-        let members: Vec<EnsembleMember> = (0..self.walkers)
-            .into_par_iter()
-            .map(|w| {
-                let mut rng =
-                    Lcg::new(self.seed.wrapping_add((w as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)));
-                let mut y = y_c.clone();
-                for _ in 0..burn_in {
-                    hit_and_run_step(&a_tilde, &b_tilde, &mut y, &mut rng);
-                }
-                let mut out = Vec::with_capacity(per_walker);
-                for _ in 0..per_walker {
-                    hit_and_run_step(&a_tilde, &b_tilde, &mut y, &mut rng);
-                    out.push(EnsembleMember { x: reconstruct(&x0, &z, &y) });
-                }
-                out
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .flatten()
-            .collect();
-
-        let info = SolveInfo { iterations: members.len(), residual, converged: true };
-        Ok((Ensemble { n_cells: cs.n_cells, n_sources: cs.n_sources, members }, info))
-    }
-}
-
-/// Minimum-norm particular solution `x₀ = Cᵀ(CCᵀ)⁺ d` of `C x = d` (zero when no equalities).
-fn particular_solution(c: &Array2<f64>, d: &[f64], n: usize) -> Array1<f64> {
-    if c.nrows() == 0 {
-        return Array1::zeros(n);
-    }
-    let cct = c.dot(&c.t());
-    let pinv = pseudo_inverse(&cct, 1e-10);
-    c.t().dot(&pinv.dot(&Array1::from(d.to_vec())))
-}
-
-/// Worst-case equality residual `‖C x − d‖_∞` (zero when there are no equalities).
-fn equality_residual(c: &Array2<f64>, d: &[f64], x: &Array1<f64>) -> f64 {
-    if c.nrows() == 0 {
-        return 0.0;
-    }
-    (c.dot(x) - Array1::from(d.to_vec())).iter().fold(0.0_f64, |m, v| m.max(v.abs()))
-}
-
-/// Orthonormal basis (`n × k`) of the null space of `C`, by modified Gram–Schmidt: first
-/// orthonormalize the rows, then complete the standard basis against them.
-fn null_space(c: &Array2<f64>, n: usize) -> Array2<f64> {
-    let tol = 1e-9;
-    let mut row_basis: Vec<Array1<f64>> = Vec::new();
-    for i in 0..c.nrows() {
-        let mut v = c.row(i).to_owned();
-        for q in &row_basis {
-            let p = v.dot(q);
-            v = &v - &(q * p);
-        }
-        let nrm = v.dot(&v).sqrt();
-        if nrm > tol {
-            row_basis.push(v / nrm);
-        }
-    }
-    let mut null: Vec<Array1<f64>> = Vec::new();
-    for j in 0..n {
-        let mut v = Array1::<f64>::zeros(n);
-        v[j] = 1.0;
-        for q in row_basis.iter().chain(null.iter()) {
-            let p = v.dot(q);
-            v = &v - &(q * p);
-        }
-        let nrm = v.dot(&v).sqrt();
-        if nrm > tol {
-            null.push(v / nrm);
-        }
-    }
-    let mut z = Array2::<f64>::zeros((n, null.len()));
-    for (col, v) in null.iter().enumerate() {
-        for r in 0..n {
-            z[[r, col]] = v[r];
-        }
-    }
-    z
-}
-
-/// Reconstruct `x = x₀ + Z y` from null-space coordinates.
-fn reconstruct(x0: &Array1<f64>, z: &Array2<f64>, y: &[f64]) -> Vec<f64> {
-    if y.is_empty() {
-        return x0.to_vec();
-    }
-    (x0 + &z.dot(&Array1::from(y.to_vec()))).to_vec()
-}
-
-/// One hit-and-run step: draw an isotropic direction, find the feasible segment against
-/// `Ã y ≤ b̃`, and move to a uniform point on it (clamping unbounded reach).
-fn hit_and_run_step(a: &Array2<f64>, b: &[f64], y: &mut [f64], rng: &mut Lcg) {
-    let k = y.len();
-    if k == 0 {
-        return;
-    }
-    let mut u: Vec<f64> = (0..k).map(|_| rng.gaussian()).collect();
-    let norm = u.iter().map(|v| v * v).sum::<f64>().sqrt();
-    if norm < 1e-12 {
-        return;
-    }
-    for v in &mut u {
-        *v /= norm;
-    }
-    let (mut t_lo, mut t_hi) = (-REACH, REACH);
-    for i in 0..a.nrows() {
-        let (mut ay, mut au) = (0.0, 0.0);
-        for j in 0..k {
-            ay += a[[i, j]] * y[j];
-            au += a[[i, j]] * u[j];
-        }
-        let slack = b[i] - ay;
-        if au > 1e-12 {
-            t_hi = t_hi.min(slack / au);
-        } else if au < -1e-12 {
-            t_lo = t_lo.max(slack / au);
-        }
-    }
-    if t_hi <= t_lo {
-        return; // no room along this direction; keep the point
-    }
-    let t = rng.range(t_lo, t_hi);
-    for j in 0..k {
-        y[j] += t * u[j];
     }
 }
 
@@ -256,38 +127,7 @@ mod tests {
     use crate::lens::SIS;
     use crate::solver::constraints::{ConstraintConfig, ConstraintSet};
     use crate::solver::image::{Image, PointImageSystem};
-
-    /// The unit square `[0,1]²` as a bare polytope (two mass cells, no sources).
-    fn unit_square() -> ConstraintSet {
-        use ndarray::array;
-        ConstraintSet {
-            n_cells: 2,
-            n_sources: 0,
-            a_ub: array![[-1.0, 0.0], [1.0, 0.0], [0.0, -1.0], [0.0, 1.0]],
-            b_ub: vec![0.0, 1.0, 0.0, 1.0],
-            a_eq: Array2::zeros((0, 2)),
-            b_eq: vec![],
-        }
-    }
-
-    #[test]
-    fn samples_stay_in_the_box_and_fill_it() {
-        let cs = unit_square();
-        let (ens, info) = HitAndRun::default().sample(&cs).unwrap();
-        assert_eq!(ens.len(), 8 * 200);
-        assert!(info.converged);
-        let mut mean = [0.0; 2];
-        for m in &ens.members {
-            for d in 0..2 {
-                assert!(m.x[d] >= -1e-9 && m.x[d] <= 1.0 + 1e-9, "{:?} out of box", m.x);
-                mean[d] += m.x[d];
-            }
-        }
-        for d in 0..2 {
-            mean[d] /= ens.len() as f64;
-            assert!((mean[d] - 0.5).abs() < 0.05, "mean {} not centred: {}", d, mean[d]);
-        }
-    }
+    use ndarray::{array, Array1, Array2};
 
     #[test]
     fn member_accessors_split_masses_and_source_positions() {
@@ -298,8 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn inconsistent_equalities_are_rejected() {
-        use ndarray::array;
+    fn inconsistent_equalities_map_to_an_error() {
         // x = 0.3 and x = 0.7 cannot both hold.
         let cs = ConstraintSet {
             n_cells: 1,
@@ -313,8 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_interior_is_rejected() {
-        use ndarray::array;
+    fn an_empty_interior_maps_to_an_error() {
         // x ≤ 0 and x ≥ 1 (−x ≤ −1): no full-dimensional interior.
         let cs = ConstraintSet {
             n_cells: 1,
@@ -325,24 +163,6 @@ mod tests {
             b_eq: vec![],
         };
         assert!(HitAndRun::default().sample(&cs).is_err());
-    }
-
-    #[test]
-    fn a_fully_determined_system_returns_the_unique_point() {
-        use ndarray::array;
-        // x = 0.5 with x ≥ 0: the null space is empty, so every member is the unique solution.
-        let cs = ConstraintSet {
-            n_cells: 1,
-            n_sources: 0,
-            a_ub: array![[-1.0]],
-            b_ub: vec![0.0],
-            a_eq: array![[1.0]],
-            b_eq: vec![0.5],
-        };
-        let (ens, _) =
-            HitAndRun { walkers: 2, burn_in: 1, per_walker: 3, seed: 1 }.sample(&cs).unwrap();
-        assert!(!ens.is_empty());
-        assert!(ens.members.iter().all(|m| (m.x[0] - 0.5).abs() < 1e-9), "not unique");
     }
 
     #[test]
@@ -358,8 +178,8 @@ mod tests {
         let basis = PixelGrid::constant(Grid2D::square(5, 2.5).unwrap(), 0.3);
         let cs = ConstraintSet::assemble(&basis, &[sys], &ConstraintConfig::default());
         let sampler = HitAndRun { walkers: 4, burn_in: 100, per_walker: 50, seed: 7 };
-        let (ens, _) = sampler.sample(&cs).unwrap();
-        assert!(!ens.is_empty());
+        let (ens, info) = sampler.sample(&cs).unwrap();
+        assert!(!ens.is_empty() && info.converged);
         for m in &ens.members {
             let x = Array1::from(m.x.clone());
             // Inequalities A x ≤ b.

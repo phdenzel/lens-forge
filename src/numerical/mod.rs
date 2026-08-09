@@ -7,6 +7,7 @@
 //! * `cg` — Jacobi-preconditioned conjugate gradient for an SPD operator given
 //!   as a closure.
 //! * `lp` — dense two-phase simplex and the Chebyshev centre of a polytope.
+//! * `mcmc` — hit-and-run Markov-chain Monte Carlo sampling of a convex polytope.
 //! * `newton` — multivariate Newton's method for a 2-vector root, given a
 //!   residual-and-Jacobian closure.
 //! * `quad` — adaptive Simpson quadrature for smooth 1D integrands.
@@ -16,6 +17,7 @@
 pub(crate) mod binomial;
 pub(crate) mod cg;
 pub(crate) mod lp;
+pub(crate) mod mcmc;
 pub(crate) mod newton;
 pub(crate) mod quad;
 pub(crate) mod svd;
