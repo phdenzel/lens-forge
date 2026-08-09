@@ -14,6 +14,8 @@
 //!   `C x = d` over the cell masses and source positions.
 //! * `ensemble` — hit-and-run sampling of that polytope (the degenerate-solution ensemble)
 //!   and its statistics.
+//! * `inverse` — extended-image (arc) inversion and re-weighting of the ensemble: per-member
+//!   semi-linear source reconstruction and its forward-evidence importance weight.
 //!
 //! Forward first; the inverse layers grow in place beside these forward primitives.
 
@@ -22,4 +24,5 @@ pub mod ensemble;
 pub mod extended;
 pub mod extrema;
 pub mod image;
+pub mod inverse;
 pub mod mapping;
