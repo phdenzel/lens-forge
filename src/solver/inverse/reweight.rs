@@ -17,7 +17,7 @@ use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
-use crate::solver::ensemble::stats::effective_sample_size;
+use crate::solver::ensemble::summaries::effective_sample_size;
 use crate::solver::ensemble::Ensemble;
 use crate::solver::extended::operator::LensingOperator;
 

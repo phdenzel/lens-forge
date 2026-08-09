@@ -10,10 +10,10 @@
 //! * `sampler` — [`HitAndRun`](sampler::HitAndRun): equality-null-space reduction, a
 //!   Chebyshev-centre seed, and parallel hit-and-run walkers producing an
 //!   [`Ensemble`](sampler::Ensemble).
-//! * `stats` — mean/variance κ maps, the mass-sheet level, the radial mass profile
+//! * `summaries` — mean/variance κ maps, the mass-sheet level, the radial mass profile
 //!   exposing the monopole degeneracy, and the effective sample size.
 
 pub mod sampler;
-pub mod stats;
+pub mod summaries;
 
 pub use sampler::{Ensemble, EnsembleMember, HitAndRun};
