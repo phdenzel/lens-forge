@@ -9,6 +9,7 @@
 //! degeneracy, and the effective sample size for the re-weighting stage.
 
 use crate::grid::Point2D;
+use crate::lens::RadialProfile;
 
 use super::sampler::Ensemble;
 
@@ -67,19 +68,9 @@ pub fn msd_levels(ensemble: &Ensemble, areas: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// The radial mass profile: mean and variance of the mass enclosed in radial annuli about
-/// `origin`. Large per-annulus variance in image-free annuli is the monopole degeneracy.
-#[derive(Debug, Clone)]
-pub struct RadialProfile {
-    /// Outer radius of each annulus.
-    pub radii: Vec<f64>,
-    /// Mean mass in each annulus over the ensemble.
-    pub mean: Vec<f64>,
-    /// Mass variance in each annulus over the ensemble.
-    pub variance: Vec<f64>,
-}
-
-/// Bin cell masses into `nbins` annuli about `origin` and reduce over the ensemble.
+/// The ensemble's mean radial mass profile (a [`RadialProfile`]) together with the
+/// per-annulus mass variance across members — large variance in image-free annuli is the
+/// monopole degeneracy.
 ///
 /// # Arguments
 /// * `ensemble` - the sampled ensemble.
@@ -91,30 +82,24 @@ pub fn radial_mass_profile(
     centers: &[Point2D],
     origin: Point2D,
     nbins: usize,
-) -> RadialProfile {
-    let r: Vec<f64> = centers.iter().map(|c| (*c - origin).norm()).collect();
-    let r_max = r.iter().cloned().fold(0.0_f64, f64::max).max(1e-12);
-    let bin_of = |ri: f64| ((ri / r_max * nbins as f64) as usize).min(nbins - 1);
-
+) -> (RadialProfile, Vec<f64>) {
     let n = ensemble.len().max(1) as f64;
+    // The binning geometry is member-independent; take the radii once (also handles an
+    // empty ensemble, where the loop below never runs).
+    let radii = RadialProfile::binned(centers, &vec![0.0; centers.len()], origin, nbins).radii;
     let (mut mean, mut sq) = (vec![0.0; nbins], vec![0.0; nbins]);
     for m in &ensemble.members {
-        let mut binned = vec![0.0; nbins];
-        for (c, mc) in m.masses(ensemble.n_cells).iter().enumerate() {
-            binned[bin_of(r[c])] += mc;
-        }
+        let binned = RadialProfile::binned(centers, m.masses(ensemble.n_cells), origin, nbins);
         for b in 0..nbins {
-            mean[b] += binned[b];
-            sq[b] += binned[b] * binned[b];
+            mean[b] += binned.values[b];
+            sq[b] += binned.values[b] * binned.values[b];
         }
     }
-    let mut variance = vec![0.0; nbins];
-    for b in 0..nbins {
-        mean[b] /= n;
-        variance[b] = (sq[b] / n - mean[b] * mean[b]).max(0.0);
+    for m in &mut mean {
+        *m /= n;
     }
-    let radii = (0..nbins).map(|b| (b + 1) as f64 / nbins as f64 * r_max).collect();
-    RadialProfile { radii, mean, variance }
+    let variance = (0..nbins).map(|b| (sq[b] / n - mean[b] * mean[b]).max(0.0)).collect();
+    (RadialProfile { radii, values: mean }, variance)
 }
 
 /// The effective sample size `(Σ w)² / Σ w²` of importance weights (equal weights give the
@@ -172,12 +157,12 @@ mod tests {
     fn radial_profile_bins_and_reduces() {
         let ens = toy();
         let centers = [Point2D::new(0.5, 0.0), Point2D::new(2.0, 0.0)];
-        let prof = radial_mass_profile(&ens, &centers, Point2D::origin(), 2);
-        assert_eq!(prof.mean.len(), 2);
+        let (mean, variance) = radial_mass_profile(&ens, &centers, Point2D::origin(), 2);
+        assert_eq!(mean.values.len(), 2);
         // Inner annulus holds cell 0 (mass 1,3 → mean 2), outer holds cell 1 (3,5 → mean 4).
-        assert!((prof.mean[0] - 2.0).abs() < 1e-12);
-        assert!((prof.mean[1] - 4.0).abs() < 1e-12);
-        assert!((prof.variance[0] - 1.0).abs() < 1e-12);
+        assert!((mean.values[0] - 2.0).abs() < 1e-12);
+        assert!((mean.values[1] - 4.0).abs() < 1e-12);
+        assert!((variance[0] - 1.0).abs() < 1e-12);
     }
 
     #[test]

@@ -17,4 +17,3 @@ pub mod sampler;
 pub mod stats;
 
 pub use sampler::{Ensemble, EnsembleMember, HitAndRun};
-pub use stats::RadialProfile;
