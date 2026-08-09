@@ -10,10 +10,12 @@
 //! (λ_r=0) branch of the eigen-split. The caustics are the chosen curve ray-traced
 //! to the source plane. All are returned as unordered line segments.
 
-use super::jacobian::det_a_map;
 use super::raytrace::RayTracer;
 use crate::grid::{ContourSegment, FieldOps, Point2D};
 use crate::lens::LensModel;
+
+/// Maximum corrector iterations per predictor step in [`CriticalTracer`].
+const CORRECTOR_ITERS: usize = 32;
 
 /// Which branch of the critical locus det A = λ_t·λ_r to trace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,13 +28,18 @@ pub enum Stretch {
     Radial,
 }
 
+/// The scalar whose zero is the `stretch` critical curve of `lens`, at `theta`.
+fn stretch_value(lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> f64 {
+    match stretch {
+        Stretch::Total => lens.jacobian_det(theta),
+        Stretch::Tangential => 1.0 - lens.convergence(theta) - lens.shear(theta),
+        Stretch::Radial => 1.0 - lens.convergence(theta) + lens.shear(theta),
+    }
+}
+
 /// The field whose zero contour is the `stretch` critical curve of `lens`.
 fn stretch_field<F: FieldOps>(lens: &dyn LensModel, field: &F, stretch: Stretch) -> F {
-    match stretch {
-        Stretch::Total => det_a_map(lens, field),
-        Stretch::Tangential => field.map_centers(|t| 1.0 - lens.convergence(t) - lens.shear(t)),
-        Stretch::Radial => field.map_centers(|t| 1.0 - lens.convergence(t) + lens.shear(t)),
-    }
+    field.map_centers(|t| stretch_value(lens, t, stretch))
 }
 
 /// The critical curves of `lens` for the `stretch` branch, as line segments,
@@ -70,6 +77,128 @@ pub fn caustics<F: FieldOps>(
         .chunks_exact(2)
         .map(|s| [s[0], s[1]])
         .collect()
+}
+
+/// Predictor–corrector tracer producing an *ordered* critical curve.
+///
+/// Follows the curve by arc-length continuation: step along the tangent (⟂ ∇g),
+/// then Newton-correct back onto g = 0, where g is the [`Stretch`] scalar. ∇g is
+/// central-finite-differenced from the lens, so it needs nothing beyond the jet.
+/// Unlike [`critical_curves`] (unordered segments) the output is one ordered
+/// polyline, closed when the curve loops — resolving cusps and folds cleanly.
+#[derive(Debug, Clone, Copy)]
+pub struct CriticalTracer {
+    step: f64,
+    tol: f64,
+    max_points: usize,
+    fd_eps: f64,
+}
+
+impl Default for CriticalTracer {
+    fn default() -> Self {
+        Self { step: 0.01, tol: 1e-10, max_points: 100_000, fd_eps: 1e-6 }
+    }
+}
+
+impl CriticalTracer {
+    /// A tracer with default step, tolerance and finite-difference epsilon.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the arc-length step between curve points.
+    ///
+    /// # Arguments
+    /// * `step` - arc-length spacing.
+    pub fn with_step(mut self, step: f64) -> Self {
+        self.step = step;
+        self
+    }
+
+    /// Set the corrector tolerance on |g|.
+    ///
+    /// # Arguments
+    /// * `tol` - convergence tolerance on the stretch scalar.
+    pub fn with_tol(mut self, tol: f64) -> Self {
+        self.tol = tol;
+        self
+    }
+
+    /// Set the cap on the number of traced points.
+    ///
+    /// # Arguments
+    /// * `max_points` - maximum polyline length before giving up.
+    pub fn with_max_points(mut self, max_points: usize) -> Self {
+        self.max_points = max_points;
+        self
+    }
+
+    /// Central finite-difference gradient ∇g of the stretch scalar at `theta`.
+    fn gradient(&self, lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> Point2D {
+        let (ex, ey) = (Point2D::new(self.fd_eps, 0.0), Point2D::new(0.0, self.fd_eps));
+        let gx = stretch_value(lens, theta + ex, stretch) - stretch_value(lens, theta - ex, stretch);
+        let gy = stretch_value(lens, theta + ey, stretch) - stretch_value(lens, theta - ey, stretch);
+        Point2D::new(gx, gy) * (0.5 / self.fd_eps)
+    }
+
+    /// Newton-project `p` onto g = 0 along ∇g, or `None` if the gradient stalls
+    /// (not near a critical curve).
+    fn correct(&self, lens: &dyn LensModel, mut p: Point2D, stretch: Stretch) -> Option<Point2D> {
+        for _ in 0..CORRECTOR_ITERS {
+            let g = stretch_value(lens, p, stretch);
+            if g.abs() <= self.tol {
+                return Some(p);
+            }
+            let grad = self.gradient(lens, p, stretch);
+            let gn2 = grad.norm_squared();
+            if gn2 < 1e-30 {
+                return None;
+            }
+            p = p - grad * (g / gn2);
+        }
+        (stretch_value(lens, p, stretch).abs() <= self.tol).then_some(p)
+    }
+
+    /// Trace the critical curve of `lens` through `seed` for the `stretch` branch,
+    /// as an ordered polyline (closed when it loops); empty if `seed` corrects to
+    /// no curve.
+    ///
+    /// # Arguments
+    /// * `lens` - the lens model.
+    /// * `seed` - a point on or near the target curve.
+    /// * `stretch` - which branch of the critical locus to trace.
+    pub fn trace(&self, lens: &dyn LensModel, seed: Point2D, stretch: Stretch) -> Vec<Point2D> {
+        let Some(start) = self.correct(lens, seed, stretch) else {
+            return Vec::new();
+        };
+        let mut curve = vec![start];
+        let (mut p, mut left) = (start, false);
+        let mut prev: Option<Point2D> = None;
+        for _ in 0..self.max_points {
+            let Some(mut tangent) = self.gradient(lens, p, stretch).perp().normalize() else {
+                break; // singular gradient
+            };
+            // Keep marching the same way around the curve.
+            if let Some(pt) = prev {
+                if tangent.dot(&pt) < 0.0 {
+                    tangent = -tangent;
+                }
+            }
+            let Some(next) = self.correct(lens, p + tangent * self.step, stretch) else {
+                break;
+            };
+            let d = (next - start).norm();
+            left |= d > 3.0 * self.step;
+            if left && d < self.step {
+                curve.push(start); // close the loop
+                break;
+            }
+            curve.push(next);
+            prev = Some(tangent);
+            p = next;
+        }
+        curve
+    }
 }
 
 #[cfg(test)]
@@ -148,5 +277,32 @@ mod tests {
         endpoints_on_circle(&critical_curves(&lens, &field, Stretch::Total), theta_e, tol);
         assert!(critical_curves(&lens, &field, Stretch::Radial).is_empty());
         assert!(caustics(&lens, &field, Stretch::Radial).is_empty());
+    }
+
+    #[test]
+    fn tracer_walks_the_sis_ring_as_an_ordered_closed_loop() {
+        let theta_e = 0.6;
+        let lens = SIS::new(Point2D::origin(), theta_e);
+        // Seed slightly off the ring to exercise the corrector.
+        let curve = CriticalTracer::new()
+            .with_step(0.02)
+            .trace(&lens, Point2D::new(0.55, 0.0), Stretch::Tangential);
+        assert!(curve.len() > 20, "len {}", curve.len());
+        for p in &curve {
+            assert!((p.norm() - theta_e).abs() < 1e-4, "point {p:?} off the ring");
+        }
+        // Consecutive points are ordered (~step apart), and the loop closes.
+        for w in curve.windows(2) {
+            assert!((w[1] - w[0]).norm() < 3.0 * 0.02);
+        }
+        assert_eq!(curve.first(), curve.last());
+    }
+
+    #[test]
+    fn tracer_returns_empty_where_there_is_no_curve() {
+        // The SIS radial scalar λ_r = 1 is constant, so ∇g = 0 and no curve exists.
+        let lens = SIS::new(Point2D::origin(), 0.6);
+        let curve = CriticalTracer::new().trace(&lens, Point2D::new(0.6, 0.0), Stretch::Radial);
+        assert!(curve.is_empty());
     }
 }
