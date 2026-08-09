@@ -249,6 +249,7 @@ mod tests {
         assert_eq!(f.cell_area(0), 1.0);
         assert_eq!(f.bounds(), BBox::from_lims(0.0, 1.0, 0.0, 1.0));
         assert_eq!(f.sample(Point2D::new(0.5, 0.5)), 0.0);
+        assert!(f.sample_stencil(Point2D::new(0.5, 0.5)).is_empty());
         assert_eq!(f.min(), 1.0);
         assert_eq!(f.max(), 4.0);
         assert_eq!(f.sum(), 7.0);

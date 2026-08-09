@@ -83,23 +83,24 @@ mod tests {
     #[test]
     fn gaussian_fwhm_compiles_to_the_matching_sigma() {
         // FWHM = 2√(2 ln 2) ≈ 2.3548 gives σ = 1.
-        match Psf::gaussian(2.0 * (2.0 * std::f64::consts::LN_2).sqrt()).kernel() {
-            Kernel::Gaussian { sigma } => assert!((sigma - 1.0).abs() < 1e-12),
-            other => panic!("expected a Gaussian kernel, got {other:?}"),
-        }
+        let psf = Psf::gaussian(2.0 * (2.0 * std::f64::consts::LN_2).sqrt());
+        assert!(matches!(psf.kernel(), Kernel::Gaussian { sigma } if (*sigma - 1.0).abs() < 1e-12));
     }
 
     #[test]
     fn mixture_converts_each_component_fwhm() {
-        match Psf::gaussian_mixture(&[(0.6, 2.0), (0.4, 4.0)]).kernel() {
-            Kernel::GaussianMixture(c) => {
-                assert_eq!(c.len(), 2);
-                assert!((c[0].0 - 0.6).abs() < 1e-12);
-                assert!((c[0].1 - fwhm_to_sigma(2.0)).abs() < 1e-12);
-                assert!((c[1].1 - fwhm_to_sigma(4.0)).abs() < 1e-12);
-            }
-            other => panic!("expected a Gaussian-mixture kernel, got {other:?}"),
-        }
+        let psf = Psf::gaussian_mixture(&[(0.6, 2.0), (0.4, 4.0)]);
+        assert!(matches!(psf.kernel(), Kernel::GaussianMixture(c)
+            if c.len() == 2
+                && (c[0].0 - 0.6).abs() < 1e-12
+                && (c[0].1 - fwhm_to_sigma(2.0)).abs() < 1e-12
+                && (c[1].1 - fwhm_to_sigma(4.0)).abs() < 1e-12));
+    }
+
+    #[test]
+    fn from_kernel_wraps_an_existing_kernel() {
+        let psf = Psf::from_kernel(Kernel::gaussian(1.5));
+        assert!(matches!(psf.kernel(), Kernel::Gaussian { sigma } if (*sigma - 1.5).abs() < 1e-12));
     }
 
     #[test]

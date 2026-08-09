@@ -95,11 +95,9 @@ mod tests {
     /// Newton-polish the seeds and collapse them to distinct images.
     fn distinct_images(lens: &dyn LensModel, beta: Point2D, seeds: &[Point2D]) -> Vec<Point2D> {
         let mut images: Vec<Point2D> = Vec::new();
-        for &seed in seeds {
-            if let Some(theta) = newton(lens, beta, seed, NewtonConfig::default()) {
-                if !images.iter().any(|p| (*p - theta).norm() < 1e-6) {
-                    images.push(theta);
-                }
+        for theta in seeds.iter().filter_map(|&seed| newton(lens, beta, seed, NewtonConfig::default())) {
+            if !images.iter().any(|p| (*p - theta).norm() < 1e-6) {
+                images.push(theta);
             }
         }
         images
@@ -113,6 +111,10 @@ mod tests {
         for (theta, beta) in tess.image_vertices().iter().zip(tess.source_vertices()) {
             assert_eq!(*beta, lens.ray_trace(*theta));
         }
+        // The triangulation indexes into the shared vertex arrays.
+        let n = tess.image_vertices().len();
+        assert!(!tess.triangles().is_empty());
+        assert!(tess.triangles().iter().flatten().all(|&v| v < n));
     }
 
     #[test]
