@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The pixel (lattice-quad) discretization of the lens map.
+//! The pixel (lattice-quad) discretization of the lens mapping.
 //!
 //! [`MapPixellation`] samples the image plane on a regular [`Grid2D`] lattice and
 //! ray-traces the nodes to the source plane. Each lattice cell is a source-plane
 //! quad; [`images_of`](MapDiscretization::images_of) splits it into two triangles
-//! and reuses the shared containment test. No triangulation to build — the
-//! structured, cheaper sibling of [`MapTessellation`](super::tessellate).
+//! and reuses the shared containment test.
 
 use super::discretization::{seed_if_contains, MapDiscretization};
 use super::raytrace::RayTracer;

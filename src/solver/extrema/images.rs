@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Point-source image finding: solve β = θ − α(θ) for all images of β.
 //!
-//! An [`ImageFinder`] returns every image with its magnification, parity and
-//! Fermat potential. Every [`MapDiscretization`] is one via the blanket impl below:
-//! its seeds are [`newton`]-polished, deduplicated, and classified by
-//! [`Image::at`]. Build a discretization once and query it for many source positions.
+//! An [`ImageFinder`] trait returns every image with its magnification, parity,
+//! and Fermat potential. Every [`MapDiscretization`] has an [`ImageFinder`]
+//! implementation: its seeds are [`newton`]-inferred, deduplicated, and 
+//! classified by [`Image::at`]. Build a discretization once and query it for
+//! many source positions.
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;

@@ -3,9 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The lens Jacobian determinant det A sampled onto a field.
 //!
-//! The pointwise value is [`LensModel::jacobian_det`]; here it is sampled over a
-//! grid or mesh. det A vanishes on the critical curves and its reciprocal is the
-//! magnification, so it underlies both [`magnification`](super::magnification) and
+//! Vanishes on the critical curves and its reciprocal is the magnification,
+//! so it underlies both [`magnification`](super::magnification) and
 //! [`critical`](super::critical).
 
 use crate::grid::FieldOps;

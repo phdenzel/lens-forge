@@ -7,7 +7,7 @@
 //! a source at β; its stationary points are the images (minima, saddles and maxima
 //! by parity). Sampling it onto a field gives a surface to inspect and contour —
 //! the iso-contour at a saddle's τ self-crosses at that saddle. Summing |μ| over
-//! the images gives the total magnification; physical delays live in `delays`.
+//! the images gives the total magnification.
 //!
 //! Dropping the source-dependent tilting term −θ·β leaves the β-independent
 //! lensing Roche potential ½|θ|² − ψ(θ), a lensing analogue of the binary-star

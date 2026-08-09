@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The mesh (Delaunay-triangle) discretization of the lens map.
+//! The mesh (Delaunay-triangle) discretization of the lens mapping.
 //!
 //! [`MapTessellation`] Delaunay-triangulates a cloud of image-plane samples
 //! (reusing [`MeshGrid`] geometry), ray-traces each vertex to the source plane,
 //! and answers [`images_of`](MapDiscretization::images_of) by the shared triangle
-//! containment test. Unstructured sampling makes it the adaptive-ready sibling of
-//! [`MapPixellation`](super::pixellate).
+//! containment test.
 
 use super::discretization::{seed_if_contains, MapDiscretization};
 use super::raytrace::RayTracer;

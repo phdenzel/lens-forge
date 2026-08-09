@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A discretized lens map θ ↔ β, queried for the images of a point source.
+//! A discretized lens mapping θ ↔ β, queried for the images of a point source.
 //!
 //! Image-plane samples are connected into cells, each ray-traced to the source
 //! plane; to find the images of β, ask which source cells contain it (one image
@@ -17,7 +17,7 @@ use crate::grid::Point2D;
 /// any that slip through, and duplicates are pruned downstream).
 const CONTAIN_EPS: f64 = 1e-9;
 
-/// A discretized lens map: query it for the image-plane seeds of a source point.
+/// A discretized lens mapping: query it for the image-plane seeds of a source point.
 pub trait MapDiscretization {
     /// Image-plane seeds for every cell whose source image contains `beta` — one
     /// coarse seed per predicted image, to be polished by
@@ -31,8 +31,8 @@ pub trait MapDiscretization {
 /// If `beta` lies in the source triangle `source`, return the image-plane seed:
 /// the same barycentric combination of the corresponding image triangle `image`.
 ///
-/// Affine-invariant, so it also catches folded (inverted) source triangles — the
-/// negative-parity images near critical curves.
+/// Affine-invariant, i.e. it also catches folded (inverted) source triangles;
+/// the negative-parity images near critical curves.
 ///
 /// # Arguments
 /// * `beta` - the source-plane query point.
