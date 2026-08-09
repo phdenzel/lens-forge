@@ -5,7 +5,10 @@
 //!
 //! An [`Image`] records one solution of the lens equation: its position, signed
 //! magnification, [`Parity`], and Fermat potential. The image finders in
-//! [`extrema`](super) produce it; the inverse point-image constraints consume it.
+//! [`extrema`](super) produce it; the inverse point-image constraints consume it. A
+//! [`PointImageSystem`] gathers the images of one source, with any measured time delays
+//! ([`TimeDelay`](super::extrema::delays::TimeDelay)) and arrival order — the observed-data
+//! unit the constraint builder takes.
 //!
 //! Parity is the arrival-time surface's stationary type encoded as `1 − m`, where
 //! `m` is the Morse index (the number of negative eigenvalues of A = I − H): `+1`
@@ -13,6 +16,7 @@
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;
+use crate::solver::extrema::delays::TimeDelay;
 
 /// Image parity as `1 − Morse index` of the Fermat surface: `+1` minimum, `0`
 /// saddle, `−1` maximum (one minus the number of negative eigenvalues of A = I − H).
@@ -89,11 +93,84 @@ impl Image {
     }
 }
 
+/// The images of one source, with optional arrival order and measured time delays.
+///
+/// Several systems can share one κ basis; each adds its own source-position unknowns to
+/// the point-image polytope. Only the image positions and parities enter as constraints —
+/// magnification and τ are model-derived.
+#[derive(Debug, Clone)]
+pub struct PointImageSystem {
+    /// The observed images (positions and parities used; τ/μ ignored).
+    pub images: Vec<Image>,
+    /// Measured time delays between image pairs (empty if none).
+    pub time_delays: Vec<TimeDelay>,
+    /// Delay scale `k` in `Δt = k · Δτ` linking a physical delay to the dimensionless
+    /// Fermat difference (`1.0` when delays are already dimensionless). See
+    /// [`time_delay_scale`](super::extrema::delays::time_delay_scale).
+    pub delay_scale: f64,
+    /// Explicit arrival order as image indices earliest-first (`None` if unknown).
+    pub order: Option<Vec<usize>>,
+}
+
+impl PointImageSystem {
+    /// A system with just image positions/parities — no delays or order.
+    ///
+    /// # Arguments
+    /// * `images` - the observed images of the source.
+    pub fn from_images(images: Vec<Image>) -> Self {
+        Self { images, time_delays: Vec::new(), delay_scale: 1.0, order: None }
+    }
+
+    /// Attach measured time delays and their scale `k` (`Δt = k · Δτ`).
+    ///
+    /// # Arguments
+    /// * `delays` - measured image-pair delays.
+    /// * `scale` - the delay scale `k`.
+    pub fn with_time_delays(mut self, delays: Vec<TimeDelay>, scale: f64) -> Self {
+        self.time_delays = delays;
+        self.delay_scale = scale;
+        self
+    }
+
+    /// Attach an explicit arrival order (image indices, earliest first).
+    ///
+    /// # Arguments
+    /// * `order` - arrival order as image indices.
+    pub fn with_order(mut self, order: Vec<usize>) -> Self {
+        self.order = Some(order);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lens::model::LensJet;
     use crate::lens::SIS;
+    use crate::solver::extrema::delays::TimeDelay;
+
+    #[test]
+    fn point_image_system_builders_populate_every_field() {
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let src = Point2D::new(0.2, 0.0);
+        let images = vec![
+            Image::at(&lens, Point2D::new(1.2, 0.0), src),
+            Image::at(&lens, Point2D::new(-0.8, 0.0), src),
+        ];
+        // Bare system: no delays, unit scale, unknown order.
+        let bare = PointImageSystem::from_images(images.clone());
+        assert_eq!(bare.images.len(), 2);
+        assert!(bare.time_delays.is_empty());
+        assert_eq!(bare.delay_scale, 1.0);
+        assert!(bare.order.is_none());
+        // Chained builders set delays, scale and order.
+        let full = PointImageSystem::from_images(images)
+            .with_time_delays(vec![TimeDelay { from: 1, to: 0, delay: 3.5 }], 2.0)
+            .with_order(vec![1, 0]);
+        assert_eq!(full.time_delays.len(), 1);
+        assert_eq!(full.delay_scale, 2.0);
+        assert_eq!(full.order.as_deref(), Some(&[1usize, 0][..]));
+    }
 
     /// A lens with a fixed jet everywhere, for exercising the derived quantities.
     struct ConstJet(LensJet);
