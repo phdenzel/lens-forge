@@ -39,6 +39,12 @@ impl FieldOps for MeshGrid {
             .expect("resampling shares this geometry")
     }
 
+    fn map_centers_batch<G: FnOnce(&[Point2D]) -> Vec<f64>>(&self, f: G) -> Self {
+        // Cell centres are the sites, already in cell order.
+        self.with_values(FieldArray1D::from_vec(f(self.sites())))
+            .expect("one value per cell shares this geometry")
+    }
+
     fn poisson(&self, cfg: Option<PoissonConfig>) -> Result<(Self, SolveInfo)> {
         self.poisson_cg(cfg)
     }
@@ -49,5 +55,27 @@ impl FieldOps for MeshGrid {
 
     fn convolve(&self, kernel: &Kernel) -> Result<Self> {
         MeshGrid::convolve(self, kernel)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::grid::{BBox, ScalarField2D};
+    use crate::rng::Lcg;
+
+    #[test]
+    fn map_centers_batch_matches_map_centers() {
+        let mut rng = Lcg::new(0x5A3);
+        let bbox = BBox::from_lims(-1.0, 1.0, -1.0, 1.0);
+        let sites: Vec<Point2D> =
+            (0..80).map(|_| Point2D::new(2.0 * rng.f() - 1.0, 2.0 * rng.f() - 1.0)).collect();
+        let m = MeshGrid::zeros(&sites, bbox).unwrap();
+        let g = |p: Point2D| p.x + 2.0 * p.y;
+        let a = m.map_centers(g);
+        let b = m.map_centers_batch(|cs| cs.iter().map(|&p| g(p)).collect());
+        for i in 0..ScalarField2D::len(&a) {
+            assert_eq!(a.value_at(i), b.value_at(i));
+        }
     }
 }

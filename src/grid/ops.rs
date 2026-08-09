@@ -115,6 +115,15 @@ pub trait FieldOps: ScalarField2D + Sized {
     /// * `f` - evaluated at each cell centre.
     fn map_centers<G: Fn(Point2D) -> f64>(&self, f: G) -> Self;
 
+    /// The batched form of [`map_centers`](Self::map_centers): `f` receives **all**
+    /// cell centres in cell order and returns one value per cell, so a caller can
+    /// batch expensive per-point work (ray-tracing, interpolation) rather than
+    /// paying one closure call per cell.
+    ///
+    /// # Arguments
+    /// * `f` - maps the slice of all cell centres to one value per cell.
+    fn map_centers_batch<G: FnOnce(&[Point2D]) -> Vec<f64>>(&self, f: G) -> Self;
+
     /// Solve `∇²ψ = f` with this field as the source `f`, returning the potential
     /// `ψ` and solver diagnostics. The boundary handling is
     /// representation-specific (see the [`grid`](crate::grid) module docs).
