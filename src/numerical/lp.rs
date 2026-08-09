@@ -21,8 +21,9 @@ const R_MAX: f64 = 1.0e6;
 
 /// Outcome of a linear program.
 pub(crate) enum LpStatus {
-    /// Optimal vertex/solution `x` with objective value `cᵀx`.
-    Optimal(Vec<f64>, f64),
+    /// Optimal vertex/solution `x` with objective value `cᵀx` (the value is part of the
+    /// contract; not every caller reads it).
+    Optimal(Vec<f64>, #[allow(dead_code)] f64),
     /// The constraints admit no feasible point (polyhedron is empty).
     Infeasible,
     /// The objective is unbounded below on the feasible region.

@@ -12,10 +12,13 @@
 //! * `extended` — extended-source imaging: the lensed surface-brightness field.
 //! * `constraints` — the inverse point-image polytope: images + a κ basis → `A x ≤ b`,
 //!   `C x = d` over the cell masses and source positions.
+//! * `ensemble` — hit-and-run sampling of that polytope (the degenerate-solution ensemble)
+//!   and its statistics.
 //!
 //! Forward first; the inverse layers grow in place beside these forward primitives.
 
 pub mod constraints;
+pub mod ensemble;
 pub mod extended;
 pub mod extrema;
 pub mod image;
