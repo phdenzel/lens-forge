@@ -81,6 +81,16 @@ pub trait LensModel {
         0.5 * (h[0][0] + h[1][1])
     }
 
+    /// Shear magnitude γ(θ) = √(γ₁² + γ₂²) with γ₁ = ½(ψxx − ψyy), γ₂ = ψxy.
+    ///
+    /// With the convergence κ it fixes the Jacobian eigenvalues λ = 1 − κ ∓ γ.
+    fn shear(&self, theta: Point2D) -> f64 {
+        let h = self.jet(theta).hessian;
+        let g1 = 0.5 * (h[0][0] - h[1][1]);
+        let g2 = h[0][1];
+        (g1 * g1 + g2 * g2).sqrt()
+    }
+
     /// Scaled deflection angle α(θ) = ∇ψ.
     fn deflection(&self, theta: Point2D) -> Point2D {
         self.jet(theta).alpha
@@ -165,5 +175,17 @@ mod tests {
         let p = Point2D::origin();
         assert!((lens.jacobian_det(p) - 0.75).abs() < 1e-12);
         assert!((lens.magnification(p) - 1.0 / 0.75).abs() < 1e-12);
+    }
+
+    #[test]
+    fn convergence_and_shear_from_the_hessian() {
+        // H = [[2, 0.5], [0.5, 0]]: κ = ½(2+0) = 1, γ = √(1² + 0.5²) = √1.25.
+        let lens = ConstHessian([[2.0, 0.5], [0.5, 0.0]]);
+        let p = Point2D::origin();
+        assert!((lens.convergence(p) - 1.0).abs() < 1e-12);
+        assert!((lens.shear(p) - 1.25_f64.sqrt()).abs() < 1e-12);
+        // det A = λ_t·λ_r = (1−κ−γ)(1−κ+γ) = γ² − ... check the identity det = (1−κ)²−γ².
+        let (kappa, gamma) = (lens.convergence(p), lens.shear(p));
+        assert!((lens.jacobian_det(p) - ((1.0 - kappa).powi(2) - gamma * gamma)).abs() < 1e-12);
     }
 }
