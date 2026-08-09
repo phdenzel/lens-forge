@@ -1,57 +1,26 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Markov-chain Monte Carlo sampling of a convex polytope, by hit-and-run.
+//! The hit-and-run sampler.
 //!
 //! Hit-and-run is a Markov chain whose stationary distribution is uniform on the body: from
-//! the current point, pick an isotropic direction, and jump to a uniform point on the chord
-//! it cuts. Given `{x : A_ub x ≤ b_ub, A_eq x = b_eq}`, the equalities are removed by working
-//! in an orthonormal basis `Z` of their null space: `x = x₀ + Z y` keeps every draw on the
-//! constraint hyperplanes, and the inequalities become `Ã y ≤ b̃` with `Ã = A_ub Z`,
-//! `b̃ = b_ub − A_ub x₀`. Because `Z` is orthonormal, a uniform draw in `y` is a uniform draw
-//! in `x` on the subspace. Walkers start from the Chebyshev centre and run independently
-//! (rayon); unbounded directions are clamped to a finite reach. This is the domain-agnostic
-//! engine behind [`solver::ensemble`](crate::solver::ensemble); further chains (Dikin walk,
-//! reversible-jump) would join it here.
+//! the current point, pick an isotropic direction and jump to a uniform point on the chord
+//! it cuts. After the equality [`reduction`](super::polytope) the inequalities are
+//! `Ã y ≤ b̃`; walkers start from the Chebyshev centre and run independently (rayon).
+//! Unbounded (recession) directions are clamped to a finite reach.
 
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use rayon::prelude::*;
 
 use crate::numerical::lp::chebyshev_center;
-use crate::numerical::svd::pseudo_inverse;
 use crate::rng::Lcg;
+
+use super::polytope::{
+    equality_residual, null_space, particular_solution, reconstruct, Polytope, PolytopeSample,
+};
 
 /// Clamp on an unbounded hit-and-run segment (a recession direction), keeping draws finite.
 const REACH: f64 = 1.0e6;
-
-/// A convex polytope `{x ∈ ℝⁿ : A_ub x ≤ b_ub, A_eq x = b_eq}` as borrowed matrices.
-pub(crate) struct Polytope<'a> {
-    /// Inequality matrix `A_ub` (`k_ub × n`).
-    pub a_ub: &'a Array2<f64>,
-    /// Inequality right-hand sides.
-    pub b_ub: &'a [f64],
-    /// Equality matrix `A_eq` (`k_eq × n`; use a `0 × n` array for none).
-    pub a_eq: &'a Array2<f64>,
-    /// Equality right-hand sides.
-    pub b_eq: &'a [f64],
-    /// Number of unknowns `n`.
-    pub n: usize,
-}
-
-/// The result of a hit-and-run sampling run.
-pub(crate) enum PolytopeSample {
-    /// Drawn points (each length `n`) with the equality residual of the base point `x₀`.
-    Ok {
-        /// The drawn points.
-        points: Vec<Vec<f64>>,
-        /// `‖A_eq x₀ − b_eq‖_∞`.
-        residual: f64,
-    },
-    /// The equalities have no solution.
-    InconsistentEqualities,
-    /// The polytope has no full-dimensional interior (empty or lower-dimensional).
-    EmptyInterior,
-}
 
 /// Draw `walkers × per_walker` points uniformly from `poly` by hit-and-run.
 ///
@@ -61,7 +30,7 @@ pub(crate) enum PolytopeSample {
 /// * `burn_in` - steps discarded before recording, per walker.
 /// * `per_walker` - recorded samples per walker.
 /// * `seed` - base RNG seed (each walker derives a distinct stream).
-pub(crate) fn sample(
+pub(crate) fn hit_and_run(
     poly: &Polytope,
     walkers: usize,
     burn_in: usize,
@@ -89,11 +58,11 @@ pub(crate) fn sample(
             let mut rng = Lcg::new(seed.wrapping_add((w as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)));
             let mut y = y_c.clone();
             for _ in 0..burn_in {
-                hit_and_run_step(&a_tilde, &b_tilde, &mut y, &mut rng);
+                step(&a_tilde, &b_tilde, &mut y, &mut rng);
             }
             let mut out = Vec::with_capacity(per_walker);
             for _ in 0..per_walker {
-                hit_and_run_step(&a_tilde, &b_tilde, &mut y, &mut rng);
+                step(&a_tilde, &b_tilde, &mut y, &mut rng);
                 out.push(reconstruct(&x0, &z, &y));
             }
             out
@@ -106,73 +75,9 @@ pub(crate) fn sample(
     PolytopeSample::Ok { points, residual }
 }
 
-/// Minimum-norm particular solution `x₀ = Aᵀ(AAᵀ)⁺ b` of `A x = b` (zero when no equalities).
-fn particular_solution(a: &Array2<f64>, b: &[f64], n: usize) -> Array1<f64> {
-    if a.nrows() == 0 {
-        return Array1::zeros(n);
-    }
-    let aat = a.dot(&a.t());
-    let pinv = pseudo_inverse(&aat, 1e-10);
-    a.t().dot(&pinv.dot(&Array1::from(b.to_vec())))
-}
-
-/// Worst-case equality residual `‖A x − b‖_∞` (zero when there are no equalities).
-fn equality_residual(a: &Array2<f64>, b: &[f64], x: &Array1<f64>) -> f64 {
-    if a.nrows() == 0 {
-        return 0.0;
-    }
-    (a.dot(x) - Array1::from(b.to_vec())).iter().fold(0.0_f64, |m, v| m.max(v.abs()))
-}
-
-/// Orthonormal basis (`n × k`) of the null space of `A`, by modified Gram–Schmidt: first
-/// orthonormalize the rows, then complete the standard basis against them.
-fn null_space(a: &Array2<f64>, n: usize) -> Array2<f64> {
-    let tol = 1e-9;
-    let mut row_basis: Vec<Array1<f64>> = Vec::new();
-    for i in 0..a.nrows() {
-        let mut v = a.row(i).to_owned();
-        for q in &row_basis {
-            let p = v.dot(q);
-            v = &v - &(q * p);
-        }
-        let nrm = v.dot(&v).sqrt();
-        if nrm > tol {
-            row_basis.push(v / nrm);
-        }
-    }
-    let mut null: Vec<Array1<f64>> = Vec::new();
-    for j in 0..n {
-        let mut v = Array1::<f64>::zeros(n);
-        v[j] = 1.0;
-        for q in row_basis.iter().chain(null.iter()) {
-            let p = v.dot(q);
-            v = &v - &(q * p);
-        }
-        let nrm = v.dot(&v).sqrt();
-        if nrm > tol {
-            null.push(v / nrm);
-        }
-    }
-    let mut z = Array2::<f64>::zeros((n, null.len()));
-    for (col, v) in null.iter().enumerate() {
-        for r in 0..n {
-            z[[r, col]] = v[r];
-        }
-    }
-    z
-}
-
-/// Reconstruct `x = x₀ + Z y` from null-space coordinates.
-fn reconstruct(x0: &Array1<f64>, z: &Array2<f64>, y: &[f64]) -> Vec<f64> {
-    if y.is_empty() {
-        return x0.to_vec();
-    }
-    (x0 + &z.dot(&Array1::from(y.to_vec()))).to_vec()
-}
-
 /// One hit-and-run step: draw an isotropic direction, find the feasible segment against
 /// `Ã y ≤ b̃`, and move to a uniform point on it (clamping unbounded reach).
-fn hit_and_run_step(a: &Array2<f64>, b: &[f64], y: &mut [f64], rng: &mut Lcg) {
+fn step(a: &Array2<f64>, b: &[f64], y: &mut [f64], rng: &mut Lcg) {
     let k = y.len();
     if k == 0 {
         return;
@@ -211,7 +116,7 @@ fn hit_and_run_step(a: &Array2<f64>, b: &[f64], y: &mut [f64], rng: &mut Lcg) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use ndarray::{array, Array2};
 
     fn points_of(s: PolytopeSample) -> Vec<Vec<f64>> {
         match s {
@@ -227,7 +132,7 @@ mod tests {
         let b = [0.0, 1.0, 0.0, 1.0];
         let eq = Array2::<f64>::zeros((0, 2));
         let poly = Polytope { a_ub: &a, b_ub: &b, a_eq: &eq, b_eq: &[], n: 2 };
-        let pts = points_of(sample(&poly, 8, 200, 200, 0x5EED));
+        let pts = points_of(hit_and_run(&poly, 8, 200, 200, 0x5EED));
         assert_eq!(pts.len(), 8 * 200);
         let mut mean = [0.0; 2];
         for p in &pts {
@@ -243,11 +148,10 @@ mod tests {
 
     #[test]
     fn inconsistent_equalities_are_reported() {
-        // x = 0.3 and x = 0.7.
         let a = array![[-1.0]];
         let eq = array![[1.0], [1.0]];
         let poly = Polytope { a_ub: &a, b_ub: &[0.0], a_eq: &eq, b_eq: &[0.3, 0.7], n: 1 };
-        assert!(matches!(sample(&poly, 1, 1, 1, 1), PolytopeSample::InconsistentEqualities));
+        assert!(matches!(hit_and_run(&poly, 1, 1, 1, 1), PolytopeSample::InconsistentEqualities));
     }
 
     #[test]
@@ -256,7 +160,7 @@ mod tests {
         let a = array![[1.0], [-1.0]];
         let eq = Array2::<f64>::zeros((0, 1));
         let poly = Polytope { a_ub: &a, b_ub: &[0.0, -1.0], a_eq: &eq, b_eq: &[], n: 1 };
-        assert!(matches!(sample(&poly, 1, 1, 1, 1), PolytopeSample::EmptyInterior));
+        assert!(matches!(hit_and_run(&poly, 1, 1, 1, 1), PolytopeSample::EmptyInterior));
     }
 
     #[test]
@@ -265,7 +169,7 @@ mod tests {
         let a = array![[-1.0]];
         let eq = array![[1.0]];
         let poly = Polytope { a_ub: &a, b_ub: &[0.0], a_eq: &eq, b_eq: &[0.5], n: 1 };
-        let pts = points_of(sample(&poly, 2, 1, 3, 1));
+        let pts = points_of(hit_and_run(&poly, 2, 1, 3, 1));
         assert!(pts.iter().all(|p| (p[0] - 0.5).abs() < 1e-9), "not unique: {pts:?}");
     }
 }

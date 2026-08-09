@@ -100,7 +100,7 @@ impl HitAndRun {
             b_eq: &cs.b_eq,
             n: cs.n_unknowns(),
         };
-        match mcmc::sample(&poly, self.walkers, self.burn_in, self.per_walker, self.seed) {
+        match mcmc::hit_and_run(&poly, self.walkers, self.burn_in, self.per_walker, self.seed) {
             PolytopeSample::InconsistentEqualities => Err(LensForgeError::computation_error(
                 "inconsistent equality constraints (no solution)",
             )),
