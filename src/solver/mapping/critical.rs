@@ -205,7 +205,7 @@ impl CriticalTracer {
 mod tests {
     use super::*;
     use crate::grid::{BBox, Grid2D, MeshGrid, PixelGrid, Point2D};
-    use crate::lens::{PointMass, SIS};
+    use crate::lens::{PointMass, SIE, SIS};
     use crate::rng::Lcg;
 
     /// Every segment endpoint lies at radius `radius` (within `tol`).
@@ -304,5 +304,28 @@ mod tests {
         let lens = SIS::new(Point2D::origin(), 0.6);
         let curve = CriticalTracer::new().trace(&lens, Point2D::new(0.6, 0.0), Stretch::Radial);
         assert!(curve.is_empty());
+    }
+
+    #[test]
+    fn corrector_rejects_a_seed_it_cannot_refine() {
+        // On an elliptical (SIE) oval the corrected point carries a ~1e-14 residual, so a
+        // tolerance below attainable precision exhausts the corrector and rejects the seed:
+        // tracing never starts. Exercises `with_tol` and the corrector fall-through.
+        let lens = SIE::new(Point2D::origin(), 0.6, 0.7, 0.0);
+        let curve = CriticalTracer::new()
+            .with_tol(1e-18)
+            .trace(&lens, Point2D::new(0.55, 0.0), Stretch::Tangential);
+        assert!(curve.is_empty());
+    }
+
+    #[test]
+    fn tracer_respects_the_max_points_cap() {
+        // The polyline never exceeds the cap plus the seed (exercises `with_max_points`).
+        let lens = SIS::new(Point2D::origin(), 0.6);
+        let curve = CriticalTracer::new()
+            .with_step(0.02)
+            .with_max_points(5)
+            .trace(&lens, Point2D::new(0.55, 0.0), Stretch::Tangential);
+        assert!(!curve.is_empty() && curve.len() <= 6, "len {}", curve.len());
     }
 }
