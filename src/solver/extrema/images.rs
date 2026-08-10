@@ -11,9 +11,9 @@
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;
-use crate::solver::image::Image;
 use crate::solver::basis::MapDiscretization;
-use crate::solver::mapping::newton::{newton, NewtonConfig};
+use crate::solver::image::Image;
+use super::newton::{newton, NewtonConfig};
 
 /// Image-plane distance below which two polished images are treated as one.
 const DEDUP_TOL: f64 = 1e-6;

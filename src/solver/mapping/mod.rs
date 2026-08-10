@@ -10,16 +10,14 @@
 //! * `magnification` — signed magnification μ(θ) = 1/det A.
 //! * `convergence` — convergence κ(θ) = ½∇²ψ.
 //! * `critical` — critical curves (det A = 0) and their caustics.
-//! * `newton` — Newton's method on the lens map (Jacobian = A), refining a seed
-//!   to an image of a point source.
 //! * `raytrace` — batched image-plane → source-plane ray-tracing.
 //!
-//! The pixel/mesh discretizations of this map (`MapDiscretization` and its realizations) live
-//! in [`basis`](crate::solver::basis).
+//! Point-source image finding (Newton polishing, the Fermat surface) lives in
+//! [`extrema`](crate::solver::extrema); the pixel/mesh discretizations of this map
+//! (`MapDiscretization` and its realizations) live in [`basis`](crate::solver::basis).
 
 pub mod convergence;
 pub mod critical;
 pub mod jacobian;
 pub mod magnification;
-pub mod newton;
 pub mod raytrace;

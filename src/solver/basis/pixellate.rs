@@ -80,7 +80,7 @@ impl MapDiscretization for MapPixellation {
 mod tests {
     use super::*;
     use crate::lens::SIS;
-    use crate::solver::mapping::newton::{newton, NewtonConfig};
+    use crate::solver::extrema::newton::{newton, NewtonConfig};
 
     /// Newton-polish the seeds and collapse them to distinct images.
     fn distinct_images(lens: &dyn LensModel, beta: Point2D, seeds: &[Point2D]) -> Vec<Point2D> {

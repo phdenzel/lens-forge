@@ -75,7 +75,7 @@ mod tests {
     use super::*;
     use crate::lens::SIS;
     use crate::rng::Lcg;
-    use crate::solver::mapping::newton::{newton, NewtonConfig};
+    use crate::solver::extrema::newton::{newton, NewtonConfig};
 
     /// A jittered `n × n` lattice of image-plane samples over `[-half, half]²`.
     fn jittered_samples(n: usize, half: f64) -> (Vec<Point2D>, BBox) {
