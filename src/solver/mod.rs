@@ -43,4 +43,5 @@ pub mod mapping;
 pub mod solve;
 
 pub use forward::ForwardModel;
+pub use inverse::FreeFormInversion;
 pub use solve::{Solution, Solve};

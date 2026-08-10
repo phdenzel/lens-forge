@@ -20,13 +20,17 @@
 //!   (importance weights + effective sample size).
 //! * `reduce` — collapse that weighted ensemble to the observation-constrained posterior
 //!   sub-ensemble (SIR resampling or a weight-threshold cull).
+//! * `freeform` — the [`FreeFormInversion`](freeform::FreeFormInversion) driver running the
+//!   whole pipeline (polytope → ensemble → re-weight → reduce → optional source).
 
 pub mod backproject;
+pub mod freeform;
 pub mod reduce;
 pub mod reweight;
 pub mod semilinear;
 pub mod source_plane;
 
+pub use freeform::{EnsembleSummary, ExtendedData, FreeFormInput, FreeFormInversion, FreeFormResult};
 pub use reduce::{reduce_ensemble, ReduceConfig, ReduceMethod};
 pub use reweight::{image_chi_squared, importance_weights, reweight_ensemble, WeightedEnsemble};
 pub use semilinear::{invert_source, Regularizer};
