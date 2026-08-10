@@ -7,15 +7,20 @@
 //! representation-specific hook that lets a Voronoi [`MeshGrid`] or a regular [`PixelGrid`]
 //! carry the reconstructed source. It builds a zero-initialized field over the back-projected
 //! generators and — via [`CellAdjacency`] — feeds the smoothness regularizer. On top of it,
-//! [`source_field`] constructs a member's source plane for the semi-linear inversion.
+//! [`source_field`] constructs a member's source plane, and [`reconstruct_source`] solves the
+//! semi-linear inversion and pours the coefficients back into a [`SourceModel`].
+//!
+//! [`SourceModel`]: crate::source::SourceModel
 
 use crate::grid::{
-    BBox, CellAdjacency, FieldOps, Grid2D, MeshGrid, PixelGrid, Point2D, ScalarField2D,
+    BBox, CellAdjacency, FieldArray1D, FieldOps, Grid2D, MeshGrid, PixelGrid, Point2D,
+    ScalarField2D,
 };
 use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::lens::LensModel;
 use crate::solver::extended::operator::LensingOperator;
+use crate::source::SourceField;
 use crate::Result;
 
 use super::backproject::back_project;
@@ -54,11 +59,24 @@ pub trait SourceBasis: FieldOps + CellAdjacency + Sized {
     /// # Errors
     /// Propagates a construction failure (e.g. too few distinct generators).
     fn from_generators(sites: &[Point2D], bbox: BBox, cfg: &SourceConfig) -> Result<Self>;
+
+    /// This geometry carrying the solved surface-brightness coefficients `s`.
+    ///
+    /// # Arguments
+    /// * `s` - one coefficient per cell (in cell-index order), length [`len`](crate::grid::ScalarField2D::len).
+    ///
+    /// # Errors
+    /// Fails on a length mismatch against this field's cell count.
+    fn with_coeffs(&self, s: &[f64]) -> Result<Self>;
 }
 
 impl SourceBasis for MeshGrid {
     fn from_generators(sites: &[Point2D], bbox: BBox, _cfg: &SourceConfig) -> Result<Self> {
         MeshGrid::zeros(sites, bbox)
+    }
+
+    fn with_coeffs(&self, s: &[f64]) -> Result<Self> {
+        self.with_values(FieldArray1D::from_vec(s.to_vec()))
     }
 }
 
@@ -69,6 +87,10 @@ impl SourceBasis for PixelGrid {
             .unwrap_or_else(|| (sites.len() as f64).sqrt().round() as usize)
             .max(2);
         Ok(PixelGrid::zeros(Grid2D::new(n, n, bbox)?))
+    }
+
+    fn with_coeffs(&self, s: &[f64]) -> Result<Self> {
+        PixelGrid::from_vec(self.grid, s.to_vec())
     }
 }
 
@@ -116,11 +138,41 @@ pub(super) fn invert_member<S: SourceBasis>(
     Ok((source, f, s))
 }
 
+/// Reconstruct the source of one member as a [`SourceModel`](crate::source::SourceModel):
+/// back-project the arc mask, solve the semi-linear inversion, and pour the coefficients
+/// back onto the source plane. The representation `S` (mesh or pixel) is the caller's choice.
+///
+/// # Arguments
+/// * `lens` - the member's lens model.
+/// * `image` - the image-plane geometry.
+/// * `data` - the observed image (length `image.len()`).
+/// * `noise` - the noise model.
+/// * `mask` - the arc mask.
+/// * `lambda` - source-inversion regularization strength.
+/// * `source_cfg` - the source-plane build config (padding, pixel resolution).
+///
+/// # Errors
+/// Propagates a source-plane construction failure (e.g. too few active pixels).
+pub fn reconstruct_source<S: SourceBasis>(
+    lens: &dyn LensModel,
+    image: &PixelGrid,
+    data: &[f64],
+    noise: &Noise,
+    mask: &Mask,
+    lambda: f64,
+    source_cfg: &SourceConfig,
+) -> Result<SourceField<S>> {
+    let (source, _f, s) = invert_member::<S>(lens, image, data, noise, mask, lambda, source_cfg)?;
+    Ok(SourceField::new(source.with_coeffs(&s)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::grid::Grid2D;
     use crate::lens::SIS;
+    use crate::solver::extended::imaging::ImageSimulation;
+    use crate::source::SourceModel;
 
     #[test]
     fn source_field_has_one_generator_per_active_pixel() {
@@ -140,5 +192,47 @@ mod tests {
         let mask = Mask::from_flags(&vec![false; image.len()]);
         let cfg = SourceConfig { pad: 0.1, resolution: None };
         assert!(source_field::<MeshGrid>(&lens, &image, &mask, &cfg).is_err());
+    }
+
+    /// The arc of an SIS(θ_E = 0.5) lensing a compact off-centre Gaussian, with an arc mask.
+    fn arc_scenario() -> (PixelGrid, Vec<f64>, Noise, Mask) {
+        let truth = SIS::new(Point2D::origin(), 0.5);
+        let src = PixelGrid::from_func(Grid2D::square(24, 1.5).unwrap(), |x, y| {
+            (-((x - 0.1).powi(2) + y * y) / 0.03).exp()
+        });
+        let image = PixelGrid::constant(Grid2D::square(16, 2.0).unwrap(), 0.0);
+        let data_img = ImageSimulation::Direct.image(&truth, &SourceField::new(src), &image);
+        let data: Vec<f64> = (0..image.len()).map(|i| data_img.value_at(i)).collect();
+        let mask = Mask::from_flags(&data.iter().map(|&d| d > 1e-3).collect::<Vec<_>>());
+        (image, data, Noise::uniform(0.05), mask)
+    }
+
+    #[test]
+    fn reconstruct_source_yields_a_source_model() {
+        // The truth-matching lens reconstructs a source with brightness near the true
+        // off-centre Gaussian at β ≈ (0.1, 0); a mesh and a pixel source both work.
+        let (image, data, noise, mask) = arc_scenario();
+        let lens = SIS::new(Point2D::origin(), 0.5);
+        let cfg = SourceConfig::default();
+
+        let mesh_src =
+            reconstruct_source::<MeshGrid>(&lens, &image, &data, &noise, &mask, 1e-4, &cfg).unwrap();
+        let pix_src =
+            reconstruct_source::<PixelGrid>(&lens, &image, &data, &noise, &mask, 1e-4, &cfg)
+                .unwrap();
+
+        assert!(mesh_src.brightness(Point2D::new(0.1, 0.0)).abs() > 0.0);
+        assert!(pix_src.brightness(Point2D::new(0.1, 0.0)).abs() > 0.0);
+    }
+
+    #[test]
+    fn reconstruct_source_fails_without_active_pixels() {
+        let (image, data, noise, _) = arc_scenario();
+        let lens = SIS::new(Point2D::origin(), 0.5);
+        let mask = Mask::from_flags(&vec![false; image.len()]);
+        let cfg = SourceConfig::default();
+        assert!(
+            reconstruct_source::<MeshGrid>(&lens, &image, &data, &noise, &mask, 1e-4, &cfg).is_err()
+        );
     }
 }
