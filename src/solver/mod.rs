@@ -36,9 +36,11 @@ pub mod constraints;
 pub mod ensemble;
 pub mod extended;
 pub mod extrema;
+pub mod forward;
 pub mod image;
 pub mod inverse;
 pub mod mapping;
 pub mod solve;
 
+pub use forward::ForwardModel;
 pub use solve::{Solution, Solve};
