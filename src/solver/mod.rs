@@ -39,3 +39,6 @@ pub mod extrema;
 pub mod image;
 pub mod inverse;
 pub mod mapping;
+pub mod solve;
+
+pub use solve::{Solution, Solve};
