@@ -84,7 +84,7 @@ mod uniform;
 
 pub use bbox::BBox;
 pub use contour::ContourSegment;
-pub use field::ScalarField2D;
+pub use field::{CellAdjacency, ScalarField2D};
 pub use kernel::Kernel;
 pub use ops::{FieldOps, PoissonConfig};
 pub use point::Point2D;

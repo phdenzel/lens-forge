@@ -86,6 +86,31 @@ pub trait ScalarField2D {
     }
 }
 
+/// Per-cell adjacency of a discretized field: the cells sharing an edge with cell `i`.
+///
+/// The grid-topology seam reused by the convergence basis (gradient-limit priors) and
+/// the source-plane smoothness regularizer, so both run on either representation.
+pub trait CellAdjacency {
+    /// Indices of the cells adjacent to cell `i`.
+    ///
+    /// # Arguments
+    /// * `i` - cell index.
+    fn cell_neighbors(&self, i: usize) -> Vec<usize>;
+}
+
+impl CellAdjacency for PixelGrid {
+    fn cell_neighbors(&self, i: usize) -> Vec<usize> {
+        // Four edge-neighbours located by sampling the grid one pixel away.
+        let c = ScalarField2D::center(self, i);
+        let (dx, dy) = (self.dx(), self.dy());
+        [(dx, 0.0), (-dx, 0.0), (0.0, dy), (0.0, -dy)]
+            .iter()
+            .filter_map(|&(ox, oy)| self.cell_of(&Point2D::new(c.x + ox, c.y + oy)))
+            .filter(|&j| j != i)
+            .collect()
+    }
+}
+
 impl ScalarField2D for PixelGrid {
     fn len(&self) -> usize {
         self.grid.n_pixels()

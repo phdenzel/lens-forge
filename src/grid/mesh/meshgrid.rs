@@ -9,7 +9,7 @@
 //! `map`, …) clone cheaply without duplicating the tessellation.
 
 use super::voronoi::VoronoiMesh;
-use crate::grid::{BBox, FieldArray1D, Point2D, ScalarField2D};
+use crate::grid::{BBox, CellAdjacency, FieldArray1D, Point2D, ScalarField2D};
 use crate::{LensForgeError, Result};
 use ndarray::ArrayView1;
 use rayon::prelude::*;
@@ -504,6 +504,12 @@ impl MeshGrid {
     pub fn par_resample(&self, sites: &[Point2D], bbox: BBox) -> Result<Self> {
         let values: Vec<f64> = sites.par_iter().map(|&s| self.sample(s)).collect();
         Self::new(sites, bbox, FieldArray1D::from_vec(values))
+    }
+}
+
+impl CellAdjacency for MeshGrid {
+    fn cell_neighbors(&self, i: usize) -> Vec<usize> {
+        self.neighbors(i).to_vec()
     }
 }
 
