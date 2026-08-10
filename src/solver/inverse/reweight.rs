@@ -27,6 +27,16 @@ use crate::solver::basis::{SourceBasis, SourceConfig};
 /// Coarse source-plane binning for the dispersion cull.
 const DISP_BINS: usize = 8;
 
+/// A point-image ensemble paired with its extended-image importance weights.
+pub struct WeightedEnsemble {
+    /// The re-weighted ensemble.
+    pub ensemble: Ensemble,
+    /// Per-member normalized importance weights (aligned with `ensemble.members`).
+    pub weights: Vec<f64>,
+    /// Effective sample size of the weights.
+    pub ess: f64,
+}
+
 /// The image-plane χ² of a `model` against `data` under the mask-weighted noise covariance.
 ///
 /// # Arguments
@@ -64,9 +74,10 @@ pub fn importance_weights(chi2: &[f64]) -> Vec<f64> {
     w
 }
 
-/// Re-weight `ensemble` by extended-image evidence, returning the normalized weights and
-/// their effective sample size. The source-plane representation `S` (mesh or pixel) is
-/// chosen by the caller via turbofish, e.g. `reweight_ensemble::<MeshGrid, _>(…)`.
+/// Re-weight `ensemble` by extended-image evidence, returning it paired with the normalized
+/// weights and their effective sample size (a [`WeightedEnsemble`]). The source-plane
+/// representation `S` (mesh or pixel) is chosen by the caller via turbofish, e.g.
+/// `reweight_ensemble::<MeshGrid, _>(…)`.
 ///
 /// # Arguments
 /// * `ensemble` - the point-image ensemble to re-weight.
@@ -92,7 +103,7 @@ pub fn reweight_ensemble<S: SourceBasis, B>(
     lambda: f64,
     source_cfg: &SourceConfig,
     dispersion_cut: Option<f64>,
-) -> (Vec<f64>, f64)
+) -> WeightedEnsemble
 where
     B: Fn(&[f64]) -> Box<dyn LensModel> + Sync,
 {
@@ -109,7 +120,7 @@ where
         .collect();
     let weights = importance_weights(&chi2);
     let ess = effective_sample_size(&weights);
-    (weights, ess)
+    WeightedEnsemble { ensemble: ensemble.clone(), weights, ess }
 }
 
 /// The image χ² of one member, or `+∞` if it is culled or its inversion cannot be set up.
@@ -207,7 +218,7 @@ mod tests {
         // source-plane fitting only weakly breaks the lens degeneracy).
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<MeshGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9, "weights: {w:?}");
@@ -221,7 +232,7 @@ mod tests {
         // re-weights the same scenario, yielding a valid normalized distribution.
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<PixelGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<PixelGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9, "weights: {w:?}");
@@ -235,7 +246,7 @@ mod tests {
         let (image, data, ensemble, noise, _) = arc_scenario();
         let mask = Mask::from_flags(&vec![false; image.len()]);
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<MeshGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
         );
         assert!(w.iter().all(|&x| x == 0.0));
@@ -248,7 +259,7 @@ mod tests {
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let psf = Psf::gaussian(0.15);
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<MeshGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, Some(&psf), 1e-4, &cfg, None,
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
@@ -260,7 +271,7 @@ mod tests {
         // The cull is evaluated but passed (dispersion ≤ cut), so members proceed to the fit.
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<MeshGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, Some(1e12),
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
@@ -273,7 +284,7 @@ mod tests {
         // weight — the deterministic test of the cull plumbing.
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let cfg = SourceConfig::default();
-        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+        let WeightedEnsemble { weights: w, ess, .. } = reweight_ensemble::<MeshGrid, _>(
             &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, Some(-1.0),
         );
         assert!(w.iter().all(|&x| x == 0.0), "everything culled: {w:?}");

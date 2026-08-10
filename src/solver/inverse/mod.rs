@@ -16,13 +16,18 @@
 //!   dispersion cull.
 //! * `semilinear` — Warren & Dye source inversion `(Fᵀ W F + λ R) s = Fᵀ W d` and its
 //!   graph-Laplacian regularizer.
-//! * `reweight` — per-member forward χ² → importance weights + effective sample size.
+//! * `reweight` — per-member forward χ² → a [`WeightedEnsemble`](reweight::WeightedEnsemble)
+//!   (importance weights + effective sample size).
+//! * `reduce` — collapse that weighted ensemble to the observation-constrained posterior
+//!   sub-ensemble (SIR resampling or a weight-threshold cull).
 
 pub mod backproject;
+pub mod reduce;
 pub mod reweight;
 pub mod semilinear;
 pub mod source_plane;
 
-pub use reweight::{image_chi_squared, importance_weights, reweight_ensemble};
+pub use reduce::{reduce_ensemble, ReduceConfig, ReduceMethod};
+pub use reweight::{image_chi_squared, importance_weights, reweight_ensemble, WeightedEnsemble};
 pub use semilinear::{invert_source, Regularizer};
 pub use source_plane::{reconstruct_source, source_field};
