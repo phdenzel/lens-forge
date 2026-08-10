@@ -19,6 +19,7 @@
 //!
 //! Forward first; the inverse layers grow in place beside these forward primitives.
 
+pub mod basis;
 pub mod constraints;
 pub mod ensemble;
 pub mod extended;

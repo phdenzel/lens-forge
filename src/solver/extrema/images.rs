@@ -12,7 +12,7 @@
 use crate::grid::Point2D;
 use crate::lens::LensModel;
 use crate::solver::image::Image;
-use crate::solver::mapping::discretization::MapDiscretization;
+use crate::solver::basis::MapDiscretization;
 use crate::solver::mapping::newton::{newton, NewtonConfig};
 
 /// Image-plane distance below which two polished images are treated as one.
@@ -55,8 +55,7 @@ mod tests {
     use crate::lens::SIS;
     use crate::rng::Lcg;
     use crate::solver::image::Parity;
-    use crate::solver::mapping::pixellate::MapPixellation;
-    use crate::solver::mapping::tessellate::MapTessellation;
+    use crate::solver::basis::{MapPixellation, MapTessellation};
 
     /// The image of `images` nearest `theta`, if any is within `tol`.
     fn image_at<'a>(images: &'a [Image], theta: Point2D, tol: f64) -> Option<&'a Image> {

@@ -9,8 +9,8 @@
 //! and reuses the shared containment test.
 
 use super::discretization::{seed_if_contains, MapDiscretization};
-use super::raytrace::RayTracer;
 use crate::grid::{Grid2D, Point2D};
+use crate::solver::mapping::raytrace::RayTracer;
 use crate::lens::LensModel;
 
 /// A lattice-quad discretization of the lens map: `nx × ny` image-plane nodes,

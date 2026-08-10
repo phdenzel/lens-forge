@@ -9,8 +9,8 @@
 //! containment test.
 
 use super::discretization::{seed_if_contains, MapDiscretization};
-use super::raytrace::RayTracer;
 use crate::grid::{BBox, MeshGrid, Point2D};
+use crate::solver::mapping::raytrace::RayTracer;
 use crate::lens::LensModel;
 use crate::Result;
 

@@ -13,7 +13,7 @@ use ndarray::Array2;
 use crate::numerical::lp::{self, LpStatus};
 use crate::solver::image::PointImageSystem;
 
-use super::influence::{FieldCoefficients, KappaBasis};
+use crate::solver::basis::{FieldCoefficients, KappaBasis};
 
 /// Options controlling which regularizing inequalities the builder emits.
 #[derive(Debug, Clone, Copy, Default)]

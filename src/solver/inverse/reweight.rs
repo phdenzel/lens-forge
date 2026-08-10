@@ -21,7 +21,8 @@ use crate::solver::ensemble::summaries::effective_sample_size;
 use crate::solver::ensemble::Ensemble;
 
 use super::backproject::source_plane_dispersion;
-use super::source_plane::{invert_member, SourceBasis, SourceConfig};
+use super::source_plane::invert_member;
+use crate::solver::basis::{SourceBasis, SourceConfig};
 
 /// Coarse source-plane binning for the dispersion cull.
 const DISP_BINS: usize = 8;

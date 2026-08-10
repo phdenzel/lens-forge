@@ -7,15 +7,12 @@
 //! so the feasible set of mass distributions is a polytope `A x ≤ b, C x = d` in the
 //! unknown `x = (m, {β_s})` — the cell masses together with each source's (free) position.
 //!
-//! * `influence` — the [`KappaBasis`](influence::KappaBasis) bridge (pixel or mesh) and the
-//!   [`FieldCoefficients`](influence::FieldCoefficients): per-cell ψ and deflection coefficients
-//!   precomputed at the image positions, once per basis geometry.
-//! * `builder` — assembles the [`ConstraintSet`](builder::ConstraintSet) from a basis and a
-//!   set of [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data
-//!   currency, defined in [`image`](crate::solver::image)).
+//! `builder` assembles the [`ConstraintSet`](builder::ConstraintSet) from a
+//! [`KappaBasis`](crate::solver::basis::KappaBasis) and a set of
+//! [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data currency,
+//! defined in [`image`](crate::solver::image)); the per-cell ψ and deflection coefficients come
+//! from [`FieldCoefficients`](crate::solver::basis::FieldCoefficients).
 
 pub mod builder;
-pub mod influence;
 
 pub use builder::{ConstraintConfig, ConstraintSet};
-pub use influence::{FieldCoefficients, KappaBasis};
