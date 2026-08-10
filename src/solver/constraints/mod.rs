@@ -8,7 +8,7 @@
 //! unknown `x = (m, {β_s})` — the cell masses together with each source's (free) position.
 //!
 //! * `influence` — the [`KappaBasis`](influence::KappaBasis) bridge (pixel or mesh) and the
-//!   [`InfluenceMatrix`](influence::InfluenceMatrix): per-cell ψ and deflection coefficients
+//!   [`FieldCoefficients`](influence::FieldCoefficients): per-cell ψ and deflection coefficients
 //!   precomputed at the image positions, once per basis geometry.
 //! * `builder` — assembles the [`ConstraintSet`](builder::ConstraintSet) from a basis and a
 //!   set of [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data
@@ -18,4 +18,4 @@ pub mod builder;
 pub mod influence;
 
 pub use builder::{ConstraintConfig, ConstraintSet};
-pub use influence::{InfluenceMatrix, KappaBasis};
+pub use influence::{FieldCoefficients, KappaBasis};

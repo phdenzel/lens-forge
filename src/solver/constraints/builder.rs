@@ -13,7 +13,7 @@ use ndarray::Array2;
 use crate::numerical::lp::{self, LpStatus};
 use crate::solver::image::PointImageSystem;
 
-use super::influence::{InfluenceMatrix, KappaBasis};
+use super::influence::{FieldCoefficients, KappaBasis};
 
 /// Options controlling which regularizing inequalities the builder emits.
 #[derive(Debug, Clone, Copy, Default)]
@@ -68,7 +68,7 @@ impl ConstraintSet {
 
         for (s, sys) in systems.iter().enumerate() {
             let thetas: Vec<_> = sys.images.iter().map(|im| im.theta).collect();
-            let infl = InfluenceMatrix::build(basis, &thetas);
+            let infl = FieldCoefficients::build(basis, &thetas);
             let (bx, by) = (n_cells + 2 * s, n_cells + 2 * s + 1);
 
             // Position equalities: α(θ_i) + β_s = θ_i.
