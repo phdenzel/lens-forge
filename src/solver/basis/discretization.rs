@@ -21,7 +21,7 @@ const CONTAIN_EPS: f64 = 1e-9;
 pub trait MapDiscretization {
     /// Image-plane seeds for every cell whose source image contains `beta` — one
     /// coarse seed per predicted image, to be polished by
-    /// [`newton`](super::newton::newton).
+    /// [`newton`](crate::solver::extrema::newton::newton).
     ///
     /// # Arguments
     /// * `beta` - the source-plane position to find images of.
