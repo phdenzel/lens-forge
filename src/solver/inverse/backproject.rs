@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Back-projecting the arc mask to the source plane (Stage 1).
+//! Back-projecting the arc mask to the source plane.
 //!
 //! Ray-tracing every active image pixel through a member's deflection field lands it at
-//! `β = θ − α(θ)`. Those positions are the Voronoi generators of a per-member source mesh —
-//! adaptivity is automatic, since a fixed image pixel maps to source-plane area ∝ 1/|μ|, so
-//! generators pile up near caustics exactly where resolution is needed. A correct model maps
-//! the several images of one source coherently on top of each other; a wrong one scatters
-//! their brightness — the cheap [`source_plane_dispersion`] cull.
+//! `β = θ − α(θ)`. Those positions are the generators of a per-member source plane (Voronoi
+//! sites for a mesh, or the extent of a regular pixel grid). For a mesh, adaptivity is
+//! automatic: a fixed image pixel maps to source-plane area ∝ 1/|μ|, so generators pile up
+//! near caustics exactly where resolution is needed. A correct model maps the several images
+//! of one source coherently on top of each other; a wrong one scatters their brightness —
+//! the cheap [`source_plane_dispersion`] cull.
 
-use crate::grid::{BBox, MeshGrid, Point2D, ScalarField2D};
+use crate::grid::{BBox, Point2D, ScalarField2D};
 use crate::instrument::mask::Mask;
 use crate::lens::LensModel;
-use crate::Result;
 
 /// Back-project the active image pixels of `image` to source-plane positions under `lens`.
 ///
@@ -26,30 +26,6 @@ pub fn back_project(lens: &dyn LensModel, image: &impl ScalarField2D, mask: &Mas
         .filter(|&i| mask.weight(i) > 0.0)
         .map(|i| lens.ray_trace(image.center(i)))
         .collect()
-}
-
-/// Build a per-member source mesh whose generators are the back-projected active pixels
-/// (values initialized to zero — the semi-linear inversion solves for them).
-///
-/// # Arguments
-/// * `lens` - the lens model.
-/// * `image` - the image-plane field (only geometry is read).
-/// * `mask` - the pixel mask.
-/// * `pad` - fractional padding added around the generators' bounding box.
-///
-/// # Errors
-/// Propagates a mesh-construction failure (e.g. fewer than three distinct generators).
-pub fn source_mesh(
-    lens: &dyn LensModel,
-    image: &impl ScalarField2D,
-    mask: &Mask,
-    pad: f64,
-) -> Result<MeshGrid> {
-    let sites = back_project(lens, image, mask);
-    let bbox = BBox::from_points(&sites)
-        .map(|b| b.padded_square(pad.max(0.0), 1.0))
-        .unwrap_or_else(|| BBox::from_lims(-1.0, 1.0, -1.0, 1.0));
-    MeshGrid::zeros(&sites, bbox)
 }
 
 /// Source-plane brightness dispersion: the within-bin variance of image brightness after
@@ -106,24 +82,6 @@ mod tests {
         let mask = Mask::from_flags(&flags);
         let sites = back_project(&lens, &image, &mask);
         assert_eq!(sites.len(), mask.n_active());
-    }
-
-    #[test]
-    fn source_mesh_has_one_generator_per_active_pixel() {
-        let lens = SIS::new(Point2D::origin(), 0.5);
-        let image = PixelGrid::constant(Grid2D::square(8, 2.0).unwrap(), 1.0);
-        let mask = Mask::all(image.len());
-        let mesh = source_mesh(&lens, &image, &mask, 0.1).unwrap();
-        assert_eq!(mesh.len(), image.len());
-    }
-
-    #[test]
-    fn source_mesh_fails_without_active_pixels() {
-        // No active pixels → no generators → mesh construction fails (via the fallback bbox).
-        let lens = SIS::new(Point2D::origin(), 0.5);
-        let image = PixelGrid::constant(Grid2D::square(6, 2.0).unwrap(), 1.0);
-        let mask = Mask::from_flags(&vec![false; image.len()]);
-        assert!(source_mesh(&lens, &image, &mask, 0.1).is_err());
     }
 
     #[test]

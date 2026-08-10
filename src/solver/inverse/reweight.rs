@@ -19,18 +19,12 @@ use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
 use crate::solver::ensemble::summaries::effective_sample_size;
 use crate::solver::ensemble::Ensemble;
-use crate::solver::extended::operator::LensingOperator;
 
-use super::backproject::{source_mesh, source_plane_dispersion};
-use super::semilinear::{invert_source, Regularizer};
+use super::backproject::source_plane_dispersion;
+use super::source_plane::{invert_member, SourceBasis, SourceConfig};
 
-/// Padding fraction for the per-member source mesh bounding box.
-const PAD: f64 = 0.1;
 /// Coarse source-plane binning for the dispersion cull.
 const DISP_BINS: usize = 8;
-/// CG tolerance and cap for the per-member source inversion.
-const CG_TOL: f64 = 1e-10;
-const CG_MAX_ITER: usize = 500;
 
 /// The image-plane χ² of a `model` against `data` under the mask-weighted noise covariance.
 ///
@@ -70,7 +64,8 @@ pub fn importance_weights(chi2: &[f64]) -> Vec<f64> {
 }
 
 /// Re-weight `ensemble` by extended-image evidence, returning the normalized weights and
-/// their effective sample size.
+/// their effective sample size. The source-plane representation `S` (mesh or pixel) is
+/// chosen by the caller via turbofish, e.g. `reweight_ensemble::<MeshGrid, _>(…)`.
 ///
 /// # Arguments
 /// * `ensemble` - the point-image ensemble to re-weight.
@@ -81,9 +76,11 @@ pub fn importance_weights(chi2: &[f64]) -> Vec<f64> {
 /// * `mask` - the arc mask.
 /// * `psf` - optional PSF applied to the model in the image plane.
 /// * `lambda` - source-inversion regularization strength.
+/// * `source_cfg` - the per-member source-plane build config (padding, pixel resolution).
 /// * `dispersion_cut` - optional source-plane dispersion above which a member is culled
 ///   (weight zero) before inversion.
-pub fn reweight_ensemble<B>(
+#[allow(clippy::too_many_arguments)]
+pub fn reweight_ensemble<S: SourceBasis, B>(
     ensemble: &Ensemble,
     build_lens: B,
     image: &PixelGrid,
@@ -92,6 +89,7 @@ pub fn reweight_ensemble<B>(
     mask: &Mask,
     psf: Option<&Psf>,
     lambda: f64,
+    source_cfg: &SourceConfig,
     dispersion_cut: Option<f64>,
 ) -> (Vec<f64>, f64)
 where
@@ -103,7 +101,9 @@ where
         .par_iter()
         .map(|m| {
             let lens = build_lens(m.masses(n_cells));
-            member_chi_squared(lens.as_ref(), image, data, noise, mask, psf, lambda, dispersion_cut)
+            member_chi_squared::<S>(
+                lens.as_ref(), image, data, noise, mask, psf, lambda, source_cfg, dispersion_cut,
+            )
         })
         .collect();
     let weights = importance_weights(&chi2);
@@ -113,7 +113,7 @@ where
 
 /// The image χ² of one member, or `+∞` if it is culled or its inversion cannot be set up.
 #[allow(clippy::too_many_arguments)]
-fn member_chi_squared(
+fn member_chi_squared<S: SourceBasis>(
     lens: &dyn LensModel,
     image: &PixelGrid,
     data: &[f64],
@@ -121,6 +121,7 @@ fn member_chi_squared(
     mask: &Mask,
     psf: Option<&Psf>,
     lambda: f64,
+    source_cfg: &SourceConfig,
     dispersion_cut: Option<f64>,
 ) -> f64 {
     if let Some(cut) = dispersion_cut {
@@ -128,16 +129,14 @@ fn member_chi_squared(
             return f64::INFINITY;
         }
     }
-    let Ok(source) = source_mesh(lens, image, mask, PAD) else {
+    let Ok((_source, f, s)) = invert_member::<S>(lens, image, data, noise, mask, lambda, source_cfg)
+    else {
         return f64::INFINITY;
     };
-    let f = LensingOperator::build(lens, image, &source);
-    let reg = Regularizer::from_mesh(&source);
-    let (s, _) = invert_source(&f, data, noise, mask, &reg, lambda, CG_TOL, CG_MAX_ITER);
 
     let model = f.apply(&s);
     let model = match psf {
-        Some(p) => match PixelGrid::from_vec(image.grid.clone(), model).and_then(|g| p.apply(&g)) {
+        Some(p) => match PixelGrid::from_vec(image.grid, model).and_then(|g| p.apply(&g)) {
             Ok(blurred) => (0..blurred.len()).map(|i| blurred.value_at(i)).collect(),
             Err(_) => return f64::INFINITY,
         },
@@ -149,7 +148,7 @@ fn member_chi_squared(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid::{Grid2D, Point2D};
+    use crate::grid::{Grid2D, MeshGrid, Point2D};
     use crate::lens::SIS;
     use crate::solver::ensemble::{Ensemble, EnsembleMember};
     use crate::solver::extended::imaging::ImageSimulation;
@@ -206,8 +205,24 @@ mod tests {
         // stay a valid normalized distribution — the honest baseline (the plan's caveat that
         // source-plane fitting only weakly breaks the lens degeneracy).
         let (image, data, ensemble, noise, mask) = arc_scenario();
-        let (w, ess) =
-            reweight_ensemble(&ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, None);
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
+        );
+        assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9, "weights: {w:?}");
+        assert!(w.iter().all(|&x| x >= 0.0));
+        assert!(ess > 0.0 && ess <= 2.0 + 1e-9, "ess {ess}");
+    }
+
+    #[test]
+    fn a_pixel_source_plane_also_returns_valid_weights() {
+        // The representation-agnostic path: a regular pixel source plane inverts and
+        // re-weights the same scenario, yielding a valid normalized distribution.
+        let (image, data, ensemble, noise, mask) = arc_scenario();
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<PixelGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
+        );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9, "weights: {w:?}");
         assert!(w.iter().all(|&x| x >= 0.0));
         assert!(ess > 0.0 && ess <= 2.0 + 1e-9, "ess {ess}");
@@ -215,11 +230,13 @@ mod tests {
 
     #[test]
     fn a_fully_masked_ensemble_gets_zero_weights() {
-        // No active pixels → every member's source mesh fails → all χ² are ∞ → zero weights.
+        // No active pixels → every member's source plane fails → all χ² are ∞ → zero weights.
         let (image, data, ensemble, noise, _) = arc_scenario();
         let mask = Mask::from_flags(&vec![false; image.len()]);
-        let (w, ess) =
-            reweight_ensemble(&ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, None);
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, None,
+        );
         assert!(w.iter().all(|&x| x == 0.0));
         assert_eq!(ess, 0.0);
     }
@@ -229,8 +246,9 @@ mod tests {
         // The PSF branch: the model is convolved before comparison; weights stay valid.
         let (image, data, ensemble, noise, mask) = arc_scenario();
         let psf = Psf::gaussian(0.15);
-        let (w, ess) = reweight_ensemble(
-            &ensemble, sis_from_mass, &image, &data, &noise, &mask, Some(&psf), 1e-4, None,
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, Some(&psf), 1e-4, &cfg, None,
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
         assert!(ess > 0.0 && ess <= 2.0 + 1e-9);
@@ -240,8 +258,9 @@ mod tests {
     fn a_generous_dispersion_cut_keeps_every_member() {
         // The cull is evaluated but passed (dispersion ≤ cut), so members proceed to the fit.
         let (image, data, ensemble, noise, mask) = arc_scenario();
-        let (w, ess) = reweight_ensemble(
-            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, Some(1e12),
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, Some(1e12),
         );
         assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-9);
         assert!(ess > 0.0);
@@ -252,8 +271,9 @@ mod tests {
         // A cut below every (non-negative) dispersion culls the whole ensemble to zero
         // weight — the deterministic test of the cull plumbing.
         let (image, data, ensemble, noise, mask) = arc_scenario();
-        let (w, ess) = reweight_ensemble(
-            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, Some(-1.0),
+        let cfg = SourceConfig::default();
+        let (w, ess) = reweight_ensemble::<MeshGrid, _>(
+            &ensemble, sis_from_mass, &image, &data, &noise, &mask, None, 1e-4, &cfg, Some(-1.0),
         );
         assert!(w.iter().all(|&x| x == 0.0), "everything culled: {w:?}");
         assert_eq!(ess, 0.0);

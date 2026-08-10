@@ -5,29 +5,30 @@
 //!
 //! For a fixed lens the lensed image is linear in the source, so the source solves the
 //! normal equations `(Fᵀ W F + λ R) s = Fᵀ W d`, with `F` the sparse lensing operator, `W`
-//! the mask-weighted inverse-noise covariance, and `R` a smoothness regularizer on the
-//! source mesh. The system is SPD, so a conjugate gradient (from a matrix-free operator)
-//! solves it without ever forming `Fᵀ W F`.
+//! the mask-weighted inverse-noise covariance, and `R` a graph-Laplacian smoothness
+//! regularizer on the source plane. The system is SPD, so a conjugate gradient (from a
+//! matrix-free operator) solves it without ever forming `Fᵀ W F`.
 
-use crate::grid::MeshGrid;
+use crate::grid::{CellAdjacency, ScalarField2D};
 use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::numerical::cg::jacobi_pcg;
 use crate::solver::extended::operator::LensingOperator;
 use crate::SolveInfo;
 
-/// Graph-Laplacian smoothness regularizer on a source mesh: `(R s)_i = Σ_{j∈N(i)}(s_i − s_j)`.
+/// Graph-Laplacian smoothness regularizer on a source plane: `(R s)_i = Σ_{j∈N(i)}(s_i − s_j)`.
 pub struct Regularizer {
     neighbors: Vec<Vec<usize>>,
 }
 
 impl Regularizer {
-    /// Build the regularizer from a source mesh's Delaunay adjacency.
+    /// Build the regularizer from a source field's cell adjacency (Delaunay for a mesh,
+    /// four-neighbour for a pixel grid).
     ///
     /// # Arguments
-    /// * `mesh` - the source mesh (columns of `F`).
-    pub fn from_mesh(mesh: &MeshGrid) -> Self {
-        let neighbors = (0..mesh.len()).map(|i| mesh.neighbors(i).to_vec()).collect();
+    /// * `field` - the source field (columns of `F`).
+    pub fn from_adjacency<A: CellAdjacency + ScalarField2D>(field: &A) -> Self {
+        let neighbors = (0..field.len()).map(|i| field.cell_neighbors(i)).collect();
         Self { neighbors }
     }
 
@@ -110,7 +111,7 @@ mod tests {
         let sites: Vec<Point2D> =
             (0..60).map(|_| Point2D::new(2.0 * rng.f() - 1.0, 2.0 * rng.f() - 1.0)).collect();
         let mesh = MeshGrid::zeros(&sites, BBox::from_lims(-1.0, 1.0, -1.0, 1.0)).unwrap();
-        let reg = Regularizer::from_mesh(&mesh);
+        let reg = Regularizer::from_adjacency(&mesh);
         assert!(!reg.is_empty() && reg.len() == mesh.len());
         let mut out = vec![0.0; reg.len()];
         // A constant source has zero graph-Laplacian everywhere.
@@ -138,7 +139,7 @@ mod tests {
         let s_true: Vec<f64> = (0..source.len()).map(|i| 1.0 + 0.5 * (i as f64 * 0.3).sin()).collect();
         let data = f.apply(&s_true);
 
-        let reg = Regularizer::from_mesh(&source);
+        let reg = Regularizer::from_adjacency(&source);
         let noise = Noise::uniform(1.0);
         let mask = Mask::all(image.len());
         let (s, info) = invert_source(&f, &data, &noise, &mask, &reg, 1e-6, 1e-12, 500);
