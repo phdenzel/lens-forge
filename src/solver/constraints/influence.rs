@@ -10,36 +10,27 @@
 //! the ψ and deflection coefficients — the rows every linear constraint contracts against.
 
 use crate::grid::{
-    MeshGrid, PixelGrid, Point2D, ScalarField2D, polygon_log_kernel, square_log_kernel,
+    CellAdjacency, MeshGrid, PixelGrid, Point2D, ScalarField2D, polygon_log_kernel,
+    square_log_kernel,
 };
 
-/// A convergence basis whose field is linear in the per-cell κ: it can report each cell's
-/// per-unit-κ jet at a point and its neighbouring cells.
+/// A convergence basis whose field is linear in the per-cell κ: it reports each cell's
+/// per-unit-κ jet at a point, plus its neighbouring cells (via [`CellAdjacency`]).
 ///
 /// The jet is `[ψ, ψ_x, ψ_y, ψ_xx, ψ_xy, ψ_yy]` per unit κ — the same array the free-form
 /// lens kernels return, so a coefficient row is `Σ_c κ_c · cell_jet_c`.
-pub trait KappaBasis: ScalarField2D {
+pub trait KappaBasis: ScalarField2D + CellAdjacency {
     /// Per-unit-κ jet `[ψ, ψ_x, ψ_y, ψ_xx, ψ_xy, ψ_yy]` of cell `i` at `theta`.
     ///
     /// # Arguments
     /// * `i` - cell index.
     /// * `theta` - evaluation point.
     fn cell_jet(&self, i: usize, theta: Point2D) -> [f64; 6];
-
-    /// Indices of the cells adjacent to cell `i` (for gradient-limit priors).
-    ///
-    /// # Arguments
-    /// * `i` - cell index.
-    fn cell_neighbors(&self, i: usize) -> Vec<usize>;
 }
 
 impl KappaBasis for MeshGrid {
     fn cell_jet(&self, i: usize, theta: Point2D) -> [f64; 6] {
         polygon_log_kernel(self.cell_polygon(i), theta)
-    }
-
-    fn cell_neighbors(&self, i: usize) -> Vec<usize> {
-        self.neighbors(i).to_vec()
     }
 }
 
@@ -47,17 +38,6 @@ impl KappaBasis for PixelGrid {
     fn cell_jet(&self, i: usize, theta: Point2D) -> [f64; 6] {
         let c = ScalarField2D::center(self, i);
         square_log_kernel(c, 0.5 * self.dx(), 0.5 * self.dy(), theta)
-    }
-
-    fn cell_neighbors(&self, i: usize) -> Vec<usize> {
-        // Four edge-neighbours located by sampling the grid one pixel away.
-        let c = ScalarField2D::center(self, i);
-        let (dx, dy) = (self.dx(), self.dy());
-        [(dx, 0.0), (-dx, 0.0), (0.0, dy), (0.0, -dy)]
-            .iter()
-            .filter_map(|&(ox, oy)| self.cell_of(&Point2D::new(c.x + ox, c.y + oy)))
-            .filter(|&j| j != i)
-            .collect()
     }
 }
 
