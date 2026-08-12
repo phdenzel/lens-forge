@@ -831,6 +831,31 @@ mod tests {
     }
 
     #[test]
+    fn insert_on_hull_edge_splits_one_triangle_in_two() {
+        // The hull-edge case of `insert_on_edge`: a point on an edge with no
+        // neighbour across it splits the single triangle into two (a 1→2 flip),
+        // not the interior 2→4 flip. Exercised directly, since interior sites
+        // never land on the super-triangle's hull edges through `insert`.
+        let mut tris = vec![Triangle {
+            vertices: [0, 1, 2], // a, b, c
+            neighbors: [NO_NEIGHBOR; 3],
+        }];
+        let mut stack = Vec::new();
+        // pidx = 3 lies on edge (b, c) — slot e = 0, opposite vertex a.
+        let start = insert_on_edge(&mut tris, 0, 0, 3, &mut stack);
+
+        assert_eq!(start, 0);
+        assert_eq!(tris.len(), 2);
+        // Children (a, b, p) and (a, p, c) meet along the new edge (a, p).
+        assert_eq!(tris[0].vertices, [0, 1, 3]);
+        assert_eq!(tris[1].vertices, [0, 3, 2]);
+        assert_eq!(tris[0].neighbors, [NO_NEIGHBOR, 1, NO_NEIGHBOR]);
+        assert_eq!(tris[1].neighbors, [NO_NEIGHBOR, NO_NEIGHBOR, 0]);
+        // Both outer edges opposite the new vertex are queued for legalization.
+        assert_eq!(stack, [(0, 2), (1, 1)]);
+    }
+
+    #[test]
     fn reinserting_an_existing_site_is_a_noop() {
         // A point coinciding with an existing site is located as a vertex and left
         // out (the `insert` duplicate path), so the mesh is unchanged.
