@@ -8,7 +8,7 @@
 //! (derivatives, FFTs, Poisson solvers, interpolation) are inherent methods
 //! added in sibling submodules.
 
-use crate::grid::{BBox, FieldArray2D, Grid2D, Point2D};
+use crate::grid::{BBox, CellAdjacency, FieldArray2D, Grid2D, Point2D, ScalarField2D};
 use crate::{LensForgeError, Result};
 use core::f64;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
@@ -594,6 +594,66 @@ impl PixelGrid {
     }
 }
 
+impl CellAdjacency for PixelGrid {
+    fn cell_neighbors(&self, i: usize) -> Vec<usize> {
+        // Four edge-neighbours located by sampling the grid one pixel away.
+        let c = ScalarField2D::center(self, i);
+        let (dx, dy) = (self.dx(), self.dy());
+        [(dx, 0.0), (-dx, 0.0), (0.0, dy), (0.0, -dy)]
+            .iter()
+            .filter_map(|&(ox, oy)| self.cell_of(&Point2D::new(c.x + ox, c.y + oy)))
+            .filter(|&j| j != i)
+            .collect()
+    }
+}
+
+impl ScalarField2D for PixelGrid {
+    fn len(&self) -> usize {
+        self.grid.n_pixels()
+    }
+
+    fn value_at(&self, i: usize) -> f64 {
+        let (ix, jy) = self.grid.unflatten_index(i);
+        self.get(ix, jy)
+    }
+
+    fn center(&self, i: usize) -> Point2D {
+        let (ix, jy) = self.grid.unflatten_index(i);
+        self.grid.pixel_center(ix, jy)
+    }
+
+    fn cell_area(&self, _i: usize) -> f64 {
+        self.grid.pixel_area()
+    }
+
+    fn bounds(&self) -> BBox {
+        self.grid.bbox
+    }
+
+    fn sample(&self, p: Point2D) -> f64 {
+        self.interpolate(p)
+    }
+
+    fn sample_stencil(&self, p: Point2D) -> Vec<(usize, f64)> {
+        let Some(k) = self.grid.bilinear_interp(&p) else {
+            return Vec::new();
+        };
+        let nx = self.grid.nx;
+        let mut stencil: Vec<(usize, f64)> = Vec::with_capacity(4);
+        // Edge clamping can repeat a corner index; accumulate so each cell appears once.
+        for (i, j, w) in
+            [(k.i0, k.j0, k.w00), (k.i1, k.j0, k.w10), (k.i0, k.j1, k.w01), (k.i1, k.j1, k.w11)]
+        {
+            let idx = j * nx + i;
+            match stencil.iter_mut().find(|(c, _)| *c == idx) {
+                Some(e) => e.1 += w,
+                None => stencil.push((idx, w)),
+            }
+        }
+        stencil
+    }
+}
+
 /* ================ Display ================================================ */
 impl std::fmt::Display for PixelGrid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -957,5 +1017,95 @@ mod tests {
         let pg = PixelGrid::constant(grid, 1.0);
         let s = format!("{pg}");
         assert!(s.contains("PixelGrid"));
+    }
+
+    #[test]
+    fn scalar_field_flux_equals_value_times_area() {
+        let grid = Grid2D::square(16, 1.0).unwrap(); // domain [-1,1]², area 4
+        let pg = PixelGrid::constant(grid, 3.0);
+        assert_eq!(pg.len(), 256);
+        assert!((ScalarField2D::flux(&pg) - 3.0 * 4.0).abs() < 1e-9);
+        assert!((ScalarField2D::mean(&pg) - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn scalar_field_sample_and_dyn() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        let f: &dyn ScalarField2D = &pg;
+        // Linear field is reproduced by bilinear interpolation in the interior.
+        let v = f.sample(Point2D::new(0.5, -0.5));
+        assert!((v - (0.5 - 1.0)).abs() < 1e-9, "sample {v}");
+    }
+
+    #[test]
+    fn scalar_field_is_empty_and_sum() {
+        let grid = Grid2D::square(4, 1.0).unwrap();
+        let pg = PixelGrid::constant(grid, 2.0);
+        let f: &dyn ScalarField2D = &pg;
+        assert_eq!(f.len(), 16);
+        assert!(!f.is_empty());
+        assert!((f.sum() - 2.0 * 16.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn scalar_field_min_max() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        let f: &dyn ScalarField2D = &pg;
+        // On the symmetric domain [-2,2]², the linear field's extrema at pixel
+        // centres are ± of the largest |x + 2y|.
+        let n = f.len();
+        let expected_min = (0..n).map(|i| pg.value_at(i)).fold(f64::INFINITY, f64::min);
+        let expected_max = (0..n)
+            .map(|i| pg.value_at(i))
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!((f.min() - expected_min).abs() < 1e-12);
+        assert!((f.max() - expected_max).abs() < 1e-12);
+        assert!(f.min() < f.max());
+    }
+
+    #[test]
+    fn scalar_field_center_area_bounds() {
+        let grid = Grid2D::square(4, 1.0).unwrap();
+        let pg = PixelGrid::constant(grid, 1.0);
+        let f: &dyn ScalarField2D = &pg;
+        // center(i) agrees with the grid's own pixel centre, area is uniform,
+        // and bounds match the grid bbox.
+        for i in 0..f.len() {
+            let (ix, jy) = pg.grid.unflatten_index(i);
+            assert_eq!(f.center(i), pg.grid.pixel_center(ix, jy));
+            assert!((f.cell_area(i) - pg.grid.pixel_area()).abs() < 1e-12);
+        }
+        assert_eq!(f.bounds(), pg.grid.bbox);
+    }
+
+    #[test]
+    fn scalar_field_sample_stencil_reproduces_sample() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| 0.7 * x - 1.3 * y + 0.2);
+        for p in [Point2D::new(0.3, -0.4), Point2D::new(-1.1, 0.9), Point2D::new(1.99, 1.99)] {
+            let s: f64 = pg.sample_stencil(p).iter().map(|&(i, w)| w * pg.value_at(i)).sum();
+            assert!((s - pg.sample(p)).abs() < 1e-12, "stencil {s} vs sample {}", pg.sample(p));
+        }
+        // Outside the domain the stencil is empty (sample reads 0).
+        assert!(pg.sample_stencil(Point2D::new(10.0, 0.0)).is_empty());
+    }
+
+    #[test]
+    fn scalar_field_sample_batch_matches_sample() {
+        let grid = Grid2D::square(8, 2.0).unwrap();
+        let pg = PixelGrid::from_func(grid, |x, y| x + 2.0 * y);
+        let f: &dyn ScalarField2D = &pg;
+        let pts = [
+            Point2D::new(0.5, -0.5),
+            Point2D::new(-1.0, 0.25),
+            Point2D::new(0.0, 0.0),
+        ];
+        let batch = f.sample_batch(&pts);
+        assert_eq!(batch.len(), pts.len());
+        for (b, &p) in batch.iter().zip(pts.iter()) {
+            assert!((b - f.sample(p)).abs() < 1e-12);
+        }
     }
 }
