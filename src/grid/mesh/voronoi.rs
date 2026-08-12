@@ -729,4 +729,45 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn new_rejects_nonfinite_sites() {
+        let nan = [p(0.1, 0.1), p(f64::NAN, 0.5), p(0.9, 0.9)];
+        assert!(VoronoiMesh::new(&nan, unit()).is_err());
+        let inf = [p(0.1, 0.1), p(0.5, f64::INFINITY), p(0.9, 0.9)];
+        assert!(VoronoiMesh::new(&inf, unit()).is_err());
+    }
+
+    #[test]
+    fn clip_halfplane_on_empty_polygon_clears_output() {
+        // Empty input clears the scratch buffer and returns immediately.
+        let mut out = vec![p(9.0, 9.0)];
+        clip_halfplane(&[], 1.0, 0.0, 0.5, &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn polygon_area_centroid_handles_degenerate_polygons() {
+        let fallback = p(2.0, 3.0);
+        // Fewer than three vertices → zero area, fallback centroid.
+        let (a0, c0) = polygon_area_centroid(&[p(0.0, 0.0), p(1.0, 0.0)], fallback);
+        assert_eq!(a0, 0.0);
+        assert_eq!(c0, fallback);
+        // Three collinear vertices → zero area, fallback centroid.
+        let (a1, c1) =
+            polygon_area_centroid(&[p(0.0, 0.0), p(1.0, 0.0), p(2.0, 0.0)], fallback);
+        assert_eq!(a1, 0.0);
+        assert_eq!(c1, fallback);
+    }
+
+    #[test]
+    fn cell_of_a_site_outside_the_box_is_clipped_empty() {
+        // A site far outside the domain has no bbox point closer to it than the
+        // interior sites, so its cell clips away to nothing (the empty-polygon
+        // break); the remaining cells still tile the whole box.
+        let sites = [p(0.5, 0.5), p(0.2, 0.2), p(0.8, 0.2), p(0.5, 0.8), p(50.0, 50.0)];
+        let m = VoronoiMesh::new(&sites, unit()).unwrap();
+        assert_eq!(m.cell_area(4), 0.0);
+        assert!((m.total_area() - 1.0).abs() < 1e-9, "area {}", m.total_area());
+    }
 }
