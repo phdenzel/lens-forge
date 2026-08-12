@@ -5,6 +5,8 @@
 // Warn on any undocumented public API item so the docs stay complete as the
 // crate grows. Use `#[allow(missing_docs)]` locally for deliberate exceptions.
 #![warn(missing_docs)]
+// Lets the winit/wgpu viewer opt out of coverage instrumentation (`#![coverage(off)]`).
+#![feature(coverage_attribute)]
 
 pub mod fastsum;
 pub(crate) mod fft;
