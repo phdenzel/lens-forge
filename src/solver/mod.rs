@@ -2,12 +2,12 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lens-equation solvers: the forward map (model → observables) and the inverse
-//! free-form reconstruction (observables → mass + source), over a shared currency.
+//! reconstruction (observables → mass + source), over a shared foundation.
 //!
 //! Every layer is generic over the field representation — a structured `PixelGrid`
 //! or an unstructured `MeshGrid` — through three seams collected in `basis`:
 //! `KappaBasis` (lens-plane κ → field), `SourceBasis` (the reconstructed source
-//! plane) and `MapDiscretization` (a discretized θ↔β map). The point-image currency
+//! plane) and `MapDiscretization` (a discretized θ↔β map). The point-image support
 //! is `Image`/`PointImageSystem` in `image`; iterative solvers report a `Solution`.
 //!
 //! ## Forward: model → observables

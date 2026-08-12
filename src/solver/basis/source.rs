@@ -4,8 +4,8 @@
 //! The source-plane representation seam a semi-linear inversion solves on.
 //!
 //! [`SourceBasis`] is to the source plane what [`KappaBasis`](super::KappaBasis) is to the lens
-//! plane: the single representation-specific hook that lets a Voronoi [`MeshGrid`] or a regular
-//! [`PixelGrid`] carry the reconstructed source. It builds a zero-initialized field over the
+//! plane: the single representation-specific hook that lets a regular [`PixelGrid`] or Voronoi
+//! [`MeshGrid`] carry the reconstructed source. It builds a zero-initialized field over the
 //! back-projected generators and — via [`CellAdjacency`] — feeds the smoothness regularizer.
 
 use crate::grid::{
@@ -13,7 +13,7 @@ use crate::grid::{
 };
 use crate::Result;
 
-/// How to build a per-member source plane from its back-projected generators.
+/// Parameters to build a per-member source plane from its back-projected generators.
 #[derive(Debug, Clone, Copy)]
 pub struct SourceConfig {
     /// Fractional padding added around the generators' bounding box.
