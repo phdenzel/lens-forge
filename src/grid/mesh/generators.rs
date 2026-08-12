@@ -335,4 +335,39 @@ mod tests {
         let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
         assert!(VoronoiMesh::density_graded(10, bbox, 1, |_| 0.0).is_err());
     }
+
+    #[test]
+    fn hexagonal_rejects_nonpositive_extent() {
+        assert!(VoronoiMesh::hexagonal(4, 4, 0.0, 1.0).is_err());
+        assert!(VoronoiMesh::hexagonal(4, 4, 1.0, -1.0).is_err());
+    }
+
+    #[test]
+    fn concentric_rejects_nonpositive_radius() {
+        assert!(VoronoiMesh::concentric(3, 8, 0.0).is_err());
+        assert!(VoronoiMesh::concentric(3, 8, -1.0).is_err());
+    }
+
+    #[test]
+    fn density_graded_rejects_degenerate_bbox_and_zero_n() {
+        // Zero-width domain is rejected before sampling.
+        let flat = BBox::from_lims(0.0, 0.0, 0.0, 1.0);
+        assert!(VoronoiMesh::density_graded(4, flat, 1, |_| 1.0).is_err());
+        // Zero sites is rejected inside the sampler.
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        assert!(VoronoiMesh::density_graded(0, bbox, 1, |_| 1.0).is_err());
+    }
+
+    #[test]
+    fn density_graded_reports_nonconvergence() {
+        // Density is positive only at a single coarse-grid probe point, so the peak
+        // estimate is positive but no random sample is ever accepted — the sampler
+        // exhausts its attempt budget and errors.
+        let bbox = BBox::from_lims(0.0, 1.0, 0.0, 1.0);
+        let probe = 0.5 / 32.0; // matches the 32×32 peak-estimation grid
+        let m = VoronoiMesh::density_graded(1, bbox, 7, move |q| {
+            if q.x == probe && q.y == probe { 1.0 } else { 0.0 }
+        });
+        assert!(m.is_err());
+    }
 }
