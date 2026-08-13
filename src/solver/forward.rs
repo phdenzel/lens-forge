@@ -11,7 +11,7 @@
 //! (PSF + noise).
 
 use crate::cosmology::Cosmology;
-use crate::grid::{ContourSegment, FieldOps, PixelGrid, Point2D, ScalarField2D};
+use crate::grid::{ContourSegment, FieldOps, Point2D};
 use crate::instrument::noise::Noise;
 use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
@@ -127,22 +127,23 @@ impl<'a> ForwardModel<'a> {
     /// and `noise` `None` this is the idealized (clean) lensed image.
     ///
     /// # Arguments
-    /// * `field` - the image-plane sampling geometry (a pixel grid carries the PSF).
+    /// * `field` - the image-plane sampling geometry (a [`PixelGrid`](crate::grid::PixelGrid) or
+    ///   [`MeshGrid`](crate::grid::MeshGrid)).
     /// * `sim` - the imaging strategy.
     /// * `psf` - optional PSF convolved into the image before adding noise.
     /// * `noise` - optional noise model paired with the random stream that realizes it;
     ///   `None` leaves the image noiseless.
     ///
     /// # Errors
-    /// Errors if the model has no source, or if the PSF/grid construction fails.
-    pub fn observe(
+    /// Errors if the model has no source, or if the PSF construction fails.
+    pub fn observe<F: FieldOps>(
         &self,
-        field: &PixelGrid,
+        field: &F,
         sim: ImageSimulation,
         psf: Option<&Psf>,
         noise: Option<(&Noise, &mut Lcg)>,
-    ) -> Result<PixelGrid> {
-        let clean: PixelGrid = sim.image(self.lens, self.source()?, field);
+    ) -> Result<F> {
+        let clean: F = sim.image(self.lens, self.source()?, field);
         let blurred = match psf {
             Some(p) => p.apply(&clean)?,
             None => clean,
@@ -150,9 +151,9 @@ impl<'a> ForwardModel<'a> {
         match noise {
             Some((noise, rng)) => {
                 let draw = noise.realize(rng, blurred.len());
-                let values: Vec<f64> =
-                    (0..blurred.len()).map(|i| blurred.value_at(i) + draw[i]).collect();
-                PixelGrid::from_vec(blurred.grid, values)
+                // Add the per-cell noise draw, keeping `blurred`'s geometry.
+                Ok(blurred
+                    .map_centers_batch(|_| (0..draw.len()).map(|i| blurred.value_at(i) + draw[i]).collect()))
             }
             None => Ok(blurred),
         }
@@ -169,7 +170,7 @@ impl<'a> ForwardModel<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid::Grid2D;
+    use crate::grid::{BBox, Grid2D, MeshGrid, PixelGrid, ScalarField2D};
     use crate::lens::SIS;
     use crate::solver::basis::MapPixellation;
     use crate::source::Gaussian;
@@ -239,5 +240,34 @@ mod tests {
         let diff: f64 = (0..obs.len()).map(|i| (obs.value_at(i) - clean.value_at(i)).abs()).sum();
         assert!(diff > 0.0, "observation should differ from the clean image");
         assert_eq!(obs.len(), clean.len());
+    }
+
+    #[test]
+    fn observe_works_on_a_mesh() {
+        // observe() is generic over the field representation: an unstructured Voronoi mesh
+        // works exactly like a pixel grid.
+        let (lens, source) = sis_and_source();
+        let mut rng = Lcg::new(0x5A3);
+        let bbox = BBox::from_lims(-2.0, 2.0, -2.0, 2.0);
+        let sites: Vec<Point2D> =
+            (0..300).map(|_| Point2D::new(3.6 * rng.f() - 1.8, 3.6 * rng.f() - 1.8)).collect();
+        let field = MeshGrid::zeros(&sites, bbox).unwrap();
+        let fm = ForwardModel::with_source(&lens, &source);
+        let clean = fm.image(&field, ImageSimulation::Direct).unwrap();
+
+        // Idealized (no PSF, no noise) reproduces the clean lensed image on the mesh.
+        let ideal = fm.observe(&field, ImageSimulation::Direct, None, None).unwrap();
+        for i in 0..ideal.len() {
+            assert!((ideal.value_at(i) - clean.value_at(i)).abs() < 1e-12);
+        }
+
+        // PSF + noise on the mesh: same geometry, departs from the clean image.
+        let psf = Psf::gaussian(0.15);
+        let obs = fm
+            .observe(&field, ImageSimulation::Direct, Some(&psf), Some((&Noise::uniform(0.05), &mut rng)))
+            .unwrap();
+        assert_eq!(obs.len(), clean.len());
+        let diff: f64 = (0..obs.len()).map(|i| (obs.value_at(i) - clean.value_at(i)).abs()).sum();
+        assert!(diff > 0.0, "mesh observation should differ from the clean image");
     }
 }
