@@ -10,17 +10,43 @@
 
 use ndarray::Array2;
 
+use crate::grid::Point2D;
 use crate::numerical::lp::{self, LpStatus};
 use crate::numerical::matrix::stack_rows;
 use crate::solver::image::PointImageSystem;
 
 use crate::solver::basis::{FieldCoefficients, KappaBasis};
 
-/// Options controlling which regularizing inequalities the builder emits.
-#[derive(Debug, Clone, Copy, Default)]
+/// Options composing which constraint families the builder emits.
+///
+/// The [`Default`] emits the full physical polytope: the lens-equation position equalities,
+/// non-negative convergence, and any time-delay / arrival-order data a system carries. The
+/// adjacent-cell gradient bound is off by default.
+#[derive(Debug, Clone, Copy)]
 pub struct ConstraintConfig {
+    /// Emit the lens-equation position equalities `α(θ) + β = θ` (default `true`). Disabling
+    /// them leaves the polytope with no lens constraint — a warning is logged when so.
+    pub position_equalities: bool,
+    /// Emit the non-negative convergence bounds `κ ≥ 0` per cell (default `true`).
+    pub nonneg_kappa: bool,
+    /// Honour measured time delays a system carries (default `true`).
+    pub use_time_delays: bool,
+    /// Honour a known arrival order a system carries (default `true`).
+    pub use_arrival_order: bool,
     /// Optional convergence-gradient bound `g`: `|κ_i − κ_j| ≤ g · d_ij` on adjacent cells.
     pub grad_bound: Option<f64>,
+}
+
+impl Default for ConstraintConfig {
+    fn default() -> Self {
+        Self {
+            position_equalities: true,
+            nonneg_kappa: true,
+            use_time_delays: true,
+            use_arrival_order: true,
+            grad_bound: None,
+        }
+    }
 }
 
 /// The point-image polytope: inequalities `A x ≤ b` and equalities `C x = d` over the
@@ -41,17 +67,19 @@ pub struct ConstraintSet {
 }
 
 impl ConstraintSet {
-    /// Assemble the polytope for `basis` constrained by `systems`.
+    /// Assemble the polytope for `basis` constrained by `systems`, composing the families
+    /// `config` enables.
     ///
-    /// Emits, per source: two position equalities per image (`θ − α(θ) = β_s`); a Fermat
-    /// time-delay equality per measured delay, or arrival-order inequalities when only the
-    /// order is known. Globally: `κ ≥ 0` per cell, and optional adjacent-cell gradient
-    /// bounds. β-coordinates are appended after the cells in source order.
+    /// Per source (when enabled): two position equalities per image (`α(θ) + β_s = θ`); a
+    /// Fermat time-delay equality per measured delay, or arrival-order inequalities when only
+    /// the order is known. Globally (when enabled): `κ ≥ 0` per cell, and optional
+    /// adjacent-cell gradient bounds. β-coordinates are appended after the cells in source
+    /// order.
     ///
     /// # Arguments
     /// * `basis` - the convergence basis (pixel or mesh).
     /// * `systems` - the point-image systems sharing this basis.
-    /// * `config` - which regularizing inequalities to add.
+    /// * `config` - which constraint families to emit.
     pub fn assemble<B: KappaBasis>(
         basis: &B,
         systems: &[PointImageSystem],
@@ -67,89 +95,44 @@ impl ConstraintSet {
         let mut eq: Vec<Vec<f64>> = Vec::new();
         let mut b_eq: Vec<f64> = Vec::new();
 
+        if !config.position_equalities {
+            eprintln!(
+                "Warning: position equalities are disabled; the constraint polytope carries no lens-equation constraint."
+            );
+        }
+
         for (s, sys) in systems.iter().enumerate() {
-            let thetas: Vec<_> = sys.images.iter().map(|im| im.theta).collect();
+            let thetas: Vec<Point2D> = sys.images.iter().map(|im| im.theta).collect();
             let infl = FieldCoefficients::build(basis, &thetas);
             let (bx, by) = (n_cells + 2 * s, n_cells + 2 * s + 1);
 
-            // Position equalities: α(θ_i) + β_s = θ_i.
-            for i in 0..thetas.len() {
-                let (ax, ay) = infl.alpha_rows(i);
-                let mut rx = vec![0.0; n];
-                let mut ry = vec![0.0; n];
-                for c in 0..n_cells {
-                    rx[c] = ax[c] / areas[c];
-                    ry[c] = ay[c] / areas[c];
-                }
-                rx[bx] = 1.0;
-                ry[by] = 1.0;
-                eq.push(rx);
-                b_eq.push(thetas[i].x);
-                eq.push(ry);
-                b_eq.push(thetas[i].y);
+            if config.position_equalities {
+                let (rows, rhs) = position_equalities(&infl, &thetas, &areas, n, bx, by);
+                eq.extend(rows);
+                b_eq.extend(rhs);
             }
 
-            // Fermat difference τ_j − τ_i as an affine form L(x) with the constant carried
-            // to the right-hand side (the β² term cancels in the difference).
-            let fermat_form = |i: usize, j: usize| -> (Vec<f64>, f64) {
-                let mut row = vec![0.0; n];
-                let pi = infl.psi_row(i);
-                let pj = infl.psi_row(j);
-                for c in 0..n_cells {
-                    row[c] = -(pj[c] - pi[c]) / areas[c];
-                }
-                let (ti, tj) = (thetas[i], thetas[j]);
-                row[bx] = -(tj.x - ti.x);
-                row[by] = -(tj.y - ti.y);
-                let constant = 0.5 * (tj.norm_squared() - ti.norm_squared());
-                (row, constant)
-            };
-
-            if !sys.time_delays.is_empty() {
-                for td in &sys.time_delays {
-                    let (row, constant) = fermat_form(td.from, td.to);
-                    eq.push(row);
-                    b_eq.push(td.delay / sys.delay_scale - constant);
-                }
-            } else if let Some(order) = &sys.order {
-                // Consecutive arrival order: τ_earlier − τ_later ≤ 0.
-                for w in order.windows(2) {
-                    let (row, constant) = fermat_form(w[1], w[0]);
-                    ub.push(row);
-                    b_ub.push(-constant);
-                }
+            if config.use_time_delays && !sys.time_delays.is_empty() {
+                let (rows, rhs) = time_delay_equalities(sys, &infl, &thetas, &areas, n, bx, by);
+                eq.extend(rows);
+                b_eq.extend(rhs);
+            } else if let (true, Some(order)) = (config.use_arrival_order, &sys.order) {
+                let (rows, rhs) = arrival_order_inequalities(order, &infl, &thetas, &areas, n, bx, by);
+                ub.extend(rows);
+                b_ub.extend(rhs);
             }
         }
 
-        // κ ≥ 0 per cell: −m_c ≤ 0.
-        for c in 0..n_cells {
-            let mut row = vec![0.0; n];
-            row[c] = -1.0;
-            ub.push(row);
-            b_ub.push(0.0);
+        if config.nonneg_kappa {
+            let (rows, rhs) = nonneg_kappa_bounds(n_cells, n);
+            ub.extend(rows);
+            b_ub.extend(rhs);
         }
 
-        // Adjacent-cell gradient bound: |m_i/A_i − m_j/A_j| ≤ g · d_ij.
         if let Some(g) = config.grad_bound {
-            for i in 0..n_cells {
-                let ci = basis.center(i);
-                for j in basis.cell_neighbors(i) {
-                    if j <= i {
-                        continue;
-                    }
-                    let d = (basis.center(j) - ci).norm();
-                    let mut row = vec![0.0; n];
-                    row[i] = 1.0 / areas[i];
-                    row[j] = -1.0 / areas[j];
-                    ub.push(row.clone());
-                    b_ub.push(g * d);
-                    for v in row.iter_mut() {
-                        *v = -*v;
-                    }
-                    ub.push(row);
-                    b_ub.push(g * d);
-                }
-            }
+            let (rows, rhs) = gradient_bounds(basis, &areas, g, n);
+            ub.extend(rows);
+            b_ub.extend(rhs);
         }
 
         ConstraintSet {
@@ -176,6 +159,191 @@ impl ConstraintSet {
             LpStatus::Infeasible
         )
     }
+}
+
+/// Position equalities for one source: `α(θ_i) + β_s = θ_i`, an x and a y row per image.
+///
+/// # Arguments
+/// * `infl` - the per-cell field coefficients at this source's images.
+/// * `thetas` - the image positions.
+/// * `areas` - cell areas (length `n_cells`, converting the mass column to convergence).
+/// * `n` - number of unknowns (row length).
+/// * `bx` - the unknown index of this source's β_x column.
+/// * `by` - the unknown index of this source's β_y column.
+fn position_equalities(
+    infl: &FieldCoefficients,
+    thetas: &[Point2D],
+    areas: &[f64],
+    n: usize,
+    bx: usize,
+    by: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let n_cells = areas.len();
+    let mut rows = Vec::with_capacity(2 * thetas.len());
+    let mut rhs = Vec::with_capacity(2 * thetas.len());
+    for i in 0..thetas.len() {
+        let (ax, ay) = infl.alpha_rows(i);
+        let mut rx = vec![0.0; n];
+        let mut ry = vec![0.0; n];
+        for c in 0..n_cells {
+            rx[c] = ax[c] / areas[c];
+            ry[c] = ay[c] / areas[c];
+        }
+        rx[bx] = 1.0;
+        ry[by] = 1.0;
+        rows.push(rx);
+        rhs.push(thetas[i].x);
+        rows.push(ry);
+        rhs.push(thetas[i].y);
+    }
+    (rows, rhs)
+}
+
+/// The Fermat difference `τ_j − τ_i` as an affine form in `x` plus the constant carried to
+/// the right-hand side (the β² term cancels in the difference).
+///
+/// # Arguments
+/// * `infl` - the per-cell field coefficients at this source's images.
+/// * `thetas` - the image positions.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+/// * `bx` - the unknown index of this source's β_x column.
+/// * `by` - the unknown index of this source's β_y column.
+/// * `i` - the reference image index.
+/// * `j` - the delayed image index.
+fn fermat_form(
+    infl: &FieldCoefficients,
+    thetas: &[Point2D],
+    areas: &[f64],
+    n: usize,
+    bx: usize,
+    by: usize,
+    i: usize,
+    j: usize,
+) -> (Vec<f64>, f64) {
+    let n_cells = areas.len();
+    let mut row = vec![0.0; n];
+    let pi = infl.psi_row(i);
+    let pj = infl.psi_row(j);
+    for c in 0..n_cells {
+        row[c] = -(pj[c] - pi[c]) / areas[c];
+    }
+    let (ti, tj) = (thetas[i], thetas[j]);
+    row[bx] = -(tj.x - ti.x);
+    row[by] = -(tj.y - ti.y);
+    let constant = 0.5 * (tj.norm_squared() - ti.norm_squared());
+    (row, constant)
+}
+
+/// Time-delay equalities: one Fermat equality `τ_to − τ_from = Δt / k` per measured delay.
+///
+/// # Arguments
+/// * `sys` - the source's point-image system (supplies the delays and their scale).
+/// * `infl` - the per-cell field coefficients at this source's images.
+/// * `thetas` - the image positions.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+/// * `bx` - the unknown index of this source's β_x column.
+/// * `by` - the unknown index of this source's β_y column.
+fn time_delay_equalities(
+    sys: &PointImageSystem,
+    infl: &FieldCoefficients,
+    thetas: &[Point2D],
+    areas: &[f64],
+    n: usize,
+    bx: usize,
+    by: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let mut rows = Vec::with_capacity(sys.time_delays.len());
+    let mut rhs = Vec::with_capacity(sys.time_delays.len());
+    for td in &sys.time_delays {
+        let (row, constant) = fermat_form(infl, thetas, areas, n, bx, by, td.from, td.to);
+        rows.push(row);
+        rhs.push(td.delay / sys.delay_scale - constant);
+    }
+    (rows, rhs)
+}
+
+/// Arrival-order inequalities: consecutive `τ_earlier − τ_later ≤ 0`.
+///
+/// # Arguments
+/// * `order` - the arrival order as image indices, earliest first.
+/// * `infl` - the per-cell field coefficients at this source's images.
+/// * `thetas` - the image positions.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+/// * `bx` - the unknown index of this source's β_x column.
+/// * `by` - the unknown index of this source's β_y column.
+fn arrival_order_inequalities(
+    order: &[usize],
+    infl: &FieldCoefficients,
+    thetas: &[Point2D],
+    areas: &[f64],
+    n: usize,
+    bx: usize,
+    by: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let mut rows = Vec::with_capacity(order.len().saturating_sub(1));
+    let mut rhs = Vec::with_capacity(order.len().saturating_sub(1));
+    for w in order.windows(2) {
+        let (row, constant) = fermat_form(infl, thetas, areas, n, bx, by, w[1], w[0]);
+        rows.push(row);
+        rhs.push(-constant);
+    }
+    (rows, rhs)
+}
+
+/// Non-negative convergence bounds: `−m_c ≤ 0` per cell.
+///
+/// # Arguments
+/// * `n_cells` - number of κ cells.
+/// * `n` - number of unknowns (row length).
+fn nonneg_kappa_bounds(n_cells: usize, n: usize) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let mut rows = Vec::with_capacity(n_cells);
+    for c in 0..n_cells {
+        let mut row = vec![0.0; n];
+        row[c] = -1.0;
+        rows.push(row);
+    }
+    (rows, vec![0.0; n_cells])
+}
+
+/// Adjacent-cell gradient bounds: `|m_i/A_i − m_j/A_j| ≤ g · d_ij`, a ± pair per unique edge.
+///
+/// # Arguments
+/// * `basis` - the convergence basis (supplies cell centres and adjacency).
+/// * `areas` - cell areas (length `n_cells`).
+/// * `g` - the gradient bound.
+/// * `n` - number of unknowns (row length).
+fn gradient_bounds<B: KappaBasis>(
+    basis: &B,
+    areas: &[f64],
+    g: f64,
+    n: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let n_cells = areas.len();
+    let mut rows = Vec::new();
+    let mut rhs = Vec::new();
+    for i in 0..n_cells {
+        let ci = basis.center(i);
+        for j in basis.cell_neighbors(i) {
+            if j <= i {
+                continue;
+            }
+            let d = (basis.center(j) - ci).norm();
+            let mut row = vec![0.0; n];
+            row[i] = 1.0 / areas[i];
+            row[j] = -1.0 / areas[j];
+            rows.push(row.clone());
+            rhs.push(g * d);
+            for v in row.iter_mut() {
+                *v = -*v;
+            }
+            rows.push(row);
+            rhs.push(g * d);
+        }
+    }
+    (rows, rhs)
 }
 
 #[cfg(test)]
@@ -241,8 +409,57 @@ mod tests {
         let (_lens, sys) = sis_double(0.2);
         let basis = uniform_basis();
         let plain = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
-        let bounded =
-            ConstraintSet::assemble(&basis, &[sys], &ConstraintConfig { grad_bound: Some(0.5) });
+        let bounded = ConstraintSet::assemble(
+            &basis,
+            &[sys],
+            &ConstraintConfig { grad_bound: Some(0.5), ..Default::default() },
+        );
         assert!(bounded.a_ub.nrows() > plain.a_ub.nrows());
+    }
+
+    #[test]
+    fn disabling_nonneg_kappa_drops_its_inequalities() {
+        // Default emits one κ≥0 inequality per cell; disabling it (with no gradient bound)
+        // leaves the inequality block empty.
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig { nonneg_kappa: false, ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert_eq!(cs.a_ub.nrows(), 0);
+    }
+
+    #[test]
+    fn disabling_position_equalities_drops_the_equalities() {
+        // With no delays/order and position equalities off, the equality block is empty.
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig { position_equalities: false, ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert_eq!(cs.a_eq.nrows(), 0);
+    }
+
+    #[test]
+    fn disabling_time_delays_ignores_measured_delays() {
+        // A delay-carrying system: with delays honoured there are 5 equality rows (4 position
+        // + 1 delay); gating them off leaves only the 4 position rows.
+        let (_lens, sys) = sis_double(0.2);
+        let sys = sys.with_time_delays(vec![TimeDelay { from: 1, to: 0, delay: 0.05 }], 1.0);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig { use_time_delays: false, ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert_eq!(cs.a_eq.nrows(), 4);
+    }
+
+    #[test]
+    fn disabling_arrival_order_ignores_the_order() {
+        // An order-carrying system adds one inequality per consecutive pair by default;
+        // gating the order off leaves only the κ≥0 inequalities.
+        let (_lens, sys) = sis_double(0.2);
+        let sys = sys.with_order(vec![0, 1]);
+        let basis = uniform_basis();
+        let honoured = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
+        let cfg = ConstraintConfig { use_arrival_order: false, ..Default::default() };
+        let ignored = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert_eq!(honoured.a_ub.nrows(), ignored.a_ub.nrows() + 1);
     }
 }
