@@ -88,9 +88,13 @@ pub fn caustics<F: FieldOps>(
 /// polyline, closed when the curve loops — resolving cusps and folds cleanly.
 #[derive(Debug, Clone, Copy)]
 pub struct CriticalTracer {
+    /// Arc-length spacing.
     step: f64,
+    /// Convergence tolerance on the critical scalar value.
     tol: f64,
+    /// Maximum polyline length before giving up.
     max_points: usize,
+    /// Finite-difference epsilon.
     fd_eps: f64,
 }
 
