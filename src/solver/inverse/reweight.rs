@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Extended-image re-weighting of the point-image ensemble (Stage 2).
+//! Extended-image re-weighting of the point-image ensemble.
 //!
-//! Each polytope member is a proposal; the extended-image data supply the weight. Per
-//! member: back-project the arc mask, solve for the source on it, re-lens and blur with the
-//! PSF **in the image plane**, and compare to the data there with the proper noise
-//! covariance. The forward χ² becomes a Gaussian-evidence importance weight; a cheap
-//! source-plane dispersion cull kills badly wrong members before any inversion. The
-//! effective sample size ([`effective_sample_size`]) flags weight collapse.
+//! Each polytope member is a proposal solution; the extended-image data supply the weight.
+//! Per member: back-project the arc mask, solve for the source on it, re-lens and blur 
+//! with the PSF **in the image plane**, and compare to the data there with the proper
+//! noise covariance. The forward χ² becomes a Gaussian-evidence importance weight;
+//! a cheap source-plane dispersion cull kills badly wrong members before any inversion.
+//! The effective sample size ([`effective_sample_size`]) flags weight collapse.
 
 use rayon::prelude::*;
 
@@ -51,6 +51,40 @@ pub fn image_chi_squared(model: &[f64], data: &[f64], noise: &Noise, mask: &Mask
             mask.weight(i) * r * r * noise.inverse_variance(i)
         })
         .sum()
+}
+
+/// The image χ² of one member, or `+∞` if it is culled or its inversion cannot be set up.
+#[allow(clippy::too_many_arguments)]
+fn member_chi_squared<S: SourceBasis>(
+    lens: &dyn LensModel,
+    image: &PixelGrid,
+    data: &[f64],
+    noise: &Noise,
+    mask: &Mask,
+    psf: Option<&Psf>,
+    lambda: f64,
+    source_cfg: &SourceConfig,
+    dispersion_cut: Option<f64>,
+) -> f64 {
+    if let Some(cut) = dispersion_cut {
+        if source_plane_dispersion(lens, image, mask, DISP_BINS) > cut {
+            return f64::INFINITY;
+        }
+    }
+    let Ok((_source, f, s)) = invert_member::<S>(lens, image, data, noise, mask, lambda, source_cfg)
+    else {
+        return f64::INFINITY;
+    };
+
+    let model = f.apply(&s);
+    let model = match psf {
+        Some(p) => match PixelGrid::from_vec(image.grid, model).and_then(|g| p.apply(&g)) {
+            Ok(blurred) => (0..blurred.len()).map(|i| blurred.value_at(i)).collect(),
+            Err(_) => return f64::INFINITY,
+        },
+        None => model,
+    };
+    image_chi_squared(&model, data, noise, mask)
 }
 
 /// Importance weights from per-member χ²: the normalized Gaussian evidence
@@ -123,39 +157,6 @@ where
     WeightedEnsemble { ensemble: ensemble.clone(), weights, ess }
 }
 
-/// The image χ² of one member, or `+∞` if it is culled or its inversion cannot be set up.
-#[allow(clippy::too_many_arguments)]
-fn member_chi_squared<S: SourceBasis>(
-    lens: &dyn LensModel,
-    image: &PixelGrid,
-    data: &[f64],
-    noise: &Noise,
-    mask: &Mask,
-    psf: Option<&Psf>,
-    lambda: f64,
-    source_cfg: &SourceConfig,
-    dispersion_cut: Option<f64>,
-) -> f64 {
-    if let Some(cut) = dispersion_cut {
-        if source_plane_dispersion(lens, image, mask, DISP_BINS) > cut {
-            return f64::INFINITY;
-        }
-    }
-    let Ok((_source, f, s)) = invert_member::<S>(lens, image, data, noise, mask, lambda, source_cfg)
-    else {
-        return f64::INFINITY;
-    };
-
-    let model = f.apply(&s);
-    let model = match psf {
-        Some(p) => match PixelGrid::from_vec(image.grid, model).and_then(|g| p.apply(&g)) {
-            Ok(blurred) => (0..blurred.len()).map(|i| blurred.value_at(i)).collect(),
-            Err(_) => return f64::INFINITY,
-        },
-        None => model,
-    };
-    image_chi_squared(&model, data, noise, mask)
-}
 
 #[cfg(test)]
 mod tests {
