@@ -17,7 +17,9 @@ use crate::solver::image::PointImageSystem;
 
 use crate::solver::basis::{FieldCoefficients, KappaBasis};
 
-use super::data::{arrival_order_inequalities, position_equalities, time_delay_equalities};
+use super::data::{
+    arrival_order_inequalities, position_equalities, position_inequalities, time_delay_equalities,
+};
 use super::priors::{
     curvature_bounds, gradient_bounds, mean_kappa_equality, nonneg_kappa_bounds,
     radial_monotonic_bounds, symmetry_equalities,
@@ -159,9 +161,21 @@ impl ConstraintSet {
             let (bx, by) = (n_cells + 2 * s, n_cells + 2 * s + 1);
 
             if config.position_equalities {
-                let (rows, rhs) = position_equalities(&infl, &thetas, &areas, n, bx, by);
-                eq.extend(rows);
-                b_eq.extend(rhs);
+                match sys.position_tol {
+                    // Hard lens-equation equalities α(θ) + β = θ.
+                    None => {
+                        let (rows, rhs) = position_equalities(&infl, &thetas, &areas, n, bx, by);
+                        eq.extend(rows);
+                        b_eq.extend(rhs);
+                    }
+                    // Soft ±ε bands |α(θ) + β − θ| ≤ ε (extended-feature slack).
+                    Some(eps) => {
+                        let (rows, rhs) =
+                            position_inequalities(&infl, &thetas, &areas, n, bx, by, eps);
+                        ub.extend(rows);
+                        b_ub.extend(rhs);
+                    }
+                }
             }
 
             if config.use_time_delays && !sys.time_delays.is_empty() {
@@ -283,6 +297,21 @@ mod tests {
         let (_lens, sys) = sis_double(0.15);
         let basis = uniform_basis();
         let cs = ConstraintSet::assemble(&basis, &[sys], &ConstraintConfig::default());
+        assert!(cs.feasible());
+    }
+
+    #[test]
+    fn position_slack_uses_inequality_bands_not_equalities() {
+        // A correspondence system with positional slack contributes ± inequality bands instead
+        // of hard equalities: four inequalities per image, no position equalities, and the
+        // exact-fit lens (residual 0 ≤ ε) stays feasible.
+        let (_lens, sys) = sis_double(0.2); // two images
+        let sys = sys.with_position_tol(0.05);
+        let basis = uniform_basis();
+        let cs = ConstraintSet::assemble(&basis, &[sys], &ConstraintConfig::default());
+        assert_eq!(cs.a_eq.nrows(), 0, "no hard position equalities under slack");
+        // κ≥0 (one per cell) + four inequality rows per image (2 images → 8).
+        assert_eq!(cs.a_ub.nrows(), basis.len() + 8);
         assert!(cs.feasible());
     }
 

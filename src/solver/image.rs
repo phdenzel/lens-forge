@@ -30,6 +30,9 @@ impl Parity {
     pub const SADDLE: Parity = Parity(0);
     /// Maximum — both eigenvalues of A negative.
     pub const MAXIMUM: Parity = Parity(-1);
+    /// Unknown parity: sentinel for an image not produced by classification
+    /// outside the valid `{−1, 0, 1}` range.
+    pub const UNKNOWN: Parity = Parity(i8::MIN);
 
     /// Classify a stationary point from the two eigenvalues of A = I − H.
     ///
@@ -96,11 +99,14 @@ impl Image {
 /// The images of one source, with optional arrival order and measured time delays.
 ///
 /// Several systems can share one κ basis; each adds its own source-position unknowns to
-/// the point-image polytope. Only the image positions and parities enter as constraints —
-/// magnification and τ are model-derived.
+/// the point-image polytope. Only the image positions enter as constraints — magnification,
+/// parity and τ are model-derived. A matched *extended*-image feature (the same source knot
+/// seen across several arcs) is expressed the same way via [`from_positions`](Self::from_positions),
+/// optionally with positional slack via [`with_position_tol`](Self::with_position_tol) to absorb
+/// centroiding error while keeping the problem an LP.
 #[derive(Debug, Clone)]
 pub struct PointImageSystem {
-    /// The observed images (positions and parities used; τ/μ ignored).
+    /// The observed images (only positions are used as constraints; parity/τ/μ ignored).
     pub images: Vec<Image>,
     /// Measured time delays between image pairs (empty if none).
     pub time_delays: Vec<TimeDelay>,
@@ -110,6 +116,10 @@ pub struct PointImageSystem {
     pub delay_scale: f64,
     /// Explicit arrival order as image indices earliest-first (`None` if unknown).
     pub order: Option<Vec<usize>>,
+    /// Positional slack `ε`: when `Some`, the position constraints become
+    /// `|α(θ) + β − θ| ≤ ε` inequalities instead of hard equalities (absorbing centroiding
+    /// error). `None` (the default) keeps them exact.
+    pub position_tol: Option<f64>,
 }
 
 impl PointImageSystem {
@@ -118,7 +128,23 @@ impl PointImageSystem {
     /// # Arguments
     /// * `images` - the observed images of the source.
     pub fn from_images(images: Vec<Image>) -> Self {
-        Self { images, time_delays: Vec::new(), delay_scale: 1.0, order: None }
+        Self { images, time_delays: Vec::new(), delay_scale: 1.0, order: None, position_tol: None }
+    }
+
+    /// A correspondence system from bare matched image positions — the same feature seen in
+    /// several images of one (unknown) source. Only the positions constrain the polytope; the
+    /// model-derived fields are left unset — `μ`/`τ` `NaN` and parity [`UNKNOWN`](Parity::UNKNOWN),
+    /// since there is no lens yet to classify them. Pair with
+    /// [`with_position_tol`](Self::with_position_tol) to allow centroiding slack.
+    ///
+    /// # Arguments
+    /// * `positions` - the matched image-plane positions of the feature.
+    pub fn from_positions(positions: &[Point2D]) -> Self {
+        let images = positions
+            .iter()
+            .map(|&theta| Image { theta, mu: f64::NAN, parity: Parity::UNKNOWN, tau: f64::NAN })
+            .collect();
+        Self::from_images(images)
     }
 
     /// Attach measured time delays and their scale `k` (`Δt = k · Δτ`).
@@ -138,6 +164,16 @@ impl PointImageSystem {
     /// * `order` - arrival order as image indices.
     pub fn with_order(mut self, order: Vec<usize>) -> Self {
         self.order = Some(order);
+        self
+    }
+
+    /// Relax the position equalities into ±`tol` slack inequalities `|α(θ) + β − θ| ≤ tol`,
+    /// absorbing per-feature centroiding error. `None` (the default) keeps hard equalities.
+    ///
+    /// # Arguments
+    /// * `tol` - the per-coordinate positional tolerance.
+    pub fn with_position_tol(mut self, tol: f64) -> Self {
+        self.position_tol = Some(tol);
         self
     }
 }
@@ -170,6 +206,25 @@ mod tests {
         assert_eq!(full.time_delays.len(), 1);
         assert_eq!(full.delay_scale, 2.0);
         assert_eq!(full.order.as_deref(), Some(&[1usize, 0][..]));
+        // Default has no positional slack.
+        assert!(bare.position_tol.is_none());
+    }
+
+    #[test]
+    fn from_positions_builds_a_correspondence_system_with_slack() {
+        // A matched extended feature seen in three arcs → a system carrying just the positions,
+        // with optional centroiding slack.
+        let feature = [Point2D::new(1.2, 0.3), Point2D::new(-0.8, 0.1), Point2D::new(0.2, -1.1)];
+        let sys = PointImageSystem::from_positions(&feature).with_position_tol(0.01);
+        assert_eq!(sys.images.len(), 3);
+        for (im, p) in sys.images.iter().zip(&feature) {
+            assert_eq!(im.theta, *p);
+            // Model-derived fields are unset sentinels, not fabricated values.
+            assert_eq!(im.parity, Parity::UNKNOWN);
+            assert!(im.mu.is_nan() && im.tau.is_nan());
+        }
+        assert!(sys.time_delays.is_empty());
+        assert_eq!(sys.position_tol, Some(0.01));
     }
 
     /// A lens with a fixed jet everywhere, for exercising the derived quantities.
