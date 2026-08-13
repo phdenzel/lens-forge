@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The point-image currency shared by the forward and inverse layers.
+//! The point-image data types shared by the forward and inverse layers.
 //!
 //! An [`Image`] records one solution of the lens equation: its position, signed
 //! magnification, [`Parity`], and Fermat potential. The image finders in

@@ -9,7 +9,7 @@
 //!
 //! `builder` assembles the [`ConstraintSet`](builder::ConstraintSet) from a
 //! [`KappaBasis`](crate::solver::basis::KappaBasis) and a set of
-//! [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data currency,
+//! [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data unit,
 //! defined in [`image`](crate::solver::image)); the per-cell ψ and deflection coefficients come
 //! from [`FieldCoefficients`](crate::solver::basis::FieldCoefficients).
 
