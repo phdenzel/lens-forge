@@ -67,6 +67,9 @@ pub struct ConstraintConfig {
     pub grad_bound: Option<f64>,
     /// Optional symmetry the convergence field must obey (`κ(θ) = κ(Sθ)` per paired cells).
     pub symmetry: Option<Symmetry>,
+    /// Optional mass-sheet pin: fix the mean convergence `(1/C)·Σ_c κ_c` to this value,
+    /// removing the mass-sheet-degeneracy (MSD) direction from the polytope.
+    pub mean_kappa: Option<f64>,
 }
 
 impl Default for ConstraintConfig {
@@ -78,6 +81,7 @@ impl Default for ConstraintConfig {
             use_arrival_order: true,
             grad_bound: None,
             symmetry: None,
+            mean_kappa: None,
         }
     }
 }
@@ -172,6 +176,12 @@ impl ConstraintSet {
             let (rows, rhs) = symmetry_equalities(basis, sym, &areas, n);
             eq.extend(rows);
             b_eq.extend(rhs);
+        }
+
+        if let Some(mean) = config.mean_kappa {
+            let (row, rhs) = mean_kappa_equality(mean, &areas, n);
+            eq.push(row);
+            b_eq.push(rhs);
         }
 
         ConstraintSet {
@@ -431,6 +441,21 @@ fn symmetry_equalities<B: KappaBasis>(
     (rows, rhs)
 }
 
+/// Mass-sheet pin: a single equality fixing the mean convergence `(1/C)·Σ_c κ_c = mean`.
+///
+/// # Arguments
+/// * `mean` - the target mean convergence.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+fn mean_kappa_equality(mean: f64, areas: &[f64], n: usize) -> (Vec<f64>, f64) {
+    let n_cells = areas.len();
+    let mut row = vec![0.0; n];
+    for c in 0..n_cells {
+        row[c] = 1.0 / areas[c];
+    }
+    (row, mean * n_cells as f64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,5 +595,36 @@ mod tests {
         let basis = uniform_basis();
         let cfg = ConstraintConfig { symmetry: Some(Symmetry::Inversion), ..Default::default() };
         assert!(ConstraintSet::assemble(&basis, &[sys], &cfg).feasible());
+    }
+
+    #[test]
+    fn mean_kappa_adds_one_equality() {
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let base = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
+        let cfg = ConstraintConfig { mean_kappa: Some(0.3), ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert_eq!(cs.a_eq.nrows(), base.a_eq.nrows() + 1);
+    }
+
+    #[test]
+    fn mean_kappa_pin_respects_non_negativity() {
+        // With κ≥0 the mean pin is feasible for a non-negative target (a uniform field) and
+        // infeasible for a negative one — the pin genuinely bites. (Position equalities off to
+        // isolate the pin.)
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let feasible = ConstraintConfig {
+            position_equalities: false,
+            mean_kappa: Some(0.5),
+            ..Default::default()
+        };
+        assert!(ConstraintSet::assemble(&basis, &[sys.clone()], &feasible).feasible());
+        let infeasible = ConstraintConfig {
+            position_equalities: false,
+            mean_kappa: Some(-1.0),
+            ..Default::default()
+        };
+        assert!(!ConstraintSet::assemble(&basis, &[sys], &infeasible).feasible());
     }
 }
