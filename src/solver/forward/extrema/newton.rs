@@ -9,6 +9,7 @@
 use crate::grid::Point2D;
 use crate::lens::LensModel;
 use crate::numerical::newton::newton2;
+use crate::SolveInfo;
 
 /// Stopping criteria for [`newton`]: the source-plane residual tolerance and the
 /// iteration cap.
@@ -61,7 +62,26 @@ pub fn newton(
     seed: Point2D,
     cfg: NewtonConfig,
 ) -> Option<Point2D> {
-    let (theta, info) = newton2(
+    let (theta, info) = newton_with_info(lens, beta, seed, cfg);
+    info.converged.then_some(theta)
+}
+
+/// Refine `seed` as [`newton`] does, but return the final iterate together with its
+/// [`SolveInfo`] (iterations, source-plane residual, convergence flag) — the record the
+/// point-image solver aggregates.
+///
+/// # Arguments
+/// * `lens` - the lens model (its jet supplies both α and the Jacobian A).
+/// * `beta` - source-plane position β.
+/// * `seed` - starting image-plane position θ₀.
+/// * `cfg` - stopping criteria.
+pub fn newton_with_info(
+    lens: &dyn LensModel,
+    beta: Point2D,
+    seed: Point2D,
+    cfg: NewtonConfig,
+) -> (Point2D, SolveInfo) {
+    newton2(
         |theta| {
             let jet = lens.jet(theta);
             let h = jet.hessian;
@@ -71,8 +91,7 @@ pub fn newton(
         seed,
         cfg.tol,
         cfg.max_iter,
-    );
-    info.converged.then_some(theta)
+    )
 }
 
 #[cfg(test)]

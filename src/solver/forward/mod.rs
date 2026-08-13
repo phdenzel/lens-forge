@@ -17,4 +17,5 @@ pub mod extrema;
 pub mod mapping;
 pub mod model;
 
+pub use extrema::images::PointImageSolver;
 pub use model::ForwardModel;

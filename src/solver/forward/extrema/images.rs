@@ -3,17 +3,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Point-source image finding: solve β = θ − α(θ) for all images of β.
 //!
-//! An [`ImageFinder`] trait returns every image with its magnification, parity,
-//! and Fermat potential. Every [`MapDiscretization`] has an [`ImageFinder`]
-//! implementation: its seeds are [`newton`]-inferred, deduplicated, and 
-//! classified by [`Image::at`]. Build a discretization once and query it for
-//! many source positions.
+//! An [`ImageFinder`] returns every image with its magnification, parity, and Fermat
+//! potential: every [`MapDiscretization`] has an implementation whose seeds are
+//! Newton-polished ([`newton`](super::newton)), deduplicated, and classified by
+//! [`Image::at`]. [`PointImageSolver`] wraps the same solve behind the [`Solve`] seam,
+//! reporting the aggregate Newton convergence as a [`Solution`]. Build a discretization
+//! once and query it for many source positions.
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;
 use crate::solver::basis::MapDiscretization;
 use crate::solver::image::Image;
-use super::newton::{newton, NewtonConfig};
+use crate::solver::solve::{Solve, Solution};
+use crate::{Result, SolveInfo};
+use super::newton::{newton_with_info, NewtonConfig};
 
 /// Image-plane distance below which two polished images are treated as one.
 const DEDUP_TOL: f64 = 1e-6;
@@ -36,15 +39,85 @@ pub trait ImageFinder {
 /// [`images`](ImageFinder::images) (Newton re-evaluates the jet at fresh θ).
 impl<D: MapDiscretization + ?Sized> ImageFinder for D {
     fn images(&self, lens: &dyn LensModel, beta: Point2D) -> Vec<Image> {
-        let mut images: Vec<Image> = Vec::new();
-        for seed in self.images_of(beta) {
-            let Some(theta) = newton(lens, beta, seed, NewtonConfig::default()) else { continue };
-            // Many cells seed the same image; keep only the first of each.
-            if !images.iter().any(|im| (im.theta - theta).norm() < DEDUP_TOL) {
-                images.push(Image::at(lens, theta, beta));
-            }
+        solve_images(lens, self, beta, NewtonConfig::default()).0
+    }
+}
+
+/// Solve for all images of `beta`: Newton-polish every discretization seed, deduplicate
+/// within `DEDUP_TOL`, classify, and aggregate the per-seed Newton convergence.
+///
+/// The record: `iterations` is the total Newton work over all seed attempts, `residual` the
+/// worst source-plane residual among the kept images, and `converged` is `true` unless seeds
+/// were produced yet none polished to a valid image (a genuine failure, e.g. a mismatched lens
+/// or every seed on a critical curve). A source with no seeds is vacuously converged.
+pub(super) fn solve_images<D: MapDiscretization + ?Sized>(
+    lens: &dyn LensModel,
+    finder: &D,
+    beta: Point2D,
+    config: NewtonConfig,
+) -> (Vec<Image>, SolveInfo) {
+    let mut images: Vec<Image> = Vec::new();
+    let mut iterations = 0usize;
+    let mut residual = 0.0f64;
+    let mut had_seed = false;
+    for seed in finder.images_of(beta) {
+        had_seed = true;
+        let (theta, info) = newton_with_info(lens, beta, seed, config);
+        iterations += info.iterations;
+        if !info.converged {
+            continue;
         }
-        images
+        // Many cells seed the same image; keep only the first of each.
+        if !images.iter().any(|im| (im.theta - theta).norm() < DEDUP_TOL) {
+            residual = residual.max(info.residual);
+            images.push(Image::at(lens, theta, beta));
+        }
+    }
+    let converged = !had_seed || !images.is_empty();
+    (images, SolveInfo { iterations, residual, converged })
+}
+
+/// A configured point-image solver: solves β = θ − α(θ) for all images of a source and
+/// reports the aggregate Newton convergence via [`Solve`] — the forward-side counterpart of
+/// [`FreeFormInversion`](crate::solver::inverse::FreeFormInversion).
+///
+/// Configure it once over a lens and a built discretization, then [`solve`](Solve::solve) many
+/// source positions.
+pub struct PointImageSolver<'a, D: MapDiscretization + ?Sized> {
+    lens: &'a dyn LensModel,
+    finder: &'a D,
+    config: NewtonConfig,
+}
+
+impl<'a, D: MapDiscretization + ?Sized> PointImageSolver<'a, D> {
+    /// A solver over `lens` using the built discretization `finder` (default Newton config).
+    ///
+    /// # Arguments
+    /// * `lens` - the lens model (must be the one `finder` was built from).
+    /// * `finder` - the built discretization supplying image seeds.
+    pub fn new(lens: &'a dyn LensModel, finder: &'a D) -> Self {
+        Self { lens, finder, config: NewtonConfig::default() }
+    }
+
+    /// Set the Newton stopping criteria.
+    ///
+    /// # Arguments
+    /// * `config` - the Newton tolerance and iteration cap.
+    pub fn with_config(mut self, config: NewtonConfig) -> Self {
+        self.config = config;
+        self
+    }
+}
+
+impl<D: MapDiscretization + ?Sized> Solve for PointImageSolver<'_, D> {
+    /// The source-plane position β to find images of.
+    type Input<'a> = Point2D;
+    /// The images of β.
+    type Output = Vec<Image>;
+
+    fn solve(&self, beta: Point2D) -> Result<Solution<Vec<Image>>> {
+        let (images, info) = solve_images(self.lens, self.finder, beta, self.config);
+        Ok(Solution::new(images, info))
     }
 }
 
@@ -152,5 +225,41 @@ mod tests {
     #[test]
     fn no_images_have_zero_total_magnification() {
         assert_eq!(total_magnification(&[]), 0.0);
+    }
+
+    #[test]
+    fn point_image_solver_solves_the_sis_pair_with_convergence() {
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let finder = MapPixellation::build(&lens, &Grid2D::square(80, 2.0).unwrap());
+        let sol = PointImageSolver::new(&lens, &finder).solve(Point2D::new(0.3, 0.0)).unwrap();
+        assert_sis_pair(&sol.output);
+        assert!(sol.info.converged);
+        assert!(sol.info.iterations > 0);
+        assert!(sol.info.residual < 1e-9, "residual {}", sol.info.residual); // ≤ Newton tol
+    }
+
+    #[test]
+    fn point_image_solver_matches_the_finder() {
+        // The Solve facade returns exactly the ImageFinder images (same solve, plus a record).
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let finder = MapPixellation::build(&lens, &Grid2D::square(64, 2.0).unwrap());
+        let beta = Point2D::new(0.25, 0.1);
+        let via_solve = PointImageSolver::new(&lens, &finder).solve(beta).unwrap().output;
+        let via_finder = finder.images(&lens, beta);
+        assert_eq!(via_solve.len(), via_finder.len());
+        for (a, b) in via_solve.iter().zip(&via_finder) {
+            assert_eq!(a.theta, b.theta);
+        }
+    }
+
+    #[test]
+    fn point_image_solver_reports_no_images_outside() {
+        // A source with no covering seeds yields an empty, vacuously-converged solution.
+        let lens = SIS::new(Point2D::origin(), 1.0);
+        let finder = MapPixellation::build(&lens, &Grid2D::square(24, 2.0).unwrap());
+        let sol = PointImageSolver::new(&lens, &finder).solve(Point2D::new(50.0, 50.0)).unwrap();
+        assert!(sol.output.is_empty());
+        assert!(sol.info.converged);
+        assert_eq!(sol.info.iterations, 0);
     }
 }

@@ -29,6 +29,6 @@ pub mod image;
 pub mod inverse;
 pub mod solve;
 
-pub use forward::ForwardModel;
+pub use forward::{ForwardModel, PointImageSolver};
 pub use inverse::FreeFormInversion;
 pub use solve::{SolveInfo, Solution, Solve};
