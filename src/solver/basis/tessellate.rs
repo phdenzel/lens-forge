@@ -10,7 +10,7 @@
 
 use super::discretization::{seed_if_contains, MapDiscretization};
 use crate::grid::{BBox, MeshGrid, Point2D};
-use crate::solver::mapping::raytrace::RayTracer;
+use crate::solver::forward::mapping::raytrace::RayTracer;
 use crate::lens::LensModel;
 use crate::Result;
 
@@ -75,7 +75,7 @@ mod tests {
     use super::*;
     use crate::lens::SIS;
     use crate::rng::Lcg;
-    use crate::solver::extrema::newton::{newton, NewtonConfig};
+    use crate::solver::forward::extrema::newton::{newton, NewtonConfig};
 
     /// A jittered `n × n` lattice of image-plane samples over `[-half, half]²`.
     fn jittered_samples(n: usize, half: f64) -> (Vec<Point2D>, BBox) {

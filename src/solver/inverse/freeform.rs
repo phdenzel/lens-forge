@@ -20,9 +20,9 @@ use crate::instrument::noise::Noise;
 use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
 use crate::solver::basis::{KappaBasis, SourceBasis, SourceConfig};
-use crate::solver::constraints::{ConstraintConfig, ConstraintSet};
-use crate::solver::ensemble::summaries::{kappa_mean, kappa_variance, msd_levels};
-use crate::solver::ensemble::{Ensemble, HitAndRun};
+use crate::solver::inverse::constraints::{ConstraintConfig, ConstraintSet};
+use crate::solver::inverse::ensemble::summaries::{kappa_mean, kappa_variance, msd_levels};
+use crate::solver::inverse::ensemble::{Ensemble, HitAndRun};
 use crate::solver::image::PointImageSystem;
 use crate::solver::solve::{Solution, Solve};
 use crate::source::SourceField;
@@ -189,7 +189,7 @@ mod tests {
     use super::super::reduce::ReduceMethod;
     use crate::grid::{Grid2D, MeshGrid, Point2D, ScalarField2D};
     use crate::lens::SIS;
-    use crate::solver::extended::imaging::ImageSimulation;
+    use crate::solver::forward::extended::imaging::ImageSimulation;
     use crate::solver::image::Image;
 
     /// A coarse κ basis and the SIS double-image system of an axial source.

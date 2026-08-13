@@ -10,7 +10,7 @@
 
 use super::discretization::{seed_if_contains, MapDiscretization};
 use crate::grid::{Grid2D, Point2D};
-use crate::solver::mapping::raytrace::RayTracer;
+use crate::solver::forward::mapping::raytrace::RayTracer;
 use crate::lens::LensModel;
 
 /// A lattice-quad discretization of the lens map: `nx × ny` image-plane nodes,
@@ -80,7 +80,7 @@ impl MapDiscretization for MapPixellation {
 mod tests {
     use super::*;
     use crate::lens::SIS;
-    use crate::solver::extrema::newton::{newton, NewtonConfig};
+    use crate::solver::forward::extrema::newton::{newton, NewtonConfig};
 
     /// Newton-polish the seeds and collapse them to distinct images.
     fn distinct_images(lens: &dyn LensModel, beta: Point2D, seeds: &[Point2D]) -> Vec<Point2D> {

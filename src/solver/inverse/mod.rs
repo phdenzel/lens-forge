@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Extended-image inversion and re-weighting: from point images to arcs.
+//! Inverse reconstruction: observables → mass ensemble → source.
 //!
-//! The point-image [`ensemble`](crate::solver::ensemble) is a proposal set; extended (arc)
-//! data constrain it further. For a fixed member the source is a linear least-squares solve,
-//! and its forward image-plane fit is a Gaussian-evidence importance weight.
+//! The free-form κ basis makes every point-image observable linear in the cell masses, so the
+//! admissible models form a convex polytope; it is sampled for a degenerate-solution ensemble,
+//! then — with extended (arc) data — re-weighted by each member's forward image-plane fit and
+//! reduced to the observation-constrained posterior, with optional per-member source
+//! reconstruction.
 //!
+//! * `constraints` — images + a κ basis → the polytope A x ≤ b, C x = d.
+//! * `ensemble` — hit-and-run sampling of that polytope and its physical summaries.
 //! * `source_plane` — per-member source construction on a
 //!   [`SourceBasis`](crate::solver::basis::SourceBasis):
 //!   [`source_field`](source_plane::source_field) builds a member's source plane and
@@ -24,6 +28,8 @@
 //!   whole pipeline (polytope → ensemble → re-weight → reduce → optional source).
 
 pub mod backproject;
+pub mod constraints;
+pub mod ensemble;
 pub mod freeform;
 pub mod reduce;
 pub mod reweight;

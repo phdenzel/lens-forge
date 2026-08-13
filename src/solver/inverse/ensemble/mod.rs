@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Sampling the point-image polytope: the degenerate-solution ensemble and its statistics.
 //!
-//! The [`ConstraintSet`](crate::solver::constraints::ConstraintSet) is a convex polytope of
+//! The [`ConstraintSet`](crate::solver::inverse::constraints::ConstraintSet) is a convex polytope of
 //! admissible mass distributions. This module draws a uniform (flat-in-mass) sample of it
 //! and reduces the sample to physical summaries.
 //!

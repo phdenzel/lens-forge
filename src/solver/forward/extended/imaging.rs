@@ -11,7 +11,7 @@
 
 use crate::grid::FieldOps;
 use crate::lens::LensModel;
-use crate::solver::mapping::raytrace::RayTracer;
+use crate::solver::forward::mapping::raytrace::RayTracer;
 use crate::source::SourceModel;
 
 /// An extended-source imaging strategy: (lens, source) → lensed surface-brightness

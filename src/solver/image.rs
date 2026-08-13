@@ -5,9 +5,9 @@
 //!
 //! An [`Image`] records one solution of the lens equation: its position, signed
 //! magnification, [`Parity`], and Fermat potential. The image finders in
-//! [`extrema`](super) produce it; the inverse point-image constraints consume it. A
+//! [`extrema`](super::forward::extrema) produce it; the inverse point-image constraints consume it. A
 //! [`PointImageSystem`] gathers the images of one source, with any measured time delays
-//! ([`TimeDelay`](super::extrema::delays::TimeDelay)) and arrival order — the observed-data
+//! ([`TimeDelay`](super::forward::extrema::delays::TimeDelay)) and arrival order — the observed-data
 //! unit the constraint builder takes.
 //!
 //! Parity is the arrival-time surface's stationary type encoded as `1 − m`, where
@@ -16,7 +16,7 @@
 
 use crate::grid::Point2D;
 use crate::lens::LensModel;
-use crate::solver::extrema::delays::TimeDelay;
+use crate::solver::forward::extrema::delays::TimeDelay;
 
 /// Image parity as `1 − Morse index` of the Fermat surface: `+1` minimum, `0`
 /// saddle, `−1` maximum (one minus the number of negative eigenvalues of A = I − H).
@@ -106,7 +106,7 @@ pub struct PointImageSystem {
     pub time_delays: Vec<TimeDelay>,
     /// Delay scale `k` in `Δt = k · Δτ` linking a physical delay to the dimensionless
     /// Fermat difference (`1.0` when delays are already dimensionless). See
-    /// [`time_delay_scale`](super::extrema::delays::time_delay_scale).
+    /// [`time_delay_scale`](super::forward::extrema::delays::time_delay_scale).
     pub delay_scale: f64,
     /// Explicit arrival order as image indices earliest-first (`None` if unknown).
     pub order: Option<Vec<usize>>,
@@ -147,7 +147,7 @@ mod tests {
     use super::*;
     use crate::lens::model::LensJet;
     use crate::lens::SIS;
-    use crate::solver::extrema::delays::TimeDelay;
+    use crate::solver::forward::extrema::delays::TimeDelay;
 
     #[test]
     fn point_image_system_builders_populate_every_field() {

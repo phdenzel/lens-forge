@@ -105,7 +105,7 @@ mod tests {
     use crate::grid::{BBox, Grid2D, MeshGrid, PixelGrid, Point2D, ScalarField2D};
     use crate::lens::SIS;
     use crate::rng::Lcg;
-    use crate::solver::extended::imaging::ImageSimulation;
+    use crate::solver::forward::extended::imaging::ImageSimulation;
     use crate::source::SourceField;
 
     fn dot(a: &[f64], b: &[f64]) -> f64 {

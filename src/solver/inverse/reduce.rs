@@ -9,7 +9,7 @@
 //! weight-threshold cull.
 
 use crate::rng::Lcg;
-use crate::solver::ensemble::{Ensemble, EnsembleMember};
+use crate::solver::inverse::ensemble::{Ensemble, EnsembleMember};
 
 use super::reweight::WeightedEnsemble;
 
@@ -83,7 +83,7 @@ fn resample(weighted: &WeightedEnsemble, target: usize, seed: u64) -> Vec<Ensemb
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::ensemble::summaries::effective_sample_size;
+    use crate::solver::inverse::ensemble::summaries::effective_sample_size;
 
     /// A weighted ensemble whose member `i` carries the marker value `i` in its single cell.
     fn weighted(weights: Vec<f64>) -> WeightedEnsemble {

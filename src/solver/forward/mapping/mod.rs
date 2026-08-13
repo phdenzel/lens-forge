@@ -13,7 +13,7 @@
 //! * `raytrace` — batched image-plane → source-plane ray-tracing.
 //!
 //! Point-source image finding (Newton polishing, the Fermat surface) lives in
-//! [`extrema`](crate::solver::extrema); the pixel/mesh discretizations of this map
+//! [`extrema`](crate::solver::forward::extrema); the pixel/mesh discretizations of this map
 //! (`MapDiscretization` and its realizations) live in [`basis`](crate::solver::basis).
 
 pub mod convergence;

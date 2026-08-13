@@ -20,7 +20,7 @@ use lens_forge::fastsum::Backend;
 use lens_forge::grid::{Grid2D, PixelGrid, Point2D};
 use lens_forge::lens::freeform::{FieldMethod, PixelLens};
 use lens_forge::lens::{FreeFormLens, LensModel, SIS};
-use lens_forge::solver::mapping::raytrace::RayTracer;
+use lens_forge::solver::forward::mapping::raytrace::RayTracer;
 
 /// Side of the κ grid backing the free-form lenses.
 const KAPPA_SIDE: usize = 64;

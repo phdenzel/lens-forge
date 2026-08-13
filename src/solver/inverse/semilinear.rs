@@ -13,7 +13,7 @@ use crate::grid::{CellAdjacency, ScalarField2D};
 use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::numerical::cg::jacobi_pcg;
-use crate::solver::extended::operator::LensingOperator;
+use crate::solver::forward::extended::operator::LensingOperator;
 use crate::SolveInfo;
 
 /// Graph-Laplacian smoothness regularizer on a source plane: `(R s)_i = Σ_{j∈N(i)}(s_i − s_j)`.

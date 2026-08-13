@@ -17,8 +17,8 @@ use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
-use crate::solver::ensemble::summaries::effective_sample_size;
-use crate::solver::ensemble::Ensemble;
+use crate::solver::inverse::ensemble::summaries::effective_sample_size;
+use crate::solver::inverse::ensemble::Ensemble;
 
 use super::backproject::source_plane_dispersion;
 use super::source_plane::invert_member;
@@ -163,8 +163,8 @@ mod tests {
     use super::*;
     use crate::grid::{Grid2D, MeshGrid, Point2D};
     use crate::lens::SIS;
-    use crate::solver::ensemble::{Ensemble, EnsembleMember};
-    use crate::solver::extended::imaging::ImageSimulation;
+    use crate::solver::inverse::ensemble::{Ensemble, EnsembleMember};
+    use crate::solver::forward::extended::imaging::ImageSimulation;
     use crate::source::SourceField;
 
     #[test]

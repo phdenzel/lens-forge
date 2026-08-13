@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn fermat_saddle_contours_traces_the_single_sis_saddle() {
-        use crate::solver::extrema::images::ImageFinder;
+        use crate::solver::forward::extrema::images::ImageFinder;
         use crate::solver::basis::MapPixellation;
         // The offset SIS source has exactly one saddle, so exactly one critical contour.
         let lens = SIS::new(Point2D::origin(), 1.0);

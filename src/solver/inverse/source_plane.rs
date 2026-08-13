@@ -13,7 +13,7 @@ use crate::instrument::mask::Mask;
 use crate::instrument::noise::Noise;
 use crate::lens::LensModel;
 use crate::solver::basis::{SourceBasis, SourceConfig};
-use crate::solver::extended::operator::LensingOperator;
+use crate::solver::forward::extended::operator::LensingOperator;
 use crate::source::SourceField;
 use crate::Result;
 
@@ -101,7 +101,7 @@ mod tests {
     use super::*;
     use crate::grid::{Grid2D, MeshGrid, Point2D};
     use crate::lens::SIS;
-    use crate::solver::extended::imaging::ImageSimulation;
+    use crate::solver::forward::extended::imaging::ImageSimulation;
     use crate::source::SourceModel;
 
     #[test]

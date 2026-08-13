@@ -242,7 +242,7 @@ mod tests {
     use super::*;
     use crate::grid::{Grid2D, PixelGrid, Point2D, ScalarField2D};
     use crate::lens::SIS;
-    use crate::solver::extrema::delays::TimeDelay;
+    use crate::solver::forward::extrema::delays::TimeDelay;
     use crate::solver::image::{Image, PointImageSystem};
     use ndarray::Array1;
 

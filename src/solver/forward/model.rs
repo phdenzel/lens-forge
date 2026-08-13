@@ -4,8 +4,8 @@
 //! The forward-model composer: (lens, source) → observables.
 //!
 //! [`ForwardModel`] bundles a lens (and optionally a source) and offers the forward
-//! observables as direct methods, delegating to [`mapping`](crate::solver::mapping),
-//! [`extrema`](crate::solver::extrema) and [`extended`](crate::solver::extended): point
+//! observables as direct methods, delegating to [`mapping`](crate::solver::forward::mapping),
+//! [`extrema`](crate::solver::forward::extrema) and [`extended`](crate::solver::forward::extended): point
 //! images, magnification/convergence maps, critical curves and caustics, time delays, the
 //! lensed surface-brightness field, and — with an instrument — a simulated observation
 //! (PSF + noise).
@@ -16,13 +16,13 @@ use crate::instrument::noise::Noise;
 use crate::instrument::psf::Psf;
 use crate::lens::LensModel;
 use crate::rng::Lcg;
-use crate::solver::extended::imaging::ImageSimulation;
-use crate::solver::extrema::delays::time_delays;
-use crate::solver::extrema::images::ImageFinder;
+use crate::solver::forward::extended::imaging::ImageSimulation;
+use crate::solver::forward::extrema::delays::time_delays;
+use crate::solver::forward::extrema::images::ImageFinder;
 use crate::solver::image::Image;
-use crate::solver::mapping::critical::{caustics, critical_curves, Stretch};
-use crate::solver::mapping::convergence::convergence_map;
-use crate::solver::mapping::magnification::magnification_map;
+use crate::solver::forward::mapping::critical::{caustics, critical_curves, Stretch};
+use crate::solver::forward::mapping::convergence::convergence_map;
+use crate::solver::forward::mapping::magnification::magnification_map;
 use crate::source::SourceModel;
 use crate::{LensForgeError, Result};
 

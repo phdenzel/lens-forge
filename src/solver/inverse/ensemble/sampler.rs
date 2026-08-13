@@ -5,14 +5,14 @@
 //!
 //! The generic Markov-chain engine lives in [`numerical::mcmc`](crate::numerical::mcmc);
 //! this is the thin domain layer: it adapts a
-//! [`ConstraintSet`](crate::solver::constraints::ConstraintSet) into the polytope the engine
+//! [`ConstraintSet`](crate::solver::inverse::constraints::ConstraintSet) into the polytope the engine
 //! samples and wraps the raw draws as an [`Ensemble`] of [`EnsembleMember`]s (each the full
 //! `x = (m, {β_s})` — cell masses plus recovered source positions). Sampling in mass
 //! coordinates makes the uniform draw a flat-in-mass prior.
 
 use crate::grid::Point2D;
 use crate::numerical::mcmc::{self, Polytope, PolytopeSample};
-use crate::solver::constraints::ConstraintSet;
+use crate::solver::inverse::constraints::ConstraintSet;
 use crate::{LensForgeError, Result, SolveInfo};
 
 /// One ensemble draw: the full unknown `x = (m, {β_s})`.
@@ -125,7 +125,7 @@ mod tests {
     use super::*;
     use crate::grid::{Grid2D, PixelGrid, Point2D, ScalarField2D};
     use crate::lens::SIS;
-    use crate::solver::constraints::{ConstraintConfig, ConstraintSet};
+    use crate::solver::inverse::constraints::{ConstraintConfig, ConstraintSet};
     use crate::solver::image::{Image, PointImageSystem};
     use ndarray::{array, Array1, Array2};
 
