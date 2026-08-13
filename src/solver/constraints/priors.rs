@@ -164,3 +164,46 @@ pub(super) fn radial_monotonic_bounds<B: KappaBasis>(
     }
     (rows, rhs)
 }
+
+/// Curvature bounds: `|Σ_{j∈N(i)} (κ_i − κ_j)| ≤ l` per cell (the discrete Laplacian), a ±
+/// pair per cell.
+///
+/// Caps the peakiness — the substructure amplitude — of the convergence field: a small `l`
+/// forces a smooth halo, a large `l` admits localized clumps. Reuses the same graph-Laplacian
+/// stencil as the source-plane smoothness regularizer, here as a hard constraint on κ.
+///
+/// # Arguments
+/// * `basis` - the convergence basis (supplies cell adjacency).
+/// * `areas` - cell areas (length `n_cells`).
+/// * `l` - the curvature bound.
+/// * `n` - number of unknowns (row length).
+pub(super) fn curvature_bounds<B: KappaBasis>(
+    basis: &B,
+    areas: &[f64],
+    l: f64,
+    n: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let n_cells = areas.len();
+    let mut rows = Vec::new();
+    let mut rhs = Vec::new();
+    for i in 0..n_cells {
+        let neighbors = basis.cell_neighbors(i);
+        if neighbors.is_empty() {
+            continue;
+        }
+        // (Δκ)_i = Σ_j (κ_i − κ_j): degree on the cell, −1 on each neighbour (in κ = m/A).
+        let mut row = vec![0.0; n];
+        row[i] = neighbors.len() as f64 / areas[i];
+        for &j in &neighbors {
+            row[j] -= 1.0 / areas[j];
+        }
+        rows.push(row.clone());
+        rhs.push(l);
+        for v in row.iter_mut() {
+            *v = -*v;
+        }
+        rows.push(row);
+        rhs.push(l);
+    }
+    (rows, rhs)
+}

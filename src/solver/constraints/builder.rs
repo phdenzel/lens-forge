@@ -19,8 +19,8 @@ use crate::solver::basis::{FieldCoefficients, KappaBasis};
 
 use super::data::{arrival_order_inequalities, position_equalities, time_delay_equalities};
 use super::priors::{
-    gradient_bounds, mean_kappa_equality, nonneg_kappa_bounds, radial_monotonic_bounds,
-    symmetry_equalities,
+    curvature_bounds, gradient_bounds, mean_kappa_equality, nonneg_kappa_bounds,
+    radial_monotonic_bounds, symmetry_equalities,
 };
 
 /// A symmetry the convergence field is required to obey, as equalities `κ(θ) = κ(Sθ)`.
@@ -71,6 +71,9 @@ pub struct ConstraintConfig {
     pub use_arrival_order: bool,
     /// Optional convergence-gradient bound `g`: `|κ_i − κ_j| ≤ g · d_ij` on adjacent cells.
     pub grad_bound: Option<f64>,
+    /// Optional curvature bound `l`: `|Σ_{j∈N(i)}(κ_i − κ_j)| ≤ l` per cell (the discrete
+    /// Laplacian), capping substructure amplitude — small `l` smooth, large `l` clumpy.
+    pub curvature_bound: Option<f64>,
     /// Optional symmetry the convergence field must obey (`κ(θ) = κ(Sθ)` per paired cells).
     pub symmetry: Option<Symmetry>,
     /// Optional mass-sheet pin: fix the mean convergence `(1/C)·Σ_c κ_c` to this value,
@@ -90,6 +93,7 @@ impl Default for ConstraintConfig {
             use_time_delays: true,
             use_arrival_order: true,
             grad_bound: None,
+            curvature_bound: None,
             symmetry: None,
             mean_kappa: None,
             radial_monotonic: None,
@@ -179,6 +183,12 @@ impl ConstraintSet {
 
         if let Some(g) = config.grad_bound {
             let (rows, rhs) = gradient_bounds(basis, &areas, g, n);
+            ub.extend(rows);
+            b_ub.extend(rhs);
+        }
+
+        if let Some(l) = config.curvature_bound {
+            let (rows, rhs) = curvature_bounds(basis, &areas, l, n);
             ub.extend(rows);
             b_ub.extend(rhs);
         }
@@ -442,5 +452,46 @@ mod tests {
         let falling = cs.a_ub.dot(&field(false));
         assert!(rising.iter().any(|&v| v > 1e-9), "rising field must violate a bound");
         assert!(falling.iter().all(|&v| v <= 1e-9), "falling field must satisfy all bounds");
+    }
+
+    #[test]
+    fn curvature_bound_adds_inequalities() {
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let base = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
+        let cfg = ConstraintConfig { curvature_bound: Some(0.5), ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert!(cs.a_ub.nrows() > base.a_ub.nrows());
+    }
+
+    #[test]
+    fn curvature_bound_caps_peakiness() {
+        // With only the curvature bounds (positions and κ≥0 off): a flat field has zero
+        // curvature and passes; a single-cell spike has large curvature and violates it.
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig {
+            position_equalities: false,
+            nonneg_kappa: false,
+            curvature_bound: Some(0.5),
+            ..Default::default()
+        };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert!(cs.a_ub.nrows() > 0);
+
+        let n = cs.n_unknowns();
+        let mass = |kappa: &dyn Fn(usize) -> f64| -> Array1<f64> {
+            Array1::from(
+                (0..n)
+                    .map(|k| if k < basis.len() { kappa(k) * basis.cell_area(k) } else { 0.0 })
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let flat = mass(&|_| 1.0);
+        assert!(cs.a_ub.dot(&flat).iter().all(|&v| v <= 0.5 + 1e-9));
+
+        let center = basis.cell_of(&Point2D::new(0.4, 0.4)).unwrap();
+        let spike = mass(&|c| if c == center { 1.0 } else { 0.0 });
+        assert!(cs.a_ub.dot(&spike).iter().any(|&v| v > 0.5), "a spike must break the bound");
     }
 }
