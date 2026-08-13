@@ -6,8 +6,8 @@
 //! With the source held on a field of unknown cell values s, the lensed image is
 //! linear in s: dᵢ = S(βᵢ) = Σⱼ wᵢⱼ sⱼ, so F is the sparse matrix whose row i is the
 //! source-plane sample stencil at βᵢ = θᵢ − α(θᵢ). It is stored in compressed sparse
-//! row form with an explicit transpose, so the semi-linear source inversion (normal
-//! equations FᵀC⁻¹F) can build on it. PSF and noise are a separate instrument stage.
+//! row format with an explicit transpose, so the semi-linear source inversion (normal
+//! equations FᵀC⁻¹F) can build on it.
 
 use crate::grid::FieldOps;
 use crate::lens::LensModel;
@@ -15,10 +15,15 @@ use crate::lens::LensModel;
 /// The sparse lensing operator F mapping source-cell coefficients to image-cell
 /// brightness (d = F s), in compressed sparse row form.
 pub struct LensingOperator {
+    /// Number of image cells (rows of F).
     n_image: usize,
+    /// Number of source cells (columns of F).
     n_source: usize,
+    /// CSR row offsets into `col_idx`/`values` (length `n_image + 1`).
     row_ptr: Vec<usize>,
+    /// Source-cell column index of each stored nonzero.
     col_idx: Vec<usize>,
+    /// Stencil weight of each stored nonzero.
     values: Vec<f64>,
 }
 
