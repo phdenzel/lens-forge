@@ -17,6 +17,36 @@ use crate::solver::image::PointImageSystem;
 
 use crate::solver::basis::{FieldCoefficients, KappaBasis};
 
+/// A symmetry the convergence field is required to obey, as equalities `κ(θ) = κ(Sθ)`.
+///
+/// The symmetry centre is the coordinate origin (the usual lens centre). Cells are paired
+/// by matching each cell centre's image `Sθ` to the nearest cell centre; only mutually
+/// nearest pairs are constrained, so a basis not symmetric under `S` simply yields fewer
+/// (or no) pairings rather than spurious ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Symmetry {
+    /// 180° rotation about the origin: `κ(θ) = κ(−θ)`.
+    Inversion,
+    /// Reflection across the x-axis: `κ(x, y) = κ(x, −y)`.
+    MirrorX,
+    /// Reflection across the y-axis: `κ(x, y) = κ(−x, y)`.
+    MirrorY,
+}
+
+impl Symmetry {
+    /// The image `Sθ` of `p` under this symmetry (about the origin).
+    ///
+    /// # Arguments
+    /// * `p` - the point to map.
+    fn map(self, p: Point2D) -> Point2D {
+        match self {
+            Symmetry::Inversion => Point2D::new(-p.x, -p.y),
+            Symmetry::MirrorX => Point2D::new(p.x, -p.y),
+            Symmetry::MirrorY => Point2D::new(-p.x, p.y),
+        }
+    }
+}
+
 /// Options composing which constraint families the builder emits.
 ///
 /// The [`Default`] emits the full physical polytope: the lens-equation position equalities,
@@ -35,6 +65,8 @@ pub struct ConstraintConfig {
     pub use_arrival_order: bool,
     /// Optional convergence-gradient bound `g`: `|κ_i − κ_j| ≤ g · d_ij` on adjacent cells.
     pub grad_bound: Option<f64>,
+    /// Optional symmetry the convergence field must obey (`κ(θ) = κ(Sθ)` per paired cells).
+    pub symmetry: Option<Symmetry>,
 }
 
 impl Default for ConstraintConfig {
@@ -45,6 +77,7 @@ impl Default for ConstraintConfig {
             use_time_delays: true,
             use_arrival_order: true,
             grad_bound: None,
+            symmetry: None,
         }
     }
 }
@@ -133,6 +166,12 @@ impl ConstraintSet {
             let (rows, rhs) = gradient_bounds(basis, &areas, g, n);
             ub.extend(rows);
             b_ub.extend(rhs);
+        }
+
+        if let Some(sym) = config.symmetry {
+            let (rows, rhs) = symmetry_equalities(basis, sym, &areas, n);
+            eq.extend(rows);
+            b_eq.extend(rhs);
         }
 
         ConstraintSet {
@@ -346,6 +385,52 @@ fn gradient_bounds<B: KappaBasis>(
     (rows, rhs)
 }
 
+/// Symmetry equalities `κ_i = κ_j` for each pair of cells mapped onto each other by `sym`.
+///
+/// Cells are paired by nearest centre to the symmetry image; only mutually nearest pairs are
+/// emitted (each once, `i < j`), so on-axis cells and an imperfectly symmetric basis simply
+/// contribute no spurious constraint. `O(n_cells²)` — assembly is a one-off.
+///
+/// # Arguments
+/// * `basis` - the convergence basis (supplies cell centres).
+/// * `sym` - the required symmetry.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+fn symmetry_equalities<B: KappaBasis>(
+    basis: &B,
+    sym: Symmetry,
+    areas: &[f64],
+    n: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let n_cells = areas.len();
+    let centers: Vec<Point2D> = (0..n_cells).map(|c| basis.center(c)).collect();
+    // The cell whose centre is nearest the symmetry image of cell `i`'s centre.
+    let partner = |i: usize| -> usize {
+        let image = sym.map(centers[i]);
+        (0..n_cells)
+            .min_by(|&a, &b| {
+                (centers[a] - image)
+                    .norm_squared()
+                    .total_cmp(&(centers[b] - image).norm_squared())
+            })
+            .unwrap()
+    };
+    let mut rows = Vec::new();
+    let mut rhs = Vec::new();
+    for i in 0..n_cells {
+        let j = partner(i);
+        // One equality per mutually-nearest pair; skip self-pairs (on-axis cells).
+        if j > i && partner(j) == i {
+            let mut row = vec![0.0; n];
+            row[i] = 1.0 / areas[i];
+            row[j] = -1.0 / areas[j];
+            rows.push(row);
+            rhs.push(0.0);
+        }
+    }
+    (rows, rhs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,5 +546,29 @@ mod tests {
         let cfg = ConstraintConfig { use_arrival_order: false, ..Default::default() };
         let ignored = ConstraintSet::assemble(&basis, &[sys], &cfg);
         assert_eq!(honoured.a_ub.nrows(), ignored.a_ub.nrows() + 1);
+    }
+
+    #[test]
+    fn symmetry_adds_paired_equalities() {
+        // A 6×6 origin-centred basis pairs every cell antipodally (no on-axis self-pairs)
+        // under each symmetry → n_cells/2 equalities added.
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let base = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
+        for sym in [Symmetry::Inversion, Symmetry::MirrorX, Symmetry::MirrorY] {
+            let cfg = ConstraintConfig { symmetry: Some(sym), ..Default::default() };
+            let cs = ConstraintSet::assemble(&basis, &[sys.clone()], &cfg);
+            assert_eq!(cs.a_eq.nrows(), base.a_eq.nrows() + basis.len() / 2, "sym {sym:?}");
+        }
+    }
+
+    #[test]
+    fn inversion_symmetry_keeps_the_symmetric_lens_feasible() {
+        // The SIS that generated the images is inversion-symmetric, so imposing the symmetry
+        // equalities leaves the polytope non-empty.
+        let (_lens, sys) = sis_double(0.15);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig { symmetry: Some(Symmetry::Inversion), ..Default::default() };
+        assert!(ConstraintSet::assemble(&basis, &[sys], &cfg).feasible());
     }
 }

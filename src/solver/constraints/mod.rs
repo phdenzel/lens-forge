@@ -15,4 +15,4 @@
 
 pub mod builder;
 
-pub use builder::{ConstraintConfig, ConstraintSet};
+pub use builder::{ConstraintConfig, ConstraintSet, Symmetry};
