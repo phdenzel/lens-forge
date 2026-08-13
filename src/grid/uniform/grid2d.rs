@@ -4,6 +4,7 @@
 //! Basic 2D grid type
 
 use crate::grid::{BBox, Point2D};
+use crate::numerical::matrix::stack_rows;
 use crate::{LensForgeError, Result};
 use ndarray::{Array1, Array2, Axis, Zip, parallel::prelude::*};
 
@@ -637,8 +638,7 @@ impl Grid2D {
             .map(|&y| x_coords.iter().map(|&x| f(x, y)).collect())
             .collect();
 
-        let data: Vec<T> = rows.into_iter().flatten().collect();
-        Array2::from_shape_vec((self.ny, self.nx), data).unwrap()
+        stack_rows(rows, self.nx)
     }
 
     /* ============ Iterators ============================================== */

@@ -11,6 +11,7 @@
 use ndarray::Array2;
 
 use crate::numerical::lp::{self, LpStatus};
+use crate::numerical::matrix::stack_rows;
 use crate::solver::image::PointImageSystem;
 
 use crate::solver::basis::{FieldCoefficients, KappaBasis};
@@ -154,9 +155,9 @@ impl ConstraintSet {
         ConstraintSet {
             n_cells,
             n_sources,
-            a_ub: stack(ub, n),
+            a_ub: stack_rows(ub, n),
             b_ub,
-            a_eq: stack(eq, n),
+            a_eq: stack_rows(eq, n),
             b_eq,
         }
     }
@@ -175,13 +176,6 @@ impl ConstraintSet {
             LpStatus::Infeasible
         )
     }
-}
-
-/// Stack accumulated rows (each length `n`) into an `m × n` matrix.
-fn stack(rows: Vec<Vec<f64>>, n: usize) -> Array2<f64> {
-    let m = rows.len();
-    let flat: Vec<f64> = rows.into_iter().flatten().collect();
-    Array2::from_shape_vec((m, n), flat).expect("row lengths equal n")
 }
 
 #[cfg(test)]
