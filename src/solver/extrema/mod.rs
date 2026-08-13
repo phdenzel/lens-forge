@@ -6,10 +6,9 @@
 //! * `images` — the [`ImageFinder`](images::ImageFinder) trait and its backend: it drives a
 //!   [`MapDiscretization`](crate::solver::basis::MapDiscretization) for seeds, polishes them
 //!   with `newton`, and returns all images of a point source, each with magnification, parity
-//!   and Fermat potential.
+//!   and Fermat potential; plus the point-source total magnification Σ|μ_i|.
 //! * `newton` — Newton's method on the lens map (Jacobian = A), refining a seed to an image.
-//! * `fermat` — the Fermat (arrival-time) surface τ(θ; β) and the point-source
-//!   total magnification Σ|μ_i|.
+//! * `fermat` — the Fermat (arrival-time) surface τ(θ; β), the Roche potential and its contours.
 //! * `delays` — arrival-time differences between images, dimensionless and
 //!   cosmology-scaled to physical time delays.
 //!

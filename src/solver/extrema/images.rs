@@ -48,6 +48,15 @@ impl<D: MapDiscretization + ?Sized> ImageFinder for D {
     }
 }
 
+/// The total magnification μ_tot = Σ_i |μ_i| of a point source with the given
+/// `images` — the observable flux ratio for an unresolved source.
+///
+/// # Arguments
+/// * `images` - the images of the point source (from an [`ImageFinder`]).
+pub fn total_magnification(images: &[Image]) -> f64 {
+    images.iter().map(|im| im.mu.abs()).sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +137,20 @@ mod tests {
                 assert!((lens.ray_trace(im.theta) - Point2D::new(bx, 0.0)).norm() < 1e-8);
             }
         }
+    }
+
+    #[test]
+    fn total_magnification_sums_absolute_values() {
+        // A minimum (μ = +4) and a saddle (μ = −2.5): μ_tot = 6.5.
+        let images = [
+            Image { theta: Point2D::new(1.0, 0.0), mu: 4.0, parity: Parity::MINIMUM, tau: 0.0 },
+            Image { theta: Point2D::new(-0.5, 0.0), mu: -2.5, parity: Parity::SADDLE, tau: 0.1 },
+        ];
+        assert!((total_magnification(&images) - 6.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn no_images_have_zero_total_magnification() {
+        assert_eq!(total_magnification(&[]), 0.0);
     }
 }
