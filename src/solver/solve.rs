@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The shared result and driver conventions for the solver façades.
+//! The shared result and driver conventions for the solver public-facing components.
 //!
 //! [`Solution`] pairs a solver's output with its [`SolveInfo`] convergence record; [`Solve`]
 //! is the common shape an iterative solver implements — a configured struct that consumes

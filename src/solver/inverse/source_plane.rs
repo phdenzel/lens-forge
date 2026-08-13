@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Per-member source construction on a [`SourceBasis`](crate::solver::basis::SourceBasis).
 //!
-//! [`source_field`] builds a member's source plane over its back-projected generators, and
-//! [`reconstruct_source`] solves the semi-linear inversion and pours the coefficients back into
-//! a [`SourceModel`](crate::source::SourceModel). The representation (mesh or pixel) is the
+//! [`source_field`] builds an ensemble member's source plane over its back-projected generators,
+//! and [`reconstruct_source`] solves the semi-linear inversion and pours the coefficients back
+//! into a [`SourceModel`](crate::source::SourceModel). The representation (mesh or pixel) is the
 //! caller's choice.
 
 use crate::grid::{BBox, PixelGrid, ScalarField2D};
@@ -49,8 +49,8 @@ pub fn source_field<S: SourceBasis>(
     S::from_generators(&sites, bbox, cfg)
 }
 
-/// Invert one member's source: build its source plane, the lensing operator, and solve the
-/// semi-linear system, returning the source geometry, the operator, and the coefficients.
+/// Invert one ensemble member's source: build its source plane, the lensing operator, and
+/// solve the semi-linear system, returning the source geometry, operator, and coefficients.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn invert_member<S: SourceBasis>(
     lens: &dyn LensModel,

@@ -133,9 +133,8 @@ impl LensForgeError {
     }
 }
 
-/// Outcome of an iterative solve (e.g. [`PixelGrid::poisson_cg`]).
-///
-/// [`PixelGrid::poisson_cg`]: crate::grid::PixelGrid::poisson_cg
+/// Outcome of an iterative solve (used crate-wide as report object,
+/// e.g., in [`solver::Solution`] or [`grid::PixelGrid::poisson_cg`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SolveInfo {
     /// Iterations performed.
