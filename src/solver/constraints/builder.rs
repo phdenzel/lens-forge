@@ -70,6 +70,10 @@ pub struct ConstraintConfig {
     /// Optional mass-sheet pin: fix the mean convergence `(1/C)·Σ_c κ_c` to this value,
     /// removing the mass-sheet-degeneracy (MSD) direction from the polytope.
     pub mean_kappa: Option<f64>,
+    /// Optional radial-monotonicity prior about this centre: convergence may not increase
+    /// outward, `κ_outer ≤ κ_inner` on each radial adjacency edge (a centrally-concentrated
+    /// profile). Near-equidistant (azimuthal) edges are left unconstrained.
+    pub radial_monotonic: Option<Point2D>,
 }
 
 impl Default for ConstraintConfig {
@@ -82,6 +86,7 @@ impl Default for ConstraintConfig {
             grad_bound: None,
             symmetry: None,
             mean_kappa: None,
+            radial_monotonic: None,
         }
     }
 }
@@ -168,6 +173,12 @@ impl ConstraintSet {
 
         if let Some(g) = config.grad_bound {
             let (rows, rhs) = gradient_bounds(basis, &areas, g, n);
+            ub.extend(rows);
+            b_ub.extend(rhs);
+        }
+
+        if let Some(center) = config.radial_monotonic {
+            let (rows, rhs) = radial_monotonic_bounds(basis, center, &areas, n);
             ub.extend(rows);
             b_ub.extend(rhs);
         }
@@ -456,6 +467,45 @@ fn mean_kappa_equality(mean: f64, areas: &[f64], n: usize) -> (Vec<f64>, f64) {
     (row, mean * n_cells as f64)
 }
 
+/// Radial-monotonicity bounds about `center`: `κ_outer − κ_inner ≤ 0` on each radial
+/// adjacency edge (the farther cell is the outer one). Near-equidistant edges are skipped.
+///
+/// # Arguments
+/// * `basis` - the convergence basis (supplies cell centres and adjacency).
+/// * `center` - the centre radii are measured from.
+/// * `areas` - cell areas (length `n_cells`).
+/// * `n` - number of unknowns (row length).
+fn radial_monotonic_bounds<B: KappaBasis>(
+    basis: &B,
+    center: Point2D,
+    areas: &[f64],
+    n: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let n_cells = areas.len();
+    let mut rows = Vec::new();
+    let mut rhs = Vec::new();
+    for i in 0..n_cells {
+        let ri = (basis.center(i) - center).norm();
+        for j in basis.cell_neighbors(i) {
+            if j <= i {
+                continue; // each edge once
+            }
+            let rj = (basis.center(j) - center).norm();
+            // Skip azimuthal (equidistant) edges — monotonicity is a radial statement only.
+            if (ri - rj).abs() <= 1e-9 {
+                continue;
+            }
+            let (outer, inner) = if ri > rj { (i, j) } else { (j, i) };
+            let mut row = vec![0.0; n];
+            row[outer] = 1.0 / areas[outer];
+            row[inner] = -1.0 / areas[inner];
+            rows.push(row);
+            rhs.push(0.0);
+        }
+    }
+    (rows, rhs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,6 +513,7 @@ mod tests {
     use crate::lens::SIS;
     use crate::solver::extrema::delays::TimeDelay;
     use crate::solver::image::{Image, PointImageSystem};
+    use ndarray::Array1;
 
     /// The two collinear images of a point source under an SIS, as a system.
     fn sis_double(beta: f64) -> (SIS, PointImageSystem) {
@@ -626,5 +677,49 @@ mod tests {
             ..Default::default()
         };
         assert!(!ConstraintSet::assemble(&basis, &[sys], &infeasible).feasible());
+    }
+
+    #[test]
+    fn radial_monotonicity_adds_inequalities() {
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let base = ConstraintSet::assemble(&basis, &[sys.clone()], &ConstraintConfig::default());
+        let cfg =
+            ConstraintConfig { radial_monotonic: Some(Point2D::origin()), ..Default::default() };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert!(cs.a_ub.nrows() > base.a_ub.nrows());
+    }
+
+    #[test]
+    fn radial_monotonicity_orders_convergence_outward() {
+        // With only the radial bounds (positions and κ≥0 off): a field rising outward
+        // violates a bound, one falling outward satisfies them all.
+        let (_lens, sys) = sis_double(0.2);
+        let basis = uniform_basis();
+        let cfg = ConstraintConfig {
+            position_equalities: false,
+            nonneg_kappa: false,
+            radial_monotonic: Some(Point2D::origin()),
+            ..Default::default()
+        };
+        let cs = ConstraintSet::assemble(&basis, &[sys], &cfg);
+        assert!(cs.a_ub.nrows() > 0);
+
+        let n = cs.n_unknowns();
+        let radius = |c: usize| ScalarField2D::center(&basis, c).norm();
+        let field = |ascending: bool| -> Array1<f64> {
+            Array1::from((0..n).map(|k| {
+                if k < basis.len() {
+                    let kappa = if ascending { radius(k) } else { 5.0 - radius(k) };
+                    kappa * basis.cell_area(k)
+                } else {
+                    0.0 // the source β columns
+                }
+            }).collect::<Vec<_>>())
+        };
+        let rising = cs.a_ub.dot(&field(true));
+        let falling = cs.a_ub.dot(&field(false));
+        assert!(rising.iter().any(|&v| v > 1e-9), "rising field must violate a bound");
+        assert!(falling.iter().all(|&v| v <= 1e-9), "falling field must satisfy all bounds");
     }
 }
