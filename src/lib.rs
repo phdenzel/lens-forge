@@ -23,6 +23,7 @@ pub(crate) mod arithmetic;
 pub mod viz;
 
 pub use rng::Lcg;
+pub use solver::solve::SolveInfo;
 
 use std::error::Error;
 use std::fmt;
@@ -131,18 +132,6 @@ impl LensForgeError {
     pub fn convergence_error(iterations: usize) -> Self {
         LensForgeError::ConvergenceError { iterations }
     }
-}
-
-/// Outcome of an iterative solve (used crate-wide as report object,
-/// e.g., in [`solver::Solution`] or [`grid::PixelGrid::poisson_cg`]).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SolveInfo {
-    /// Iterations performed.
-    pub iterations: usize,
-    /// Final relative residual, `‖r‖ / ‖b‖`.
-    pub residual: f64,
-    /// Whether the tolerance was reached within the iteration budget.
-    pub converged: bool,
 }
 
 #[cfg(test)]

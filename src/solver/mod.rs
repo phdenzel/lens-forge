@@ -44,4 +44,4 @@ pub mod solve;
 
 pub use forward::ForwardModel;
 pub use inverse::FreeFormInversion;
-pub use solve::{Solution, Solve};
+pub use solve::{SolveInfo, Solution, Solve};

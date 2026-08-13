@@ -9,7 +9,18 @@
 //! [`Solve`] and re-exporting from [`solver`](crate::solver).
 
 use crate::Result;
-use crate::SolveInfo;
+
+/// Outcome of an iterative solve (used crate-wide as a report object, e.g. in
+/// [`Solution`] or [`PixelGrid::poisson_cg`](crate::grid::PixelGrid::poisson_cg)).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SolveInfo {
+    /// Iterations performed.
+    pub iterations: usize,
+    /// Final relative residual, `‖r‖ / ‖b‖`.
+    pub residual: f64,
+    /// Whether the tolerance was reached within the iteration budget.
+    pub converged: bool,
+}
 
 /// A solver's output together with its convergence record.
 pub struct Solution<T> {
