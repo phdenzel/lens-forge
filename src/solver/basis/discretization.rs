@@ -47,10 +47,7 @@ pub(crate) fn seed_if_contains(
     if u < -CONTAIN_EPS || v < -CONTAIN_EPS || w < -CONTAIN_EPS {
         return None;
     }
-    Some(Point2D::new(
-        u * image[0].x + v * image[1].x + w * image[2].x,
-        u * image[0].y + v * image[1].y + w * image[2].y,
-    ))
+    Some(u * image[0] + v * image[1] + w * image[2])
 }
 
 #[cfg(test)]
