@@ -29,7 +29,7 @@ pub enum Stretch {
 }
 
 /// The scalar whose zero is the `stretch` critical curve of `lens`, at `theta`.
-fn stretch_value(lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> f64 {
+fn critical_value(lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> f64 {
     match stretch {
         Stretch::Total => lens.jacobian_det(theta),
         Stretch::Tangential => 1.0 - lens.convergence(theta) - lens.shear(theta),
@@ -38,8 +38,8 @@ fn stretch_value(lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> f64 
 }
 
 /// The field whose zero contour is the `stretch` critical curve of `lens`.
-fn stretch_field<F: FieldOps>(lens: &dyn LensModel, field: &F, stretch: Stretch) -> F {
-    field.map_centers(|t| stretch_value(lens, t, stretch))
+fn critical_field<F: FieldOps>(lens: &dyn LensModel, field: &F, stretch: Stretch) -> F {
+    field.map_centers(|t| critical_value(lens, t, stretch))
 }
 
 /// The critical curves of `lens` for the `stretch` branch, as line segments,
@@ -54,7 +54,7 @@ pub fn critical_curves<F: FieldOps>(
     field: &F,
     stretch: Stretch,
 ) -> Vec<ContourSegment> {
-    stretch_field(lens, field, stretch).contour(0.0)
+    critical_field(lens, field, stretch).contour(0.0)
 }
 
 /// The caustics of `lens`: the `stretch` critical curves mapped to the source
@@ -136,8 +136,8 @@ impl CriticalTracer {
     /// Central finite-difference gradient ∇g of the stretch scalar at `theta`.
     fn gradient(&self, lens: &dyn LensModel, theta: Point2D, stretch: Stretch) -> Point2D {
         let (ex, ey) = (Point2D::new(self.fd_eps, 0.0), Point2D::new(0.0, self.fd_eps));
-        let gx = stretch_value(lens, theta + ex, stretch) - stretch_value(lens, theta - ex, stretch);
-        let gy = stretch_value(lens, theta + ey, stretch) - stretch_value(lens, theta - ey, stretch);
+        let gx = critical_value(lens, theta + ex, stretch) - critical_value(lens, theta - ex, stretch);
+        let gy = critical_value(lens, theta + ey, stretch) - critical_value(lens, theta - ey, stretch);
         Point2D::new(gx, gy) * (0.5 / self.fd_eps)
     }
 
@@ -145,7 +145,7 @@ impl CriticalTracer {
     /// (not near a critical curve).
     fn correct(&self, lens: &dyn LensModel, mut p: Point2D, stretch: Stretch) -> Option<Point2D> {
         for _ in 0..CORRECTOR_ITERS {
-            let g = stretch_value(lens, p, stretch);
+            let g = critical_value(lens, p, stretch);
             if g.abs() <= self.tol {
                 return Some(p);
             }
@@ -156,7 +156,7 @@ impl CriticalTracer {
             }
             p = p - grad * (g / gn2);
         }
-        (stretch_value(lens, p, stretch).abs() <= self.tol).then_some(p)
+        (critical_value(lens, p, stretch).abs() <= self.tol).then_some(p)
     }
 
     /// Trace the critical curve of `lens` through `seed` for the `stretch` branch,
