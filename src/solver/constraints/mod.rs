@@ -14,5 +14,7 @@
 //! from [`FieldCoefficients`](crate::solver::basis::FieldCoefficients).
 
 pub mod builder;
+mod data;
+mod priors;
 
 pub use builder::{ConstraintConfig, ConstraintSet, Symmetry};
