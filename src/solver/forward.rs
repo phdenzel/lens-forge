@@ -122,15 +122,16 @@ impl<'a> ForwardModel<'a> {
         Ok(sim.image(self.lens, self.source()?, field))
     }
 
-    /// A simulated observation: the lensed image, optionally blurred by `psf`, with a noise
-    /// realization from `noise` added in the image plane.
+    /// A simulated observation: the lensed image, optionally blurred by `psf`, and — when
+    /// `noise` is given — with a noise realization added in the image plane. With both `psf`
+    /// and `noise` `None` this is the idealized (clean) lensed image.
     ///
     /// # Arguments
     /// * `field` - the image-plane sampling geometry (a pixel grid carries the PSF).
     /// * `sim` - the imaging strategy.
     /// * `psf` - optional PSF convolved into the image before adding noise.
-    /// * `noise` - the noise model supplying the realization.
-    /// * `rng` - the random stream for the noise draw.
+    /// * `noise` - optional noise model paired with the random stream that realizes it;
+    ///   `None` leaves the image noiseless.
     ///
     /// # Errors
     /// Errors if the model has no source, or if the PSF/grid construction fails.
@@ -139,17 +140,22 @@ impl<'a> ForwardModel<'a> {
         field: &PixelGrid,
         sim: ImageSimulation,
         psf: Option<&Psf>,
-        noise: &Noise,
-        rng: &mut Lcg,
+        noise: Option<(&Noise, &mut Lcg)>,
     ) -> Result<PixelGrid> {
         let clean: PixelGrid = sim.image(self.lens, self.source()?, field);
         let blurred = match psf {
             Some(p) => p.apply(&clean)?,
             None => clean,
         };
-        let draw = noise.realize(rng, blurred.len());
-        let values: Vec<f64> = (0..blurred.len()).map(|i| blurred.value_at(i) + draw[i]).collect();
-        PixelGrid::from_vec(blurred.grid, values)
+        match noise {
+            Some((noise, rng)) => {
+                let draw = noise.realize(rng, blurred.len());
+                let values: Vec<f64> =
+                    (0..blurred.len()).map(|i| blurred.value_at(i) + draw[i]).collect();
+                PixelGrid::from_vec(blurred.grid, values)
+            }
+            None => Ok(blurred),
+        }
     }
 
     /// The stored source, or an error if the model was built without one.
@@ -206,12 +212,11 @@ mod tests {
 
     #[test]
     fn observe_without_psf_or_noise_matches_the_clean_image() {
-        // Zero-sigma noise and no PSF: observe() reproduces the clean lensed image.
+        // No PSF and no noise: observe() is exactly the idealized clean lensed image.
         let (lens, source) = sis_and_source();
         let field = PixelGrid::constant(Grid2D::square(24, 2.0).unwrap(), 0.0);
         let fm = ForwardModel::with_source(&lens, &source);
-        let mut rng = Lcg::new(0xB0A);
-        let obs = fm.observe(&field, ImageSimulation::Direct, None, &Noise::uniform(0.0), &mut rng).unwrap();
+        let obs = fm.observe(&field, ImageSimulation::Direct, None, None).unwrap();
         let clean = fm.image(&field, ImageSimulation::Direct).unwrap();
         for i in 0..obs.len() {
             assert!((obs.value_at(i) - clean.value_at(i)).abs() < 1e-12);
@@ -228,7 +233,7 @@ mod tests {
         let psf = Psf::gaussian(0.15);
         let mut rng = Lcg::new(0x77);
         let obs = fm
-            .observe(&field, ImageSimulation::Direct, Some(&psf), &Noise::uniform(0.05), &mut rng)
+            .observe(&field, ImageSimulation::Direct, Some(&psf), Some((&Noise::uniform(0.05), &mut rng)))
             .unwrap();
         let clean = fm.image(&field, ImageSimulation::Direct).unwrap();
         let diff: f64 = (0..obs.len()).map(|i| (obs.value_at(i) - clean.value_at(i)).abs()).sum();
