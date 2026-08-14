@@ -36,24 +36,42 @@ representation.
 
 ## Build
 
-The viewer needs `wgpu`/`winit` system deps, and the `phastft` dependency uses
-`#![feature(portable_simd)]`, so a **nightly** toolchain is required. A Nix flake
-pins the toolchain (via fenix) and provides all system dependencies
-(Vulkan/Metal, `libiconv`, X11/Wayland on Linux):
+A **nightly** toolchain is required. A Nix flake pins the toolchain (via fenix)
+and provides all system dependencies (Vulkan/Metal, `libiconv`, X11/Wayland on
+Linux):
 
 ```sh
 nix develop                                          # enter the dev shell
-nix develop --command cargo build --all-targets --locked
-nix develop --command cargo test --locked
-nix develop --command cargo llvm-cov --locked        # coverage
+cargo build --all-targets --locked
 ```
 
 Without Nix, install a matching nightly Rust and ensure the platform equivalents
 of the flake's `buildInputs` are available to the linker (notably `libiconv` on
-macOS).
+macOS). Nightly is needed because the `phastft` dependency uses
+`#![feature(portable_simd)]`, and the viewer additionally needs `wgpu`/`winit`
+system deps.
+
+
+### Tests
+
+You can run the testing suite with
+```sh
+nix develop --command cargo test --locked
+```
+
+
+### Coverage
+
+Code coverage is evaluated using the LLVM source-based code coverage tool
+```sh
+nix develop --command cargo llvm-cov --locked        # coverage
+```
 
 
 ### Examples
+
+Example usage files using the library can be inspected in `examples/` and 
+executed as follows
 
 ```sh
 cargo run --example pixelgrid_viz
