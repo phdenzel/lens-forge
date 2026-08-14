@@ -2,6 +2,8 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![doc = include_str!("../README.md")]
+#![doc(html_logo_url = "https://raw.githubusercontent.com/phdenzel/lens-forge/main/assets/lens-forge-logo.svg")]
+#![doc(html_favicon_url = "https://raw.githubusercontent.com/phdenzel/lens-forge/main/assets/lens-forge-logo.svg")]
 // Warn on any undocumented public API item so the docs stay complete as the
 // crate grows. Use `#[allow(missing_docs)]` locally for deliberate exceptions.
 #![warn(missing_docs)]
