@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! lens_forge entry point
-use lens_forge::Result;
+//! The `lens-forge` command: a git-style dispatcher to `lf-<subcommand>` binaries.
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    Ok(())
+#[path = "dispatch.rs"]
+mod dispatch;
+
+fn main() {
+    if let Err(e) = dispatch::run() {
+        eprintln!("lens-forge: {e}");
+        std::process::exit(1);
+    }
 }
