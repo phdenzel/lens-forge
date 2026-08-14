@@ -56,6 +56,11 @@ pub enum LensForgeError {
         /// Number of iterations performed before giving up
         iterations: usize,
     },
+    /// Filesystem or byte-stream I/O failure (stringified, as `std::io::Error`
+    /// is neither `Clone` nor `PartialEq`).
+    IoError(String),
+    /// Malformed or unsupported external data format (e.g. an invalid FITS card).
+    FormatError(String),
 }
 
 impl fmt::Display for LensForgeError {
@@ -89,6 +94,12 @@ impl fmt::Display for LensForgeError {
                     "Solver failed to converge after {} iterations",
                     iterations
                 )
+            }
+            LensForgeError::IoError(msg) => {
+                write!(f, "I/O error: {}", msg)
+            }
+            LensForgeError::FormatError(msg) => {
+                write!(f, "Format error: {}", msg)
             }
         }
     }
@@ -131,6 +142,16 @@ impl LensForgeError {
     /// Create a new ConvergenceError
     pub fn convergence_error(iterations: usize) -> Self {
         LensForgeError::ConvergenceError { iterations }
+    }
+
+    /// Create a new IoError
+    pub fn io_error(msg: impl Into<String>) -> Self {
+        LensForgeError::IoError(msg.into())
+    }
+
+    /// Create a new FormatError
+    pub fn format_error(msg: impl Into<String>) -> Self {
+        LensForgeError::FormatError(msg.into())
     }
 }
 
