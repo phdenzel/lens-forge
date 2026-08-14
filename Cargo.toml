@@ -11,6 +11,7 @@ keywords = ["lensing", "gravitational", "astrophysics", "cosmology", "simulation
 categories = ["science", "mathematics", "simulation"]
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
 colorgrad = { version = "0.8.0", features = ["preset"] }
 image = "0.25.9"
 imageproc = "0.25.0"
