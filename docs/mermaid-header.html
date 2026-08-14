@@ -1,0 +1,133 @@
+<!--
+SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
+SPDX-FileNotice: Part of lens-forge
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Injected into rustdoc output via `--html-in-header` so that ```mermaid``` code
+blocks in doc comments (notably the pipeline diagrams in the crate-root README)
+render as diagrams, mirroring the KaTeX header. GitHub renders such blocks
+natively; here each diagram is themed and wrapped in a pan/zoom panel
+(scroll to zoom, drag to pan, on-screen controls).
+-->
+<style>
+  .mermaid-panel {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    height: 30rem;
+    max-height: 80vh;
+    margin: 1rem 0;
+    border: 1px solid var(--border-color, #d5d8de);
+    border-radius: 8px;
+    background: #fbfcfe;
+    overflow: hidden;
+    resize: vertical;
+  }
+  .mermaid-panel > .mermaid {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mermaid-panel svg {
+    width: 100%;
+    height: 100%;
+    max-width: none !important;
+    cursor: grab;
+  }
+  .mermaid-panel svg:active { cursor: grabbing; }
+  /* Module references in node labels are wrapped in <code> — set them apart
+     from the sans keywords with a monospace face and a faint tint. */
+  .mermaid-panel .mermaid code {
+    font-family: "Fira Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: rgba(85, 102, 170, 0.12);
+    padding: 0.02em 0.24em;
+    border-radius: 3px;
+  }
+  .mermaid-panel .svg-pan-zoom-control { opacity: 0.55; transition: opacity 0.15s; }
+  .mermaid-panel:hover .svg-pan-zoom-control { opacity: 1; }
+  .mermaid-hint {
+    position: absolute;
+    right: 0.6rem;
+    bottom: 0.4rem;
+    font-size: 0.72rem;
+    color: #7a7f8a;
+    pointer-events: none;
+    user-select: none;
+  }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  import svgPanZoom from "https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/+esm";
+
+  const render = async () => {
+    // rustdoc emits ```mermaid``` as <pre class="language-mermaid"><code>…; the
+    // class may sit on either element. Swap each into a sized panel holding a
+    // <div class="mermaid"> with the HTML-decoded source for mermaid to render.
+    const graphs = [];
+    document.querySelectorAll("pre").forEach((pre) => {
+      const code = pre.querySelector("code");
+      const cls = pre.className + " " + (code ? code.className : "");
+      if (!cls.includes("language-mermaid")) return;
+      const panel = document.createElement("div");
+      panel.className = "mermaid-panel";
+      const graph = document.createElement("div");
+      graph.className = "mermaid";
+      graph.textContent = pre.textContent;
+      const hint = document.createElement("span");
+      hint.className = "mermaid-hint";
+      hint.textContent = "scroll to zoom · drag to pan";
+      panel.append(graph, hint);
+      // rustdoc wraps the <pre> in a flex `.example-wrap`; replace that wrapper
+      // (not just the <pre>) so the panel is a normal full-width block.
+      const target = pre.closest(".example-wrap") || pre;
+      target.replaceWith(panel);
+      graphs.push(graph);
+    });
+    if (!graphs.length) return;
+
+    mermaid.initialize({
+      startOnLoad: false,
+      // Trusted, in-repo diagrams — allow the <code> tags in node labels.
+      securityLevel: "loose",
+      theme: "base",
+      themeVariables: {
+        fontFamily: '"Fira Sans", system-ui, -apple-system, sans-serif',
+        fontSize: "15px",
+        primaryColor: "#eef2fb",
+        primaryTextColor: "#1b2230",
+        primaryBorderColor: "#5566aa",
+        lineColor: "#c26a2a",
+        clusterBkg: "#f6f1ea",
+        clusterBorder: "#d8c4a8",
+        tertiaryColor: "#fbfcfe",
+      },
+      flowchart: { curve: "basis", htmlLabels: true, padding: 14, nodeSpacing: 45, rankSpacing: 55 },
+    });
+    await mermaid.run({ nodes: graphs });
+
+    graphs.forEach((graph) => {
+      const svg = graph.querySelector("svg");
+      if (!svg) return;
+      svg.style.maxWidth = "none";
+      svg.style.width = "100%";
+      svg.style.height = "100%";
+      const pz = svgPanZoom(svg, {
+        controlIconsEnabled: true,
+        fit: true,
+        center: true,
+        minZoom: 0.3,
+        maxZoom: 12,
+        zoomScaleSensitivity: 0.3,
+      });
+      // Re-fit once the panel/SVG box has settled (font load, layout).
+      requestAnimationFrame(() => pz.resize().fit().center());
+    });
+  };
+
+  if (document.readyState !== "loading") render();
+  else document.addEventListener("DOMContentLoaded", render);
+</script>

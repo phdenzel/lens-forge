@@ -56,6 +56,10 @@ harness = false
 name = "raytrace_batch"
 harness = false
 
-# Render LaTeX math on docs.rs (mirrors `./docs/build-docs.sh` for local builds).
+# Render LaTeX math (KaTeX) and ```mermaid``` diagrams on docs.rs (mirrors
+# `./docs/build-docs.sh` for local builds).
 [package.metadata.docs.rs]
-rustdoc-args = ["--html-in-header", "docs/katex-header.html"]
+rustdoc-args = [
+    "--html-in-header", "docs/katex-header.html",
+    "--html-in-header", "docs/mermaid-header.html",
+]

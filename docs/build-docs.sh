@@ -18,8 +18,9 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd "$script_dir/.."
 
-# Inject the KaTeX header into every rustdoc invocation for this build.
-export RUSTDOCFLAGS="--html-in-header $script_dir/katex-header.html"
+# Inject the KaTeX and Mermaid headers into every rustdoc invocation for this
+# build (math rendering + ```mermaid``` pipeline diagrams).
+export RUSTDOCFLAGS="--html-in-header $script_dir/katex-header.html --html-in-header $script_dir/mermaid-header.html"
 
 # Prefer the Nix dev shell (provides libiconv/wgpu system deps on macOS);
 # fall back to a bare cargo if Nix is unavailable.
