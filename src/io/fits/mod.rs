@@ -16,7 +16,7 @@
 //!   (`BITPIX`, axes, scaling), with the `f64`/[`grid`](crate::grid) bridge.
 //! * [`wcs`] — a linear-WCS bridge to [`Grid2D`](crate::grid::Grid2D).
 //! * [`hdu`] — a [`Hdu`] (header + optional image) and its structural encoding.
-//! * [`reader`] — the [`Fits`] whole-file read API.
+//! * [`reader`]/[`writer`] — the [`Fits`] whole-file read/write API.
 //!
 //! Physical values follow `physical = BZERO + BSCALE·array`, with an integer
 //! `BLANK` mapping to `NaN` in the `f64` view. Arrays keep the FITS-native
@@ -32,6 +32,7 @@ pub mod header;
 pub mod image;
 pub mod reader;
 pub mod wcs;
+pub mod writer;
 
 pub use card::{Card, CardValue};
 pub use data::FitsData;
