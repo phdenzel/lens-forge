@@ -4,7 +4,9 @@ SPDX-FileNotice: Part of lens-forge
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# lens-forge
+<p align="center">
+  <img src="https://raw.githubusercontent.com/phdenzel/lens-forge/main/assets/lens-forge-lockup.svg" alt="lens-forge" width="280">
+</p>
 
 [![CI](https://github.com/phdenzel/lens-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/phdenzel/lens-forge/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/phdenzel/lens-forge/branch/main/graph/badge.svg?token=R7QX8UEROS)](https://codecov.io/gh/phdenzel/lens-forge)

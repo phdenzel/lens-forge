@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 178" width="260" height="178" fill="none">
+  <g transform="translate(70,10) scale(0.83)">
+    <path d="M60,40 L60,4" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <path d="M78,50 L108.9,32.8" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <path d="M78,70 L108.9,87.2" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <path d="M60,80 L60,116" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <path d="M42,70 L11.1,87.2" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <path d="M42,50 L11.1,32.8" stroke="#6b5c5f" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 6"></path>
+    <polygon points="60,40 78,50 78,70 60,80 42,70 42,50" stroke="#6b5c5f" stroke-width="5" stroke-linejoin="miter" fill="none"></polygon>
+    <g transform="rotate(-32.4 60 60)">
+      <circle cx="60" cy="60" r="40" stroke="#ef8c92" stroke-width="10" stroke-dasharray="34.786 28.046"></circle>
+    </g>
+  </g>
+  <text x="130" y="163" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="34" font-weight="500" letter-spacing="-0.85" fill="#e9e9ed">lens<tspan fill="#ef8c92">-forge</tspan></text>
+</svg>
