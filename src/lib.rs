@@ -8,6 +8,7 @@
 // Lets the winit/wgpu viewer opt out of coverage instrumentation (`#![coverage(off)]`).
 #![feature(coverage_attribute)]
 
+pub mod cli;
 pub mod fastsum;
 pub(crate) mod fft;
 pub mod grid;
