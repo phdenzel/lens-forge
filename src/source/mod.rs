@@ -5,6 +5,10 @@
 //!
 //! Parametric profiles and a free-form field representation share the trait; all
 //! work in scaled/dimensionless angular units (β a source-plane position).
+//!
+//! * `model` — the [`SourceModel`] trait every source implements.
+//! * `parametric` — closed-form profiles: [`Sersic`], [`Gaussian`].
+//! * `field` — [`SourceField`], a free-form pixelated/meshed source plane.
 
 pub mod field;
 pub mod model;

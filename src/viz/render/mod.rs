@@ -3,9 +3,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Rendering interfaces and shared configuration for implemented data structures.
 //!
-//! Two complementary rendering strategies are provided:
-//! * **raster** high-performance path for uniform pixel rendering
-//! * **mesh** path for explicit rendering of adaptive and irregular (polygonal cell) grids
+//! [`RenderOptions`] holds the settings every path shares (size, scaling, colour
+//! gradient, resampling). Two complementary rendering strategies are provided:
+//!
+//! * `raster` — high-performance path for uniform pixel (`PixelGrid`) rendering.
+//! * `mesh` — explicit rendering of adaptive/irregular (polygonal-cell) grids.
+//! * `context` — a reusable render context (`RasterContext`) that amortizes
+//!   scratch buffers across repeated renders, e.g. the live viewer.
 pub mod context;
 mod mesh;
 pub mod raster;

@@ -3,6 +3,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Free-form lenses — pixel-grid and Voronoi-mesh convergence, each a
 //! [`LensModel`](crate::lens::LensModel).
+//!
+//! The convergence κ is carried per cell rather than by a closed form, so the
+//! deflection is summed over cells via a selectable [`FieldMethod`].
+//!
+//! * `model` — [`FreeFormLens`] and the [`FieldMethod`] (analytic kernel vs a
+//!   `fastsum` backend) shared by both representations.
+//! * `pixel` — [`PixelLens`], κ on a structured `PixelGrid`.
+//! * `mesh` — [`MeshLens`], κ on an unstructured Voronoi `MeshGrid`.
+//! * `source` — [`MassElement`], the per-cell monopole a `fastsum` backend sums.
 
 pub mod mesh;
 pub mod model;
