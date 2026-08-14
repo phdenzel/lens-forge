@@ -7,9 +7,9 @@
 //! admissible mass distributions. This module draws a uniform (flat-in-mass) sample of it
 //! and reduces the sample to physical summaries.
 //!
-//! * `sampler` — [`HitAndRun`](sampler::HitAndRun): equality-null-space reduction, a
+//! * `sampler` — [`HitAndRun`]: equality-null-space reduction, a
 //!   Chebyshev-centre seed, and parallel hit-and-run walkers producing an
-//!   [`Ensemble`](sampler::Ensemble).
+//!   [`Ensemble`].
 //! * `summaries` — mean/variance κ maps, the mass-sheet level, the radial mass profile
 //!   exposing the monopole degeneracy, and the effective sample size.
 

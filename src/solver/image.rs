@@ -7,7 +7,7 @@
 //! magnification, [`Parity`], and Fermat potential. The image finders in
 //! [`extrema`](super::forward::extrema) produce it; the inverse point-image constraints consume it. A
 //! [`PointImageSystem`] gathers the images of one source, with any measured time delays
-//! ([`TimeDelay`](super::forward::extrema::delays::TimeDelay)) and arrival order — the observed-data
+//! ([`TimeDelay`]) and arrival order — the observed-data
 //! unit the constraint builder takes.
 //!
 //! Parity is the arrival-time surface's stationary type encoded as `1 − m`, where

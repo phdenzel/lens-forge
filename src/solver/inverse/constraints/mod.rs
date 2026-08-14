@@ -7,7 +7,7 @@
 //! so the feasible set of mass distributions is a polytope `A x ≤ b, C x = d` in the
 //! unknown `x = (m, {β_s})` — the cell masses together with each source's (free) position.
 //!
-//! `builder` assembles the [`ConstraintSet`](builder::ConstraintSet) from a
+//! `builder` assembles the [`ConstraintSet`] from a
 //! [`KappaBasis`](crate::solver::basis::KappaBasis) and a set of
 //! [`PointImageSystem`](crate::solver::image::PointImageSystem)s (the observed-data unit,
 //! defined in [`image`](crate::solver::image)); the per-cell ψ and deflection coefficients come

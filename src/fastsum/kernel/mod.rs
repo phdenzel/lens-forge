@@ -10,7 +10,7 @@
 //! * `monopole` — [`Monopole`], the point/near source kernel.
 //! * `multipole` — [`Multipole`], the far-field multipole expansion.
 //! * `local_expansion` — [`LocalExpansion`], the local (Taylor) expansion.
-//! * `expansion` — [`ExpansionOps`], the shared multipole/local expansion operations.
+//! * `expansion` — `ExpansionOps`, the shared multipole/local expansion operations.
 
 pub(crate) mod expansion;
 pub mod local_expansion;

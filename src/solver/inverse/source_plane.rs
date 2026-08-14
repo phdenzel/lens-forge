@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-present Philipp Denzel <phdenzel@gmail.com>
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Per-member source construction on a [`SourceBasis`](crate::solver::basis::SourceBasis).
+//! Per-member source construction on a [`SourceBasis`].
 //!
 //! [`source_field`] builds an ensemble member's source plane over its back-projected generators,
 //! and [`reconstruct_source`] solves the semi-linear inversion and pours the coefficients back

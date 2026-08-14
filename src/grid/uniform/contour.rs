@@ -4,7 +4,7 @@
 //! Marching-squares iso-contours for [`PixelGrid`].
 //!
 //! Each grid cell (four adjacent pixel centres) is split into two triangles and
-//! solved by [`iso_segment`](crate::grid::contour::iso_segment), giving a
+//! solved by [`iso_segment`], giving a
 //! watertight, saddle-free contour that shares the mesh's crossing code.
 
 use super::pixelgrid::PixelGrid;

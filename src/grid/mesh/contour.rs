@@ -4,7 +4,7 @@
 //! Marching-triangles iso-contours for [`MeshGrid`].
 //!
 //! The mesh's cached Delaunay triangulation is the natural cell complex; each
-//! triangle is solved by [`iso_segment`](crate::grid::contour::iso_segment), the
+//! triangle is solved by [`iso_segment`], the
 //! same crossing code the pixel grid uses.
 
 use super::meshgrid::MeshGrid;

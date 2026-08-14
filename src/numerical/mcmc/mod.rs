@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Markov-chain Monte Carlo samplers of a convex polytope.
 //!
-//! * `polytope` — the [`Polytope`](polytope::Polytope) input, the
-//!   [`PolytopeSample`](polytope::PolytopeSample) result, and the equality null-space
+//! * `polytope` — the [`Polytope`] input, the
+//!   [`PolytopeSample`] result, and the equality null-space
 //!   reduction every sampler shares.
 //! * `hit_and_run` — the [`hit_and_run`](hit_and_run::hit_and_run) sampler: uniform draws by
 //!   isotropic-direction chords. Further chains (Dikin walk, reversible-jump) join here.

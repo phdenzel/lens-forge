@@ -2,7 +2,7 @@
 // SPDX-FileNotice: Part of lens-forge
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Free-form cells as `fastsum` sources — the bridge from a κ representation to the
-//! [`SourceKernel`](crate::fastsum::SourceKernel)s a summation backend aggregates.
+//! [`SourceKernel`]s a summation backend aggregates.
 //!
 //! [`FastSum`](crate::lens::FieldMethod::FastSum) reduces each cell to a point
 //! [`MassElement`] (its monopole moment). [`Analytic`](crate::lens::FieldMethod::Analytic)

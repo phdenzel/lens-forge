@@ -6,12 +6,12 @@
 //! Every solver layer plugs into one of three seams so a structured [`PixelGrid`] and an
 //! unstructured [`MeshGrid`] stay interchangeable:
 //!
-//! * `lens` — [`KappaBasis`](lens::KappaBasis): lens-plane κ → field, and its precomputed
-//!   [`FieldCoefficients`](lens::FieldCoefficients).
-//! * `source` — [`SourceBasis`](source::SourceBasis): the reconstructed source plane.
-//! * `discretization` — [`MapDiscretization`](discretization::MapDiscretization): a discretized
-//!   θ↔β map, realized by [`MapTessellation`](tessellate::MapTessellation) (mesh) and
-//!   [`MapPixellation`](pixellate::MapPixellation) (pixel).
+//! * `lens` — [`KappaBasis`]: lens-plane κ → field, and its precomputed
+//!   [`FieldCoefficients`].
+//! * `source` — [`SourceBasis`]: the reconstructed source plane.
+//! * `discretization` — [`MapDiscretization`]: a discretized
+//!   θ↔β map, realized by [`MapTessellation`] (mesh) and
+//!   [`MapPixellation`] (pixel).
 //!
 //! [`PixelGrid`]: crate::grid::PixelGrid
 //! [`MeshGrid`]: crate::grid::MeshGrid

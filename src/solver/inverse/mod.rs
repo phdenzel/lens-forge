@@ -13,18 +13,18 @@
 //! * `ensemble` — hit-and-run sampling of that polytope and its physical summaries.
 //! * `source_plane` — per-member source construction on a
 //!   [`SourceBasis`](crate::solver::basis::SourceBasis):
-//!   [`source_field`](source_plane::source_field) builds a member's source plane and
-//!   [`reconstruct_source`](source_plane::reconstruct_source) turns its inversion into a
+//!   [`source_field`] builds a member's source plane and
+//!   [`reconstruct_source`] turns its inversion into a
 //!   [`SourceModel`](crate::source::SourceModel).
 //! * `backproject` — ray-trace the arc mask to source-plane generators and the cheap
 //!   dispersion cull.
 //! * `semilinear` — Warren & Dye source inversion `(Fᵀ W F + λ R) s = Fᵀ W d` and its
 //!   graph-Laplacian regularizer.
-//! * `reweight` — per-member forward χ² → a [`WeightedEnsemble`](reweight::WeightedEnsemble)
+//! * `reweight` — per-member forward χ² → a [`WeightedEnsemble`]
 //!   (importance weights + effective sample size).
 //! * `reduce` — collapse that weighted ensemble to the observation-constrained posterior
 //!   sub-ensemble (SIR resampling or a weight-threshold cull).
-//! * `freeform` — the [`FreeFormInversion`](freeform::FreeFormInversion) driver running the
+//! * `freeform` — the [`FreeFormInversion`] driver running the
 //!   whole pipeline (polytope → ensemble → re-weight → reduce → optional source).
 
 pub mod backproject;

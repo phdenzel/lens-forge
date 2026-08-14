@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The lensing overlay on hit-and-run polytope sampling (flat-in-mass).
 //!
-//! The generic Markov-chain engine lives in [`numerical::mcmc`](crate::numerical::mcmc);
+//! The generic Markov-chain engine lives in `numerical::mcmc`;
 //! this is the thin domain layer: it adapts a
-//! [`ConstraintSet`](crate::solver::inverse::constraints::ConstraintSet) into the polytope the engine
+//! [`ConstraintSet`] into the polytope the engine
 //! samples and wraps the raw draws as an [`Ensemble`] of [`EnsembleMember`]s (each the full
 //! `x = (m, {β_s})` — cell masses plus recovered source positions). Sampling in mass
 //! coordinates makes the uniform draw a flat-in-mass prior.
