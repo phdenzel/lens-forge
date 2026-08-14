@@ -10,8 +10,11 @@
 //!
 //! * [`block`] — the 2880-byte block, a big-endian byte cursor/sink, padding.
 //! * [`error`] — the context-carrying [`FitsError`], bridged to `LensForgeError`.
+//! * [`card`] — one 80-byte card ([`Card`]/[`CardValue`]): parse and encode.
 
 pub mod block;
+pub mod card;
 pub mod error;
 
+pub use card::{Card, CardValue};
 pub use error::FitsError;
